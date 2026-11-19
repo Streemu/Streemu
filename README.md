@@ -20,15 +20,23 @@ Windows 10 (2004 ou mais novo) ou Windows 11.
 
 ## Conferir o instalador
 
-Cada release traz um `SHA256SUMS.txt` com o hash do instalador. No PowerShell, na pasta do download:
+O instalador é compilado pelo GitHub Actions **deste repositório** (`.github/workflows/instalador.yml`), a partir do código que está aqui, e cada um sai com um **atestado de origem** assinado pelo GitHub. Com o [GitHub CLI](https://cli.github.com) instalado, na pasta do download:
+
+```powershell
+gh attestation verify .\Streemu-Instalador.exe -R Streemu/Streemu
+```
+
+A resposta diz de qual commit e de qual workflow o arquivo saiu. Se o arquivo tiver sido trocado ou não tiver saído daqui, a conferência falha.
+
+Sem o GitHub CLI, dá para conferir só o hash: cada release traz um `SHA256SUMS.txt`, e no PowerShell
 
 ```powershell
 Get-FileHash .\Streemu-Instalador.exe -Algorithm SHA256
 ```
 
-O resultado tem que ser igual ao do `SHA256SUMS.txt` da mesma release.
+tem que dar o mesmo valor. O hash prova que o arquivo não mudou depois da release; o atestado prova também de onde ele veio.
 
-Sendo honesto sobre o que isso prova: hoje o instalador é compilado no PC de um dos mantenedores, a partir do repositório privado de trabalho, e este repositório recebe uma cópia do código sem o histórico. O hash garante que o arquivo não mudou depois da release, **não** que ele saiu exatamente deste código. Compilar o instalador pelo GitHub Actions, com atestado de origem (`gh attestation verify`), está planejado.
+O código deste repositório é uma cópia do repositório de trabalho, sem o histórico, atualizada pelos mantenedores. A release `instalador-2026-11-18` foi a primeira e foi compilada à mão, antes deste workflow existir: ela não tem atestado.
 
 ## O que o app envia e para onde
 
@@ -58,7 +66,7 @@ dotnet build app/Streemu -c Release
 
 O ffmpeg, o ffplay e o mpv **não** estão no repositório. O app usa as versões fixadas, com SHA-256, em `app/Streemu/ffmpeg-desejado.json`, `ffplay-desejado.json` e `mpv-desejado.json`, e confere cada arquivo antes de usar. Para rodar uma compilação local com transmissão, coloque o ffmpeg "full" do [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) em `ffmpeg/` ao lado do `Streemu.exe` (ou no PATH).
 
-O instalador sai do `scripts/build-release.ps1`, que precisa do [Inno Setup 6](https://jrsoftware.org/isinfo.php) e de uma pasta com o ffmpeg e o ffplay (`-Ffmpeg <pasta>`).
+O instalador sai do `scripts/build-release.ps1`, que precisa do [Inno Setup 6](https://jrsoftware.org/isinfo.php) e de uma pasta com o ffmpeg e o ffplay (`-Ffmpeg <pasta>`). Os dois estão nas releases `ffmpeg-*` e `ffplay-*` deste repositório, nas versões que o app espera; o workflow do instalador mostra como baixar e conferir.
 
 Os projetos em `tests/` são executáveis sem rede nem captura de tela, um por assunto.
 

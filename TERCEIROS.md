@@ -6,7 +6,7 @@ O código do Streemu é GPLv3 ([LICENSE](LICENSE)). O app e o instalador usam ou
 
 | Componente | Licença | Versão | Onde está o código |
 |---|---|---|---|
-| **ffmpeg** e **ffplay** (build "full" do gyan.dev) | GPLv3 (o build "full" liga bibliotecas GPL) | `2026-11-09-git-16a345b022-full_build-www.gyan.dev`, fixada em `app/Streemu/ffmpeg-desejado.json` (o ffplay, em `ffplay-desejado.json`) | <https://ffmpeg.org> (código) e <https://www.gyan.dev/ffmpeg/builds/> (builds e a lista de bibliotecas de cada build) |
+| **ffmpeg** e **ffplay** (build "full" do gyan.dev) | GPLv3 (o build "full" liga bibliotecas GPL) | `2026-11-09-git-16a345b022-full_build-www.gyan.dev`, fixada em `app/Streemu/ffmpeg-desejado.json` (o ffplay, em `ffplay-desejado.json`) | <https://ffmpeg.org> (código) e <https://www.gyan.dev/ffmpeg/builds/> (builds e a lista de bibliotecas de cada build). Os binários exatos que o instalador leva estão nas releases `ffmpeg-*` e `ffplay-*` deste repositório |
 | **mpv** (modo filme; baixado na primeira vez que alguém usa o filme, não vem no instalador) | GPLv2 ou mais nova (o mpv também pode ser compilado como LGPL; vale a licença do build exato) | `20261111-git-bcde6b93cc`, fixada em `app/Streemu/mpv-desejado.json`. Build do projeto shinchiro: `mpv.exe` e `d3dcompiler_43.dll` | <https://mpv.io> e <https://github.com/mpv-player/mpv> (código); <https://github.com/shinchiro/mpv-winbuild-cmake> (os builds para Windows) |
 | **NAudio.Wasapi** (captura de áudio) | MIT | 3.3.0 | <https://github.com/naudio/NAudio> |
 | **System.Management** (consulta do Windows) | MIT | 10.0.0 | <https://github.com/dotnet/runtime> |

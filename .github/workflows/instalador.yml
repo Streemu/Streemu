@@ -1,0 +1,105 @@
+# Instalador do Streemu compilado AQUI, a partir do código deste repositório, com atestado de origem.
+# Quem quiser conferir: gh attestation verify Streemu-Instalador.exe -R Streemu/Streemu
+# Roda numa tag v* (versão numerada) ou à mão (Actions > Instalador > Run workflow), com a tag da release.
+# O ffmpeg e o ffplay vêm das releases fixas deste repositório e são conferidos pelo SHA-256 que o próprio app traz
+# (app/Streemu/ffmpeg-desejado.json e ffplay-desejado.json); o build-release.ps1 confere de novo e para se não bater.
+name: Instalador
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag da release (ex.: v0.4.1 ou instalador-2026-11-19)'
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: instalador
+  cancel-in-progress: false
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    permissions:
+      contents: write      # criar a release
+      id-token: write      # atestado de origem
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Conferir a tag
+        shell: pwsh
+        run: |
+          if ($env:TAG -notmatch '^(v\d+\.\d+\.\d+|instalador-\d{4}-\d{2}-\d{2}(-\d+)?)$') { throw "Tag '$env:TAG' fora do padrão (v1.2.3 ou instalador-AAAA-MM-DD)." }
+          gh release view $env:TAG -R $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "A release $env:TAG já existe. Use outra tag." }
+          $global:LASTEXITCODE = 0
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          choco upgrade innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "não consegui instalar o Inno Setup" }
+
+      - name: ffmpeg e ffplay fixados
+        shell: pwsh
+        run: |
+          foreach ($nome in 'ffmpeg', 'ffplay') {
+            $pin = Get-Content "app/Streemu/$nome-desejado.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+            gh release download $pin.tag -R $env:GITHUB_REPOSITORY -p "$nome.zip" -D baixados --clobber
+            if ($LASTEXITCODE -ne 0) { throw "não consegui baixar $nome.zip da release $($pin.tag)" }
+            $sha = (Get-FileHash "baixados/$nome.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($sha -ne $pin.zip_sha256) { throw "$nome.zip com SHA-256 $sha; o app espera $($pin.zip_sha256)" }
+            Expand-Archive "baixados/$nome.zip" -DestinationPath binarios -Force
+          }
+          Get-ChildItem binarios
+
+      - name: Compilar o instalador
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1 -Ffmpeg "$PWD/binarios"
+          if ($LASTEXITCODE -ne 0) { throw "build-release falhou" }
+          $inst = Get-ChildItem dist -Filter '*-instalador.exe' | Select-Object -First 1
+          if (-not $inst) { throw "o build não gerou o instalador (Inno Setup faltando?)" }
+          New-Item -ItemType Directory -Force pub | Out-Null
+          Copy-Item $inst.FullName pub/Streemu-Instalador.exe
+          $h = (Get-FileHash pub/Streemu-Instalador.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$PWD/pub/SHA256SUMS.txt", "$h  Streemu-Instalador.exe`n", (New-Object Text.UTF8Encoding($false)))
+          Get-Content pub/SHA256SUMS.txt
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: pub/Streemu-Instalador.exe
+
+      - name: Publicar a release
+        shell: pwsh
+        run: |
+          $ver = ([regex]::Match((Get-Content app/Streemu/Streemu.csproj -Raw), '<Version>([^<]+)</Version>')).Groups[1].Value
+          $h = (Get-Content pub/SHA256SUMS.txt -Raw).Split(' ')[0]
+          $notas = @"
+          Instalador do Streemu $ver para Windows 10 (2004 ou mais novo) e Windows 11, 64 bits. Depois de instalado, o Streemu se atualiza sozinho.
+
+          **Compilado pelo GitHub Actions deste repositório**, a partir do commit $($env:GITHUB_SHA.Substring(0,7)), com atestado de origem.
+
+          Conferir:
+          - SHA-256: ``$h`` (no PowerShell: ``Get-FileHash .\Streemu-Instalador.exe``)
+          - Origem: ``gh attestation verify Streemu-Instalador.exe -R $env:GITHUB_REPOSITORY``
+
+          O Windows pode mostrar "O Windows protegeu o computador", porque o instalador ainda não é assinado: clique em **Mais informações** e depois em **Executar assim mesmo**.
+          "@
+          [IO.File]::WriteAllText("$PWD/pub/notas.md", $notas, (New-Object Text.UTF8Encoding($false)))
+          gh release create $env:TAG -R $env:GITHUB_REPOSITORY pub/Streemu-Instalador.exe pub/SHA256SUMS.txt --target $env:GITHUB_SHA --latest `
+            --title "Streemu $ver ($env:TAG)" --notes-file pub/notas.md
+          if ($LASTEXITCODE -ne 0) { throw "não consegui publicar a release" }

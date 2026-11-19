@@ -26,7 +26,8 @@ public sealed record Cand(IPEndPoint Ep, CandKind Kind)
 /// <summary>
 /// Um único socket UDP que: descobre o endereço público (STUN), fura o NAT até o amigo,
 /// e depois carrega controle (JSON), ping e os pacotes SRT das duas direções.
-/// Formato: 'L' 'X' tipo(1) tag(4) [seq(4)] payload. A tag vem dos segredos dos dois códigos.
+/// Formato: 'L' 'X' tipo(1) tag(4) [seq(4)] payload. A tag vem dos segredos dos dois códigos (e vai em claro: não autentica ninguém;
+/// por isso o controle vai selado, ver <see cref="SeloControle"/>, e só ele pode ensinar um endereço novo).
 ///
 /// O amigo pode ser alcançável por vários caminhos ("candidatos"): o endereço público do código, o
 /// alternativo (endereço interno da operadora), o relay dele (TURN), o meu relay, e os endereços de onde
@@ -35,7 +36,11 @@ public sealed record Cand(IPEndPoint Ep, CandKind Kind)
 /// </summary>
 public sealed class Tunnel : IDisposable
 {
-    const byte TPunch = 1, TPing = 3, TPong = 4, TCtrl = 5;
+    /// <summary>
+    /// TCtrlSelado: o controle JSON cifrado e autenticado (<see cref="SeloControle"/>). Desde que ele entrou, o TCtrl (5, JSON aberto) não é mais aceito:
+    /// o app de todos atualiza junto (mudança incompatível, [obrigatória]). O número 6 é novo para que um app velho ainda aberto ignore em vez de tentar ler bytes cifrados como JSON.
+    /// </summary>
+    const byte TPunch = 1, TPing = 3, TPong = 4, TCtrl = 5, TCtrlSelado = 6;
     public const byte TToViewer = 0x10, TToSender = 0x11;
     /// <summary>Pedaços do arquivo do modo filme e as confirmações (spec 010, 4.2); o conteúdo é do Filme/Transferencia.cs. App antigo ignora.</summary>
     public const byte TArquivo = 0x12;
@@ -64,7 +69,9 @@ public sealed class Tunnel : IDisposable
     bool _oneWayWarned;
     uint _txSeqViewer, _txSeqSender;
     readonly SeqTracker _rxViewer = new(), _rxSender = new();
-    long _txBytes, _rxBytes, _txPackets, _rxPeerPackets, _rxWrongTag, _rxOtherSource, _pongs, _rxViaRelay;
+    long _txBytes, _rxBytes, _txPackets, _rxPeerPackets, _rxWrongTag, _rxOtherSource, _pongs, _rxViaRelay, _rxCtrlAbertoRecusado, _rxSeloInvalido, _rxDescartadoSemSelo;
+    volatile SeloControle? _selo;
+    long _lastSeloMs;
 
     public byte[] Secret { get; }
     public IPEndPoint? PublicEndpoint { get; private set; }
@@ -103,6 +110,9 @@ public sealed class Tunnel : IDisposable
         ["pacotes_pelo_meu_relay"] = Interlocked.Read(ref _rxViaRelay),
         ["pacotes_com_codigo_errado"] = Interlocked.Read(ref _rxWrongTag),
         ["pacotes_de_outro_endereco_aceitos"] = Interlocked.Read(ref _rxOtherSource),
+        ["controle_aberto_recusado"] = Interlocked.Read(ref _rxCtrlAbertoRecusado),
+        ["controle_selado_invalido"] = Interlocked.Read(ref _rxSeloInvalido),
+        ["pacotes_de_endereco_novo_descartados"] = Interlocked.Read(ref _rxDescartadoSemSelo),
         ["pongs_recebidos"] = Interlocked.Read(ref _pongs),
         ["so_de_ida"] = OneWay,
         ["candidatos"] = string.Join(", ", _cands.Select(c => c.ToString())),
@@ -300,6 +310,15 @@ public sealed class Tunnel : IDisposable
         _tag = hash[..4];
         Passphrase = Convert.ToHexString(hash, 4, 16).ToLowerInvariant();
         ChaveArquivo = SHA256.HashData(Encoding.ASCII.GetBytes("streemu-arquivo-v1").Concat(material).ToArray());
+        // Chave do controle selado. Se o túnel reconecta com os mesmos códigos a chave é a mesma: mantém o objeto (e o contador) para
+        // nunca repetir nonce com a mesma chave.
+        var chaveControle = SHA256.HashData(Encoding.ASCII.GetBytes("streemu-controle-v1").Concat(material).ToArray());
+        if (_selo == null || !_selo.MesmaChave(chaveControle, aFirst))
+        {
+            var velho = _selo;
+            _selo = new SeloControle(chaveControle, aFirst);
+            velho?.Dispose();
+        }
         _peerCode = code;
         var cands = new List<Cand> { new(code.Endpoint, CandKind.Direct) };
         if (code.Alt != null && !code.Alt.Equals(code.Endpoint)) cands.Add(new(code.Alt, CandKind.Direct));
@@ -349,6 +368,7 @@ public sealed class Tunnel : IDisposable
                     case TunnelState.Punching:
                     case TunnelState.Lost:
                         SendPunchAll();
+                        SendSelo(now);
                         if (now - lastPing >= 1000) { lastPing = now; SendPings(); }
                         if (!_localMode && now - _punchStartMs > 3000)
                         {
@@ -370,6 +390,7 @@ public sealed class Tunnel : IDisposable
                     case TunnelState.Connected:
                         // até confirmar um caminho de envio, continua abrindo o NAT do outro lado por todos os candidatos
                         if (!_validated || now - _connectedAtMs < 10000) SendPunchAll();
+                        SendSelo(now);
                         if (now - lastPing >= 1000) { lastPing = now; SendPings(); }
                         ChooseTarget(now);
                         if (!_oneWayWarned && _lastPongMs < 0 && now - _connectedAtMs > 6000)
@@ -498,8 +519,20 @@ public sealed class Tunnel : IDisposable
             Interlocked.Increment(ref _rxWrongTag);
             return;
         }
-        if (!_cands.Any(c => c.Ep.Equals(ep) && c.Kind != CandKind.ViaMyRelay))
+        // Controle aberto não existe mais: quem está no caminho lê a tag e forjava comandos.
+        if (type == TCtrl) { Interlocked.Increment(ref _rxCtrlAbertoRecusado); return; }
+        // Controle selado: abre antes de qualquer outra coisa. Se não autentica (ou é repetição), o pacote some sem tocar no estado.
+        byte[]? ctrl = null;
+        if (type == TCtrlSelado)
         {
+            if (_selo is not { } selo || !selo.Abrir(span, out ctrl)) { Interlocked.Increment(ref _rxSeloInvalido); return; }
+        }
+        bool conhecido = _cands.Any(c => c.Ep.Equals(ep) && c.Kind != CandKind.ViaMyRelay);
+        if (!conhecido)
+        {
+            // Endereço novo só vira caminho por pacote autenticado: a tag em claro não prova nada (qualquer um no caminho a lê e injetaria candidatos).
+            // Os outros tipos vindos dele são descartados; o selo periódico (TimerLoop) garante que um pacote autenticado chegue de qualquer porta nova do NAT.
+            if (ctrl == null) { Interlocked.Increment(ref _rxDescartadoSemSelo); return; }
             AddCandidate(ep, CandKind.Direct, "os pacotes dele chegam desse endereço");
             TellSeenAs(ep);
         }
@@ -544,7 +577,7 @@ public sealed class Tunnel : IDisposable
                     if (payload.Length >= 17) LearnPeerClock(BitConverter.ToInt64(payload[9..]), rtt, now);
                 }
                 break;
-            case TCtrl: HandleCtrl(payload); break;
+            case TCtrlSelado: HandleCtrl(ctrl!); break;
             case TToViewer:
                 if (payload.Length > 4) { _rxViewer.Track(BitConverter.ToUInt32(payload)); ToViewer?.Invoke(payload[4..]); }
                 break;
@@ -637,19 +670,55 @@ public sealed class Tunnel : IDisposable
         {
             for (int i = 0; i < 3; i++)
             {
-                if (_validated) SendRaw(TCtrl, bytes);
-                else foreach (var c in _cands) SendRaw(TCtrl, bytes, c);
+                SendSealed(bytes, _validated ? null : _cands);
                 await Task.Delay(150);
             }
         });
+    }
+
+    /// <summary>Sela de novo a cada envio (contador novo, senão o anti-replay do outro lado recusaria a repetição). Sem destinos, vai pelo caminho confirmado.</summary>
+    void SendSealed(byte[] claro, Cand[]? to)
+    {
+        var selo = _selo;
+        if (selo == null) return;
+        try
+        {
+            if (to == null)
+            {
+                var dest = _target;
+                if (dest != null) Transmit(selo.Selar(TCtrlSelado, _tag, claro), dest);
+            }
+            else foreach (var c in to) Transmit(selo.Selar(TCtrlSelado, _tag, claro), c);
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    static readonly byte[] SeloMsg = Encoding.UTF8.GetBytes("{\"type\":\"selo\"}");
+
+    /// <summary>
+    /// "Selo": um controle selado sem efeito, mandado por todos os candidatos a cada 200 ms enquanto o caminho não está confirmado e pelo caminho confirmado a cada 1 s. O 1 s existe para a troca de
+    /// porta do NAT do amigo no meio da live: os pacotes da porta nova (vídeo inclusive) são descartados até um selo chegar de lá, então o pior caso é
+    /// menos de 1 s de imagem parada (com 5 s passaria dos 8 s do Lost). Custo: ~60 bytes por pacote. O TimerLoop (tick de 100 ms) chama em Punching, Lost e Connected. Como um endereço
+    /// novo só vira caminho por pacote autenticado, o NAT do amigo que muda de porta (ou o relay) só é aprendido se ele nos mandar algo selado de lá;
+    /// punch e ping não bastam. O controle comum não serve: sem caminho confirmado ele quase não é enviado.
+    /// </summary>
+    void SendSelo(long now)
+    {
+        if (_selo == null) return;
+        if (_validated && now - _lastSeloMs < 1000) return;
+        if (!_validated && now - _lastSeloMs < 200) return;
+        _lastSeloMs = now;
+        SendSealed(SeloMsg, _validated ? null : _cands);
     }
 
     void HandleCtrl(ReadOnlySpan<byte> payload)
     {
         JsonObject? msg;
         try { msg = JsonNode.Parse(Encoding.UTF8.GetString(payload)) as JsonObject; } catch { return; }
-        string? id = msg?["id"]?.GetValue<string>();
-        if (msg == null || id == null) return;
+        if (msg == null) return;
+        if (msg["type"]?.GetValue<string>() == "selo") return; // só existia para provar o endereço (ProcessPacket); ninguém mais precisa vê-lo
+        string? id = msg["id"]?.GetValue<string>();
+        if (id == null) return;
         lock (_seenCtrl)
         {
             if (!_seenCtrl.Add(id)) return;
@@ -686,6 +755,7 @@ public sealed class Tunnel : IDisposable
         Turn?.Release();
         _cts.Cancel();
         try { _sock.Dispose(); } catch { }
+        _selo?.Dispose();
     }
 }
 

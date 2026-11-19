@@ -256,16 +256,35 @@ public sealed class GroupRoom : ISala
         catch { }
     }
 
+    /// <summary>
+    /// Teto de uma mensagem recebida da sala. O maior caso legítimo é o avatar de um amigo (até 256 KB de imagem, ~342 KB em base64);
+    /// a lista de 50 membros e as 50 atividades somam uns 30 KB, a capa do filme tem até 32 KB e a miniatura 12 KB.
+    /// 1 MiB dá mais de 2x de folga. Sem teto, um servidor (ou sala) mal-intencionado faria o MemoryStream crescer sem parar.
+    /// </summary>
+    const int MaxMensagemBytes = 1024 * 1024;
+
+    /// <summary>Quando o último "envie a telemetria agora" foi atendido (o mínimo entre dois é <see cref="TelemetriaAgoraIntervalo"/>).</summary>
+    DateTime _telemetriaAgoraEm = DateTime.MinValue;
+    static readonly TimeSpan TelemetriaAgoraIntervalo = TimeSpan.FromSeconds(60);
+
     async Task ReceiveLoopAsync(ClientWebSocket ws)
     {
         var buf = new byte[16 * 1024];
         var msg = new MemoryStream();
+        bool grande = false; // passou do teto: lê o resto sem guardar
         while (ws.State == WebSocketState.Open && !_cts.IsCancellationRequested)
         {
             var r = await ws.ReceiveAsync(buf, _cts.Token);
             if (r.MessageType == WebSocketMessageType.Close) break;
-            msg.Write(buf, 0, r.Count);
+            if (!grande && msg.Length + r.Count > MaxMensagemBytes)
+            {
+                grande = true;
+                msg.SetLength(0);
+                Log.Info($"Sala do grupo: mensagem acima de {MaxMensagemBytes / 1024} KB descartada (a sala normal nunca manda isso).");
+            }
+            if (!grande) msg.Write(buf, 0, r.Count);
             if (!r.EndOfMessage) continue;
+            if (grande) { grande = false; continue; }
             string text = Encoding.UTF8.GetString(msg.GetBuffer(), 0, (int)msg.Length);
             msg.SetLength(0);
             if (text == "pong") continue;
@@ -327,6 +346,13 @@ public sealed class GroupRoom : ISala
                     Message?.Invoke(from, m["apelido"]?.GetValue<string>() ?? "amigo", body);
                 break;
             case "telemetria-agora":
+                // qualquer membro pode pedir; sem este intervalo um app adulterado faria todos os PCs enviarem telemetria sem parar
+                if (DateTime.UtcNow - _telemetriaAgoraEm < TelemetriaAgoraIntervalo)
+                {
+                    Log.Info("Sala do grupo: pedido de telemetria agora ignorado (já atendi um há menos de 60 s).");
+                    break;
+                }
+                _telemetriaAgoraEm = DateTime.UtcNow;
                 TelemetryNow?.Invoke();
                 break;
             case "erro":

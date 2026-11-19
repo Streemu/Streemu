@@ -31,8 +31,11 @@ public sealed class PeerLink : IDisposable
 
     public event Action<JsonObject>? Control;
 
+    readonly bool _localMode;
+
     PeerLink(string sessionId, string peerId, string peerNick, bool iAmSender, bool localMode)
     {
+        _localMode = localMode;
         SessionId = sessionId; PeerId = peerId; PeerNick = peerNick; IAmSender = iAmSender;
         Tunnel = new Tunnel(localMode) { CodesExchangedByApp = true };
         Relay = new LocalRelay((iAmSender ? "envio-" : "player-") + sessionId[..Math.Min(6, sessionId.Length)]);
@@ -98,7 +101,16 @@ public sealed class PeerLink : IDisposable
         finally { s_credsGate.Release(); }
     }
 
-    public void Connect(string peerCode) => Tunnel.ConnectTo(PeerCode.Parse(peerCode));
+    /// <summary>
+    /// Fora do modo local o código do amigo passa por <see cref="PeerCode.ValidateRemote"/>: endereço fora da internet pública
+    /// é recusado com FormatException (quem chama já trata como "código inválido"). No modo local (testes, loopback e 127.0.0.2) não confere.
+    /// </summary>
+    public void Connect(string peerCode)
+    {
+        var parsed = PeerCode.Parse(peerCode);
+        if (!_localMode) parsed = parsed.ValidateRemote();
+        Tunnel.ConnectTo(parsed);
+    }
 
     public bool Connected => Tunnel.State == TunnelState.Connected;
 

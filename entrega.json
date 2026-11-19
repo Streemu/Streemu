@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "aab671292776bdb7af34d279d261935abf15d777",
-    "notas":  "- Protege contra o PC de um amigo infectado (player, ligações, sala e arquivos)",
-    "obrigatoria":  false
+    "privado":  "257ca686475ee70813b693e2f4fdf805a529dba0",
+    "notas":  "- [obrigatória] Cifra o controle do túnel e limita o que vem de outro PC",
+    "obrigatoria":  true
 }

@@ -278,6 +278,19 @@ public sealed partial class FilmeTela : UserControl
                 catch (OperationCanceledException) { TeleDownload(d, t, "parado"); _lig.Sair(); Avisar("Download parado. O que já veio fica guardado: clique em Baixar para continuar."); return; }
                 catch (Exception e) { TeleDownload(d, t, "erro: " + e.Message); _lig.Sair(); Avisar($"O download parou: {e.Message}"); Log.Info($"[filme] download parou: {e.Message}"); return; }
                 TeleDownload(d, t, "ok");
+                // O arquivo veio do PC de um amigo, que pode estar infectado: confere pelo conteúdo que é um vídeo antes de o mpv abrir. Uma
+                // lista (.m3u8, EDL...) com nome de .mkv faria o mpv buscar URLs ou abrir arquivos daqui. Só este caminho: o arquivo que a
+                // pessoa escolhe (EscolherAsync) é dela e não passa pela conferência.
+                string? ruim = await Task.Run(() => ConferirFormato.Motivo(Media.Tools.FfmpegOuNulo, final));
+                if (ruim != null)
+                {
+                    Log.Info($"[filme] arquivo baixado recusado, não abri no player: {ruim}");
+                    _lig.Sair();
+                    // apaga: um arquivo recusado largado na pasta seria aceito depois pelo "já tenho o arquivo" (a identidade bate) e iria ao mpv
+                    try { File.Delete(final); } catch (Exception e) { Log.Info($"[filme] não consegui apagar o arquivo recusado: {e.GetType().Name}"); }
+                    Avisar($"O arquivo que veio de {dono} não é um vídeo que o {UiBrand.Name} reconhece; não abri. Peça para ele conferir o arquivo.");
+                    return;
+                }
                 await AbrirAsync(final, jaLigado: true);
             }
             finally

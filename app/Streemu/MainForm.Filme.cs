@@ -369,13 +369,16 @@ public partial class MainForm
         try
         {
             PeerLink link;
+            PeerLink? criado = null;
             try
             {
-                link = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, "filme");
-                link.Connect(code);
+                criado = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, "filme");
+                criado.Connect(code);
+                link = criado;
             }
             catch (Exception e)
             {
+                criado?.Dispose(); // código recusado depois de a ligação existir: fecha (mesmo motivo do AcceptViewerAsync)
                 Log.Info($"[filme] {nick} quis entrar, mas não deu para preparar a conexão: {e.Message}");
                 await _room.SendTo(from, new JsonObject { ["tipo"] = "filme_recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} não conseguiu preparar a conexão ({e.Message})." });
                 return;

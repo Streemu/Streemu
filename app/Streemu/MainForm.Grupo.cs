@@ -467,13 +467,18 @@ public sealed partial class MainForm
                     EndLink(velhaSid, tellPeer: false, why: null); // tellPeer false: foi o próprio amigo que pediu de novo
                 }
             PeerLink link;
+            PeerLink? criado = null;
             try
             {
-                link = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, streamId);
-                link.Connect(code);
+                criado = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, streamId);
+                criado.Connect(code);
+                link = criado;
             }
             catch (Exception e)
             {
+                // código recusado (ex.: aponta para a rede local) depois de a ligação existir: fecha, senão socket, threads e reserva no relay
+                // ficariam abertos, e um app adulterado repetiria o pedido à vontade
+                criado?.Dispose();
                 Log.Info($"{nick} pediu para assistir, mas não deu para preparar a conexão: {e.Message}");
                 await _room.SendTo(from, new JsonObject { ["tipo"] = "recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} não conseguiu preparar a conexão ({e.Message})." });
                 return;

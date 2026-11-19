@@ -79,6 +79,52 @@ public sealed class PeerCode
         return new PeerCode(ip, port, b.AsSpan(7, 6).ToArray(), alt, relay);
     }
 
+    /// <summary>
+    /// Confere para onde o código manda este PC mandar pacotes (fora do modo local). Um app adulterado de um amigo poderia
+    /// pôr no código o roteador da vítima (192.168.x), o loopback ou o IP de um terceiro, e o túnel varreria ~576 portas
+    /// por até 10 min nesse endereço. Por isso o endereço público e o do relay TURN precisam ser IPv4 público de verdade
+    /// (recusa o código inteiro); o alternativo pode ser da operadora (CGNAT) ou privado, que é para o que ele existe, mas
+    /// não loopback, 0/8, link-local, multicast nem reservado (esse é só descartado). Devolve o código a usar.
+    /// </summary>
+    public PeerCode ValidateRemote()
+    {
+        if (!IsPublicUnicast(Address))
+            throw new FormatException($"o código aponta para um endereço que não é público na internet ({Tunnel.Mask(Endpoint)}); peça ao amigo para gerar o código de novo (ou o app dele está adulterado)");
+        if (Relay != null && !IsPublicUnicast(Relay.Address))
+            throw new FormatException($"o relay do código aponta para um endereço que não é público na internet ({Tunnel.Mask(Relay)}); peça ao amigo para gerar o código de novo");
+        var alt = Alt;
+        if (alt != null && !IsAcceptableAlt(alt.Address))
+        {
+            Util.Log.Info($"Código do amigo: endereço alternativo {Tunnel.Mask(alt)} descartado (não é um endereço válido de operadora ou rede local).");
+            alt = null;
+        }
+        return alt == Alt ? this : new PeerCode(Address, Port, Secret, alt, Relay);
+    }
+
+    /// <summary>IPv4 que a internet roteia de verdade: fora de loopback, 0/8, privados, CGNAT, link-local, multicast, reservado, broadcast e faixas de documentação.</summary>
+    public static bool IsPublicUnicast(IPAddress ip)
+    {
+        if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return false;
+        var b = ip.GetAddressBytes();
+        if (!IsAcceptableAlt(ip)) return false;
+        if (Upnp.IsCarrierOrPrivate(ip)) return false;               // 10/8, 172.16/12, 192.168/16, 100.64/10
+        if (b[0] == 192 && b[1] == 0 && b[2] is 0 or 2) return false; // 192.0.0/24 e 192.0.2/24
+        if (b[0] == 198 && (b[1] is 18 or 19 || b[1] == 51 && b[2] == 100)) return false; // 198.18/15 e 198.51.100/24
+        if (b[0] == 203 && b[1] == 0 && b[2] == 113) return false;   // 203.0.113/24
+        return true;
+    }
+
+    /// <summary>Alt: privado e CGNAT valem; loopback, 0/8, link-local, multicast e reservado/broadcast (240/4) não.</summary>
+    static bool IsAcceptableAlt(IPAddress ip)
+    {
+        if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return false;
+        var b = ip.GetAddressBytes();
+        if (b[0] == 0 || b[0] == 127) return false;
+        if (b[0] == 169 && b[1] == 254) return false;
+        if (b[0] >= 224) return false; // multicast 224/4 e reservado 240/4 (inclui o broadcast)
+        return true;
+    }
+
     static byte Checksum(ReadOnlySpan<byte> data)
     {
         int sum = 0x5A;

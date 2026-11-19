@@ -73,6 +73,8 @@ public sealed class AppState
     public bool DiscordJoinNativo { get; set; }
     /// <summary>Não avisar quando um amigo começa uma live ou abre um filme (Ajustes > Assistir; os avisos vêm ligados).</summary>
     public bool AvisosDesligados { get; set; }
+    /// <summary>Canal da atualização automática (Configurações > Sistema): "nightly" (padrão) ou "stable". Ver <see cref="Updater.NormalizarCanal"/>.</summary>
+    public string CanalAtualizacao { get; set; } = Updater.CanalNightly;
     /// <summary>Sino de silenciar (spec 012): "até ligar de novo" e, com prazo, o fim dele em milissegundos Unix (0 = sem prazo).</summary>
     public bool SilencioIndefinido { get; set; }
     /// <summary>Já viu, uma vez, o aviso de que fechar a janela só esconde o Streemu na bandeja (guardado: o sino silenciado não pode escondê-lo para sempre).</summary>

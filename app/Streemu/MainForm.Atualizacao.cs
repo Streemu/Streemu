@@ -28,6 +28,34 @@ public sealed partial class MainForm
     /// <summary>Sempre visível no rodapé: procura atualização na hora, sem esperar a conferência automática.</summary>
     readonly Button _checkUpdate = new() { Text = "Procurar atualização", AutoSize = true };
 
+    /// <summary>Canal da atualização, em Configurações > Sistema (nomes em inglês de propósito: são os termos que quem testa app já conhece).</summary>
+    readonly ComboBox _canalAtualizacao = new Ui.RoundedComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+
+    /// <summary>A opção em Configurações > Sistema. Trocar de canal procura atualização na hora, no canal novo.</summary>
+    Control CanalAtualizacaoOpcao()
+    {
+        _canalAtualizacao.Items.AddRange(["Nightly", "Stable"]);
+        _canalAtualizacao.SelectedIndex = Updater.NormalizarCanal(_state.CanalAtualizacao) == Updater.CanalStable ? 1 : 0;
+        _canalAtualizacao.SelectedIndexChanged += async (_, _) =>
+        {
+            string canal = _canalAtualizacao.SelectedIndex == 1 ? Updater.CanalStable : Updater.CanalNightly;
+            if (canal == Updater.NormalizarCanal(_state.CanalAtualizacao)) return;
+            _state.CanalAtualizacao = canal;
+            if (!Automated) _state.Save();
+            Log.Info($"Atualização: canal trocado para {canal}.");
+            ShowUpdate(null); // o aviso que estava na tela era do outro canal
+            if (Automated || !Updater.Enabled || RelayConfig.Load(_state) is not { } cfg) return;
+            try
+            {
+                var u = await Updater.CheckAsync(cfg, canal, _closing.Token);
+                ShowUpdate(u);
+                if (u != null) await UpdateWhenIdleAsync(_closing.Token);
+            }
+            catch (Exception e) when (!_closing.IsCancellationRequested) { Log.Info($"Atualização: não consegui verificar o canal {canal} agora ({e.Message}). Tento de novo em 10 min."); }
+        };
+        return _canalAtualizacao;
+    }
+
     /// <summary>Chamado no fim do InitGroup.</summary>
     void InitUpdater()
     {
@@ -77,7 +105,7 @@ public sealed partial class MainForm
             {
                 try
                 {
-                    var u = await Updater.CheckAsync(cfg, ct);
+                    var u = await Updater.CheckAsync(cfg, _state.CanalAtualizacao, ct);
                     loggedFailure = false;
                     Ui(() => ShowUpdate(u));
                     if (u != null) await UpdateWhenIdleAsync(ct);
@@ -110,7 +138,7 @@ public sealed partial class MainForm
             if (!_updateBar.IsHandleCreated) return;
         }
         var cfg = RelayConfig.Load(_state);
-        var fresh = cfg == null ? null : await Updater.CheckAsync(cfg, ct);
+        var fresh = cfg == null ? null : await Updater.CheckAsync(cfg, _state.CanalAtualizacao, ct);
         if (fresh == null) { Ui(() => ShowUpdate(null)); return; }
         Ui(() => { ShowUpdate(fresh); _ = UpdateNowAsync(alreadyConfirmed: true, automatic: true); });
     }
@@ -207,7 +235,7 @@ public sealed partial class MainForm
         _checkUpdate.Text = "Procurando...";
         _procurandoAtualizacao = true; SinalAtualizacao();
         UpdateInfo? u;
-        try { u = await Updater.CheckAsync(cfg, _closing.Token); }
+        try { u = await Updater.CheckAsync(cfg, _state.CanalAtualizacao, _closing.Token); }
         catch (Exception e)
         {
             Log.Info("Procurar atualização: " + e.Message);

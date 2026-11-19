@@ -75,10 +75,20 @@ public static class Updater
         return !string.IsNullOrWhiteSpace(b.Message) ? b.Message.TrimEnd('.') : b.GetType().Name;
     }
 
+    /// <summary>
+    /// Canal da atualização (Configurações > Sistema, spec 025): stable vem do repositório público (compilado e atestado lá, qualquer um confere),
+    /// nightly vem do repositório de trabalho. Por enquanto os dois recebem toda atualização; o nightly existe para, quando houver mais gente,
+    /// testar com quem quiser antes de soltar no stable. Qualquer valor desconhecido é nightly, que é o padrão.
+    /// </summary>
+    public const string CanalStable = "stable", CanalNightly = "nightly";
+    public static string NormalizarCanal(string? canal) => canal == CanalStable ? CanalStable : CanalNightly;
+
     /// <summary>Pergunta ao Worker do grupo. Nulo = nada mais novo (ou sem servidor/rede: só vai para o log).</summary>
-    public static async Task<UpdateInfo?> CheckAsync(RelayConfig.Settings cfg, CancellationToken ct)
+    public static async Task<UpdateInfo?> CheckAsync(RelayConfig.Settings cfg, string? canal, CancellationToken ct)
     {
-        string url = (Environment.GetEnvironmentVariable("STREEMU_ATUALIZACAO_URL") ?? cfg.Url).TrimEnd('/') + "/atualizacao";
+        // Trocar de canal não volta versão por conta própria: só há aviso com árvore OUTRA e hora mais NOVA (ver abaixo). Para o mesmo código, o público e o
+        // repositório de trabalho têm a mesma árvore, então trocar de canal com os dois em dia não baixa nada.
+        string url = (Environment.GetEnvironmentVariable("STREEMU_ATUALIZACAO_URL") ?? cfg.Url).TrimEnd('/') + "/atualizacao?canal=" + NormalizarCanal(canal);
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         // /atualizacao é aberta (spec 022): o app sem conta também se atualiza, então não há credencial aqui
         using var resp = await http.GetAsync(url, ct);
@@ -208,14 +218,15 @@ public static class Updater
     public static async Task<int> RunHeadlessAsync(bool onlyFfmpeg = false)
     {
         if (!Enabled) { Log.Info("--atualizar: este build não se atualiza (desenvolvimento)."); return 0; }
-        var cfg = RelayConfig.Load(AppState.Load());
+        var state = AppState.Load();
+        var cfg = RelayConfig.Load(state);
         if (cfg == null) { Log.Info("--atualizar: modo de teste sem STREEMU_ATUALIZACAO_URL; não sei a quem perguntar pela versão nova."); return 1; }
         if (!onlyFfmpeg)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(4));
             try
             {
-                var u = await CheckAsync(cfg, cts.Token);
+                var u = await CheckAsync(cfg, state.CanalAtualizacao, cts.Token);
                 if (u == null) Log.Info($"--atualizar: já está na mais nova ({CurrentLabel}).");
                 else
                 {

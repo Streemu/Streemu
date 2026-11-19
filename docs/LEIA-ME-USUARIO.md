@@ -142,6 +142,9 @@ ATUALIZAR
   Quem quiser antes clica em "Atualizar agora". Passe o mouse no texto para ver o que mudou.
 - Para procurar na hora: botão "Procurar atualização", em Configurações > Sistema. Ele diz se você já
   está na versão mais nova ou mostra o que mudou e pergunta se quer atualizar.
+- Canal de atualização, também em Configurações > Sistema: **Nightly** (padrão) recebe as versões de
+  teste primeiro; **Stable** recebe as versões compiladas no repositório público, que qualquer pessoa
+  pode conferir. Por enquanto os dois recebem as mesmas atualizações.
 - Transmitindo ou assistindo, ele não atualiza sozinho (a atualização fecha o app); se você clicar
   em "Atualizar agora" nessa hora, ele pergunta antes.
 - A pasta ffmpeg e as suas escolhas continuam como estavam.

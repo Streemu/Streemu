@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "7ed51f4a082c88d6ac35506ba9b338e815575188",
-    "notas":  "- Melhorias internas.",
+    "privado":  "2ee6351711933ea0d0de76d7d86c06bd80cf6c75",
+    "notas":  "- Adiciona o canal de atualização Stable/Nightly em Configurações \u003e Sistema",
     "obrigatoria":  false
 }

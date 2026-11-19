@@ -68,4 +68,8 @@ Os projetos em `tests/` são executáveis sem rede nem captura de tela, um por a
 
 ## Contribuições
 
-Por enquanto **não aceitamos pull requests nem issues**. O repositório é uma cópia do código para ser lido e conferido. Problema de segurança: veja o [SECURITY.md](SECURITY.md).
+**Issues são bem-vindas:** bug, ideia, dúvida ou o que achou estranho no código. Diga a versão do Streemu, o Windows e, se for bug, o que aconteceu e o que você esperava.
+
+Pull requests ainda **não** entram: este repositório recebe uma cópia do código de trabalho, então uma mudança feita aqui seria apagada na próxima cópia. Se tiver uma correção, descreva numa issue.
+
+Problema de segurança **não** vai em issue: veja o [SECURITY.md](SECURITY.md).

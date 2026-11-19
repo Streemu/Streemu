@@ -37,9 +37,11 @@ static class Program
         float fontSize = view.Font.Size;
         nick.Text = "Nome de teste que deve permanecer ao alternar categorias";
 
+        // Tamanhos em dp (1302 = janela de 1366 menos o trilho; 736 = 800 menos o trilho), convertidos pela mesma conta do app (UiScale.Dp).
+        // Em pixels crus o teste só passava a 100%: a 150% (DPI 144) 1302 px são 868 dp, abaixo do limite das categorias (908 dp).
         foreach (var size in new[] { new Size(1302, 700), new Size(736, 568), new Size(416, 668), new Size(1302, 700) })
         {
-            view.Size = size;
+            view.Size = Dp(view, size);
             foreach (var category in Categories)
             {
                 view.SelectCategory(category);
@@ -75,7 +77,7 @@ static class Program
         view.SelectCategory("Diagnóstico");
         Check(Field<ComboBox>(form, "_encoder").Width == sourceWidth, "Campo não recuperou a largura ao ampliar");
         var scrollBody = Field<Panel>(view, "_body");
-        view.Size = new Size(736, 400);
+        view.Size = Dp(view, new Size(736, 400));
         scrollBody.AutoScrollPosition = new Point(0, 120);
         int previousScroll = -scrollBody.AutoScrollPosition.Y;
         view.SelectCategory("Perfil");
@@ -95,10 +97,13 @@ static class Program
         Check(view.SelectedCategory == "Perfil", "Escolha no seletor não trocou o conteúdo");
         var style = Field<Segmented>(form, "_badgeStyle");
         style.FitWidth(140);
-        for (int i = 0; i < 3; i++)
+        // Conta as opções do controle: eram 3 até 1af4ade (2026-11-16 tirou "Bolinha com número"), e o laço fixo clicava fora do controle.
+        int options = Field<string[]>(style, "_items").Length;
+        Check(style.Height == Streemu.Util.UiScale.Dp(style, Streemu.Util.UiMetrics.SegmentHeight) * options, $"Selo não empilhou em 140 px: {style.Size}, {options} opções");
+        for (int i = 0; i < options; i++)
         {
             style.GetType().GetMethod("OnMouseClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(style,
-                [new MouseEventArgs(MouseButtons.Left, 1, style.Width / 2, i * style.Height / 3 + style.Height / 6, 0)]);
+                [new MouseEventArgs(MouseButtons.Left, 1, style.Width / 2, i * style.Height / options + style.Height / (2 * options), 0)]);
             Check(style.Selected == i, "Opção empilhada do selo não respondeu ao clique");
         }
         Console.WriteLine($"OK: controles reais das 7 categorias, 3 larguras, retorno à janela larga, texto preservado, sem rolagem horizontal e detalhes recolhíveis. DPI atual: {view.DeviceDpi}. Sem abrir janela/player.");
@@ -109,6 +114,7 @@ static class Program
     static T Field<T>(object target, string name) => (T)target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
     static IEnumerable<Control> Descendants(Control root) => root.Controls.Cast<Control>().SelectMany(c => new[] { c }.Concat(Descendants(c)));
     static void Check(bool condition, string error) { if (!condition) throw new InvalidOperationException(error); }
+    static Size Dp(Control owner, Size logical) => new(Streemu.Util.UiScale.Dp(owner, logical.Width), Streemu.Util.UiScale.Dp(owner, logical.Height));
     static void CheckBounds(Control root, string category, Size size)
     {
         foreach (Control child in root.Controls)

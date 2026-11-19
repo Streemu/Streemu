@@ -12,9 +12,6 @@ namespace Streemu.Ui;
 /// </summary>
 public sealed class FilaFilmeView : UserControl
 {
-    // ▶ (Play), × (Cancel) e fechar (ChromeClose) do Segoe MDL2 Assets, os mesmos do resto do player
-    const string Play = "", Cancel = "", Fechar_ = "";
-
     string[] _nomes = [];
     int _atual = -1, _hover = -1, _parteHover, _baixo = -1, _arrasto = -1, _destino = -1, _rolagem;
     bool _pode;
@@ -123,7 +120,7 @@ public sealed class FilaFilmeView : UserControl
         if (_nomes.Length > 0 && _atual >= 0)
             TextRenderer.DrawText(g, $"{_atual + 1} de {_nomes.Length}", _legenda, new Rectangle(Dp(16) + Dp(54), 0, Math.Max(0, Width - Dp(130)), AlturaCabecalho), Theme.TextMuted, flags);
         var fechar = BotaoFechar;
-        TextRenderer.DrawText(g, Fechar_, _icone, fechar, _hoverFechar ? Theme.Text : Theme.TextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(g, UiGlyphs.ChromeClose, _icone, fechar, _hoverFechar ? Theme.Text : Theme.TextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
         var lista = AreaLista;
         if (_nomes.Length == 0)
@@ -150,15 +147,15 @@ public sealed class FilaFilmeView : UserControl
                 g.FillPath(fundo, p);
             }
             var cor = atual ? Theme.Accent : Theme.Text;
-            if (i == _arrasto) cor = Color.FromArgb(110, cor);
+            if (i == _arrasto) cor = Theme.Dragged(cor);
             var num = NumeroDe(r);
-            if (atual) TextRenderer.DrawText(g, Play, _icone, num, Theme.Accent, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            else if (passou && _pode && _parteHover == 1) TextRenderer.DrawText(g, Play, _icone, num, Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            if (atual) TextRenderer.DrawText(g, UiGlyphs.Play, _icone, num, Theme.Accent, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            else if (passou && _pode && _parteHover == 1) TextRenderer.DrawText(g, UiGlyphs.Play, _icone, num, Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             else TextRenderer.DrawText(g, (i + 1).ToString(), _fonte, num, Theme.TextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             int direita = _pode && !atual ? XDe(r).Width : Dp(8);
             TextRenderer.DrawText(g, _nomes[i], atual ? _negrito : _fonte, new Rectangle(num.Right, r.Y, Math.Max(0, r.Width - num.Width - direita), r.Height), cor, flags);
             if (_pode && !atual && (passou || i == _arrasto))
-                TextRenderer.DrawText(g, Cancel, _icone, XDe(r), passou && _parteHover == 2 ? Theme.Error : Theme.TextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, UiGlyphs.Close, _icone, XDe(r), passou && _parteHover == 2 ? Theme.Error : Theme.TextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
         // onde o item arrastado vai cair
         if (_arrasto >= 0 && _destino >= 0)

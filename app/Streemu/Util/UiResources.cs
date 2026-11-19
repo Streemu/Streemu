@@ -50,6 +50,8 @@ public static class UiTypography
 public static class UiGlyphs
 {
     public const string Volume = "", Muted = "", Fullscreen = "", ExitFullscreen = "", Close = "", SmallWindow = "", NormalWindow = "";
+    /// <summary>Fila do Cinema (Ui/FilaFilmeView.cs): tocar o episódio (Play) e fechar o painel (ChromeClose, o X fino da barra de título); tirar da fila usa <see cref="Close"/>.</summary>
+    public const string Play = "", ChromeClose = "";
     /// <summary>Mostrar ou esconder a barra lateral (o antigo botão "Barra" da barra do vídeo; OpenPane do Segoe MDL2).</summary>
     public const string Sidebar = "";
 }

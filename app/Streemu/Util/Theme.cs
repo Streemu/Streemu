@@ -89,6 +89,8 @@ public static class Theme
     public static Color MediaEdge => Color.FromArgb(200, OnMedia);
     /// <summary>Peça do palco sob o arraste (soltar aqui troca de lugar).</summary>
     public static Color DropTarget => Color.FromArgb(150, Accent);
+    /// <summary>Texto da linha que está sendo arrastada na fila do Cinema (Ui/FilaFilmeView.cs): meio apagado enquanto anda.</summary>
+    public static Color Dragged(Color c) => Color.FromArgb(110, c);
 
     /// <summary>Fundo das iniciais de quem não tem foto: a cor sai do apelido, então cada amigo mantém a dele.</summary>
     public static readonly Color[] AvatarPalette =

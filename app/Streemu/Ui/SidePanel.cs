@@ -363,7 +363,7 @@ public sealed class SidePanel : Control
         {
             if (item.Action == Kind.Filme && !FilmeVisivel || item.Action == Kind.Arquivos && !ArquivosVisivel || item.Action == Kind.Grupos && !GruposVisivel || item.Action == Kind.Stage && _streams == 0) continue;
             // Transmitir é um grupo à parte (mockups 1–24): o espaço antes dele não depende de live, palco ou largura, então a linha não anda
-            // o espaço que separa o grupo não encolhe abaixo de 10 dp (com o espaço da linha de cima), senão Transmitir parece colado em Configurações
+            // o espaço que separa o grupo não encolhe abaixo de 10 dp (com o espaço da linha de cima), senão Transmitir parece colado no item de cima (Início, desde o #273)
             if (item.Action == Kind.Transmit) y += Math.Max(V(low ? TransmitGapLowAt96 : TransmitGapAt96), Dp(10) - V(4));
             string caption = item.Action switch
             {

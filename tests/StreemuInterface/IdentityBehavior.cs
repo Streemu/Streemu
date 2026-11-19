@@ -33,8 +33,10 @@ static class IdentityBehavior
                 var transmit = rows.Single(r => r.Kind == "Transmit").Bounds;
                 transmitTop ??= transmit.Top;
                 Check(transmit.Top == transmitTop, $"Transmitir mudou de lugar em {size} (filme {filme}): {transmit.Top} ≠ {transmitTop}");
-                var settings = rows.Single(r => r.Kind == "Settings").Bounds;
-                Check(transmit.Top - settings.Bottom >= side.LogicalToDeviceUnits(10), $"Transmitir colado em Configurações em {size}: não é um grupo à parte");
+                // O espaço do grupo fica antes de Transmitir, qualquer que seja o item de cima (Início desde o #273; antes era Configurações).
+                // Fora a lista de amigos: rolada, o título "Amigos" sobe para trás da navegação (recortado) e não conta como vizinho.
+                var above = rows.Where(r => r.Kind is not ("Section" or "GroupFilter" or "Friend") && r.Bounds.Bottom <= transmit.Top).MaxBy(r => r.Bounds.Bottom);
+                Check(transmit.Top - above.Bounds.Bottom >= side.LogicalToDeviceUnits(10), $"Transmitir colado em {above.Kind} em {size}: não é um grupo à parte");
                 var profile = rows.Single(r => r.Kind == "Profile").Bounds;
                 Check(profile.Bottom <= size.Height && rows.Where(r => r.Kind is "Problem" or "Update" or "Bell" or "Atividade" or "Diag").All(r => r.Bounds.Bottom <= profile.Top),
                     $"Perfil saiu do rodapé em {size}");

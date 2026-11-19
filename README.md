@@ -36,7 +36,15 @@ Get-FileHash .\Streemu-Instalador.exe -Algorithm SHA256
 
 tem que dar o mesmo valor. O hash prova que o arquivo não mudou depois da release; o atestado prova também de onde ele veio.
 
-O código deste repositório é uma cópia do repositório de trabalho, sem o histórico, atualizada pelos mantenedores. A release `instalador-2026-11-18` foi a primeira e foi compilada à mão, antes deste workflow existir: ela não tem atestado.
+### E as atualizações?
+
+Depois de instalado, o Streemu se atualiza sozinho. As atualizações também são compiladas aqui (`.github/workflows/atualizacao.yml`), saem na pré-release `main-atual` e têm atestado. O app confere o SHA-256 do pacote antes de instalar. Para conferir o exe que já está no seu PC:
+
+```powershell
+gh attestation verify "$env:LOCALAPPDATA\Programs\Streemu\Streemu.exe" -R Streemu/Streemu
+```
+
+O código deste repositório é uma cópia do repositório de trabalho, sem o histórico, atualizada automaticamente a cada mudança no app. A release `instalador-2026-11-18` foi a primeira e foi compilada à mão, antes deste workflow existir: ela não tem atestado.
 
 ## O que o app envia e para onde
 

@@ -1,0 +1,85 @@
+# Atualização automática do Streemu compilada AQUI, a partir do código deste repositório, com atestado de origem.
+# Roda quando o entrega.json muda: o repositório de trabalho só escreve esse arquivo quando o app mudou e deve chegar a todos.
+# Publica a pré-release "main-atual" (streemu-main.zip + versao.json). O servidor do grupo lê essa release e avisa o app.
+# Quem quiser conferir o exe que está rodando:
+#   gh attestation verify "$env:LOCALAPPDATA\Programs\Streemu\Streemu.exe" -R Streemu/Streemu   (ou a pasta onde o Streemu foi instalado)
+name: Atualização
+
+on:
+  push:
+    branches: [main]
+    paths: ['entrega.json']
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: atualizacao
+  cancel-in-progress: true
+
+jobs:
+  atualizacao:
+    runs-on: windows-latest
+    permissions:
+      contents: write      # publicar a pré-release
+      id-token: write      # atestado de origem
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compilar (canal main)
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1 -SoAtualizacao -Canal main -Sufixo main
+          if ($LASTEXITCODE -ne 0) { throw "build-release falhou" }
+
+      - name: Montar versao.json
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist -Filter '*-main-atualizacao.zip' | Select-Object -First 1
+          if (-not $zip) { throw "o build não gerou o zip da atualização" }
+          New-Item -ItemType Directory -Force pub | Out-Null
+          Copy-Item $zip.FullName pub/streemu-main.zip
+          $ver = ([regex]::Match((Get-Content app/Streemu/Streemu.csproj -Raw), '<Version>([^<]+)</Version>')).Groups[1].Value
+          $e = Get-Content entrega.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($e.versao -ne $ver) { throw "entrega.json diz $($e.versao), o Streemu.csproj diz $ver" }
+          # commit, árvore e hora DESTE repositório: são os que o exe compilado aqui leva (BuildInfo) e o que o app compara.
+          # A árvore de app/Streemu é igual à do repositório de trabalho para o mesmo código, então quem já roda esse código não recebe aviso.
+          $info = [ordered]@{
+            versao = $ver; commit = (git rev-parse HEAD); arvore = (git rev-parse HEAD:app/Streemu); hora = [long](git log -1 --format=%ct)
+            sha256 = (Get-FileHash pub/streemu-main.zip -Algorithm SHA256).Hash.ToLower()
+            tamanho = (Get-Item pub/streemu-main.zip).Length
+            notas = $e.notas; run = [int]$env:GITHUB_RUN_NUMBER; obrigatoria = [bool]$e.obrigatoria; privado = $e.privado
+          }
+          [IO.File]::WriteAllText("$PWD/pub/versao.json", ($info | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+          $corpo = "Atualização automática ($ver, commit $($info.commit.Substring(0,7))). O Streemu baixa daqui sozinho; não é para instalar à mão.`n`n" +
+            "Conferir: ``gh attestation verify streemu-main.zip -R $env:GITHUB_REPOSITORY``, ou o ``Streemu.exe`` instalado.`n`n$($e.notas)"
+          [IO.File]::WriteAllText("$PWD/pub/notas.md", $corpo, (New-Object Text.UTF8Encoding($false)))
+          # o mesmo exe que vai dentro do zip (o build-release copia de dist/Streemu-<versão>-main/)
+          $exe = Join-Path $zip.DirectoryName (($zip.BaseName -replace '-atualizacao$', '') + '\Streemu.exe')
+          Copy-Item $exe pub/Streemu.exe
+          Get-Content pub/versao.json
+
+      # o exe também, para quem quiser conferir o que já está instalado
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            pub/streemu-main.zip
+            pub/Streemu.exe
+
+      - name: Publicar na pré-release main-atual
+        shell: pwsh
+        run: |
+          gh release delete main-atual -R $env:GITHUB_REPOSITORY --cleanup-tag --yes 2>$null
+          $global:LASTEXITCODE = 0
+          gh release create main-atual -R $env:GITHUB_REPOSITORY pub/streemu-main.zip pub/versao.json --prerelease --target $env:GITHUB_SHA `
+            --title "Atualização automática" --notes-file pub/notas.md
+          if ($LASTEXITCODE -ne 0) { throw "não consegui publicar a pré-release" }

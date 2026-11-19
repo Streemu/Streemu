@@ -51,7 +51,7 @@ public sealed class AppState
     public int LiveBadgeOpacity { get; set; } = 75;
     public bool LiveBadgeBlink { get; set; }
     public bool OpenMyLiveOnStart { get; set; }
-    /// <summary>Ajustes > Transmissão: não mandar aos espectadores o som de "alguém entrou/saiu" (spec 014). Falso = ligado, que é o padrão.</summary>
+    /// <summary>Ajustes > Aparência: não mandar aos espectadores o som de "alguém entrou/saiu" (spec 014). Falso = ligado, que é o padrão.</summary>
     public bool SomNaLiveDesligado { get; set; }
     /// <summary>Usa o avatar do Discord (quando não há imagem escolhida no PC). Ligado por padrão (spec 005).</summary>
     public bool UsarAvatarDiscord { get; set; } = true;

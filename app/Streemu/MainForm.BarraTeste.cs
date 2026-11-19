@@ -57,7 +57,7 @@ public sealed partial class MainForm
 
     /// <summary>
     /// Teste: rola até o fim, por reflexão (os campos são privados), o painel Transmitir (a lista, as opções e a privacidade) ou, nas Configurações, a seção
-    /// aberta (para ver o fim da seção Transmissão, que passa da altura da janela).
+    /// aberta (para ver o fim da seção Aparência, que passa da altura da janela).
     /// </summary>
     void RolarPreparacaoAteOFim()
     {

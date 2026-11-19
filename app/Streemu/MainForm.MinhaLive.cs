@@ -76,7 +76,7 @@ public sealed partial class MainForm
         if (_badge != null) { _badge.Look = BadgeLookFromState(); _badge.ShowSample(3); }
     }
 
-    /// <summary>As opções da seção Transmissão dos Ajustes, em dois grupos: o sinal de "ao vivo" sobre a tela e o que acontece com a minha live.</summary>
+    /// <summary>As opções da página Aparência dos Ajustes, em dois grupos: o sinal de "ao vivo" sobre a tela e o que acontece com a minha live.</summary>
     (Control[] Sinal, Control[] Live) MinhaLiveOpcoes()
     {
         Control Row(string label, params Control[] items)

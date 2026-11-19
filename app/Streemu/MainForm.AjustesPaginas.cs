@@ -9,20 +9,18 @@ namespace Streemu;
 /// </summary>
 public sealed partial class MainForm
 {
-    Control PaginaAparencia() => SettingsSection("Aparência",
-        B.Cartao(B.Legenda("Barra lateral"), _pinSidebar,
-            B.Nota("Ligada, a barra lateral não recolhe ao assistir nem em janela estreita. Desligada, ela vira um trilho de avatares nesses casos."),
-            _hoverSidebar,
-            B.Nota("Com a barra recolhida, passar o mouse sobre ela abre a navegação. Desligado, ela só abre pelo botão » .")));
-
-    Control PaginaTransmissao(Label dicaDaFonte)
+    /// <summary>
+    /// A página Transmissão saiu em 2026-11-19: fonte, qualidade e áudio já ficam na tela Transmitir, o sinal de ao vivo e a minha live vieram para cá
+    /// e Encoder/Latência SRT foram para Diagnóstico.
+    /// </summary>
+    Control PaginaAparencia()
     {
-        dicaDaFonte.ForeColor = SystemColors.GrayText;
-        dicaDaFonte.Margin = new Padding(0, 6, 0, 0);
         var (sinal, live) = MinhaLiveOpcoes();
-        return SettingsSection("Transmissão",
-            B.Cartao(B.Legenda("O que transmitir"), B.Botoes(_source, _refresh), dicaDaFonte),
-            B.Cartao(B.Legenda("Qualidade e áudio"), B.Subtitulo("Qualidade"), _preset, B.Subtitulo("Áudio"), _audio, B.Subtitulo("Encoder"), _encoder, B.Subtitulo("Latência SRT"), _latency),
+        return SettingsSection("Aparência",
+            B.Cartao(B.Legenda("Barra lateral"), _pinSidebar,
+                B.Nota("Ligada, a barra lateral não recolhe ao assistir nem em janela estreita. Desligada, ela vira um trilho de avatares nesses casos."),
+                _hoverSidebar,
+                B.Nota("Com a barra recolhida, passar o mouse sobre ela abre a navegação. Desligado, ela só abre pelo botão » .")),
             B.Cartao([B.Legenda("Sinal de ao vivo"), .. sinal]),
             B.Cartao([B.Legenda("Minha live"), .. live]));
     }
@@ -53,5 +51,7 @@ public sealed partial class MainForm
             B.Nota("Dados do PC e logs para a equipe do Streemu, sem IP ou senhas. Desligado, continua subindo para consertar bugs, mas anônimo: sem seu nome, seu Discord nem o nome dos amigos."),
             B.Botoes(_teleMarcar, _teleVer, _teleSobre)),
         B.Cartao(B.Legenda("Ferramentas"), B.Botoes(_report, _openLogs)),
+        B.Cartao(B.Legenda("Avançado"), B.Subtitulo("Encoder"), _encoder, B.Subtitulo("Latência SRT"), _latency,
+            B.Nota("Deixe o encoder em Automático, a menos que a live não comece. A latência vale também para as lives que você assiste. Os dois voltam ao padrão quando o app abre.", alinhadaAoInterruptor: false)),
         Disclosure("Detalhes técnicos", _teleStatus), LogToggle());
 }

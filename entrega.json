@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "257ca686475ee70813b693e2f4fdf805a529dba0",
-    "notas":  "- [obrigatória] Cifra o controle do túnel e limita o que vem de outro PC",
-    "obrigatoria":  true
+    "privado":  "17ae6e76de3eeb79c651aa62a52c8c919f091a42",
+    "notas":  "- Tira a página Transmissão das Configurações\n- Tira nome de pessoa do comentário da Transmissão\n- Tira fonte, qualidade e áudio de Configurações \u003e Transmissão",
+    "obrigatoria":  false
 }

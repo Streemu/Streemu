@@ -87,7 +87,7 @@ public sealed partial class MainForm : IStageHost
         if (Environment.GetEnvironmentVariable("STREEMU_TEST_SIZE")?.Split('x') is [var tw, var th] && int.TryParse(tw, out var sw) && int.TryParse(th, out var sh))
             Shown += (_, _) => { StartPosition = FormStartPosition.Manual; Location = new Point(20, 20); Size = new Size(sw, sh); }; // teste: abre num tamanho dado (largura x altura)
         if (testView == "ajustes") Shown += (_, _) => ShowSettings();
-        if (testView?.StartsWith("ajustes:") == true) Shown += (_, _) => BeginInvoke(() => ShowSettingsAt(testView[8..])); // teste: abre os Ajustes já numa seção (ex.: ajustes:Transmissão)
+        if (testView?.StartsWith("ajustes:") == true) Shown += (_, _) => BeginInvoke(() => ShowSettingsAt(testView[8..])); // teste: abre os Ajustes já numa seção (ex.: ajustes:Aparência)
         if (int.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_PREPARAR_APOS"), out var prepararApos)) Shown += (_, _) => BeginInvoke(async () => { await Task.Delay(prepararApos * 1000); OpenGoLive(changing: false); }); // teste: abre a preparação N s depois, já com o palco de lives aberto
         if (testView == "grupos") Shown += (_, _) => BeginInvoke(async () => { for (int i = 0; i < 50 && _gruposTela == null; i++) await Task.Delay(200); MostrarGrupos(); }); // teste: abre a tela Grupos (ela só existe depois de o servidor dizer que tem contas)
         if (testView == "transmitir") Shown += (_, _) => BeginInvoke(() => OpenGoLive(changing: false));

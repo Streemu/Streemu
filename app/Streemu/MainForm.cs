@@ -78,20 +78,12 @@ public sealed partial class MainForm : Form
     void BuildLayout()
     {
         // transmissão (detalhes)
+        // Fonte, qualidade e áudio saíram das Configurações (2026-11-19): a tela Transmitir já escolhe os três e sobrescreve
+        // _source/_preset/_audio ao começar (StartWithAsync), então os campos daqui não mudavam nada. Os três seguem como estado interno, fora da tela.
         var t2 = Grid(3);
-        var sourceHint = new Label
-        {
-            AutoSize = true, MaximumSize = new Size(470, 0), ForeColor = SystemColors.GrayText, Margin = new Padding(3, 8, 3, 8),
-            Text = "Jogo: escolha \"Jogo/tela cheia: ...\". O app pega o monitor onde o jogo está direto da placa, mas só mostra o jogo: com Alt+Tab o amigo fica na última imagem do jogo. Monitor: para área de trabalho."
-        };
-        t2.Controls.Add(Lbl("O que transmitir:"), 0, 0); t2.Controls.Add(_source, 1, 0); t2.Controls.Add(_refresh, 2, 0);
-        t2.Controls.Add(sourceHint, 1, 1);
-        t2.Controls.Add(Lbl("Qualidade:"), 0, 2); t2.Controls.Add(_preset, 1, 2);
-        t2.Controls.Add(Lbl("Áudio:"), 0, 3); t2.Controls.Add(_audio, 1, 3);
-        t2.Controls.Add(Lbl("Encoder:"), 0, 4); t2.Controls.Add(_encoder, 1, 4);
-        t2.Controls.Add(Lbl("Latência SRT:"), 0, 5); t2.Controls.Add(_latency, 1, 5);
-        StretchInputs(t2, _source, _preset, _audio, _encoder, _latency);
-        _wrapLabels.Add(sourceHint);
+        t2.Controls.Add(Lbl("Encoder:"), 0, 0); t2.Controls.Add(_encoder, 1, 0);
+        t2.Controls.Add(Lbl("Latência SRT:"), 0, 1); t2.Controls.Add(_latency, 1, 1);
+        StretchInputs(t2, _encoder, _latency);
 
         BuildShell(BuildHomeColumn(), BuildSettingsPage(t2)); // MainForm.Janela.cs: o início + os ajustes + o palco + a barra lateral
 

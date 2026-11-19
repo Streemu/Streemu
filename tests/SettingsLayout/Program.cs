@@ -4,7 +4,7 @@ using Streemu.Ui;
 
 static class Program
 {
-    static readonly string[] Categories = ["Perfil", "Aparência", "Transmissão", "Assistir", "Notificações", "Conexão", "Sistema", "Diagnóstico"];
+    static readonly string[] Categories = ["Perfil", "Aparência", "Assistir", "Notificações", "Conexão", "Sistema", "Diagnóstico"];
 
     [STAThread]
     static int Main(string[] args)
@@ -33,7 +33,7 @@ static class Program
         var output = args.FirstOrDefault();
         if (output != null) Directory.CreateDirectory(output);
         var nick = Field<TextBox>(form, "_nick");
-        int sourceWidth = Field<ComboBox>(form, "_source").Width;
+        int sourceWidth = Field<ComboBox>(form, "_encoder").Width;
         float fontSize = view.Font.Size;
         nick.Text = "Nome de teste que deve permanecer ao alternar categorias";
 
@@ -73,7 +73,7 @@ static class Program
             }
         }
         view.SelectCategory("Diagnóstico");
-        Check(Field<ComboBox>(form, "_source").Width == sourceWidth, "Campo não recuperou a largura ao ampliar");
+        Check(Field<ComboBox>(form, "_encoder").Width == sourceWidth, "Campo não recuperou a largura ao ampliar");
         var scrollBody = Field<Panel>(view, "_body");
         view.Size = new Size(736, 400);
         scrollBody.AutoScrollPosition = new Point(0, 120);
@@ -101,7 +101,7 @@ static class Program
                 [new MouseEventArgs(MouseButtons.Left, 1, style.Width / 2, i * style.Height / 3 + style.Height / 6, 0)]);
             Check(style.Selected == i, "Opção empilhada do selo não respondeu ao clique");
         }
-        Console.WriteLine($"OK: controles reais das 8 categorias, 3 larguras, retorno à janela larga, texto preservado, sem rolagem horizontal e detalhes recolhíveis. DPI atual: {view.DeviceDpi}. Sem abrir janela/player.");
+        Console.WriteLine($"OK: controles reais das 7 categorias, 3 larguras, retorno à janela larga, texto preservado, sem rolagem horizontal e detalhes recolhíveis. DPI atual: {view.DeviceDpi}. Sem abrir janela/player.");
         view.Dispose();
         return 0;
     }

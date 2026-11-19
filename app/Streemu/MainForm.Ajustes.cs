@@ -13,13 +13,11 @@ public sealed partial class MainForm
     Control BuildSettingsPage(Control transmitDetails)
     {
         _settingsPage = new SettingsView();
-        var sourceHint = transmitDetails.Controls.OfType<Label>().First(l => l.Text.StartsWith("Jogo:"));
         _chooseAvatar.Text = "Escolher imagem";
         var avatarLigado = BuildAvatarOptions(); // liga o avatar e seus eventos; o PerfilLayout remonta os mesmos controles no cartão novo
         _settingsPage.AddCategory("Perfil", _paginaPerfil = SettingsSection("Perfil", PerfilLayout.Montar(_nick, _myAvatarBadge!, _chooseAvatar, _removeAvatar, _useDiscordAvatar, DiscordJoinOption())));
         avatarLigado.Dispose(); // já sem filhos: os controles foram para o cartão
         _settingsPage.AddCategory("Aparência", PaginaAparencia());
-        _settingsPage.AddCategory("Transmissão", PaginaTransmissao(sourceHint));
         _settingsPage.AddCategory("Assistir", PaginaAssistir());
         _settingsPage.AddCategory("Notificações", PaginaNotificacoes());
         _settingsPage.AddCategory("Conexão", PaginaConexao());

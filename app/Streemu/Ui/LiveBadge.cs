@@ -21,7 +21,7 @@ public static class BadgeStyles
     public static BadgeStyle FromSaved(int saved) => saved == (int)BadgeStyle.Pill ? BadgeStyle.Pill : BadgeStyle.Dot;
 }
 
-/// <summary>As escolhas do usuário para o selo (Ajustes > Transmissão). Tamanho: 0 pequeno, 1 médio, 2 grande. Opacidade de 30 a 100 %.</summary>
+/// <summary>As escolhas do usuário para o selo (Ajustes > Aparência). Tamanho: 0 pequeno, 1 médio, 2 grande. Opacidade de 30 a 100 %.</summary>
 public sealed record BadgeLook(BadgeStyle Style = BadgeStyle.Dot, int Size = 1, int OpacityPercent = 75, bool Blink = false, BadgeCorner Corner = BadgeCorner.TopLeft);
 
 /// <summary>

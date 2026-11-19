@@ -78,7 +78,7 @@ static class Program
             surface.Size = new Size(i % 2 == 0 ? 1302 : 736, 700);
             home.PerformLayout(); Draw();
             Call(form, "ShowSettings");
-            Field<SettingsView>(form, "_settingsPage").SelectCategory(i % 2 == 0 ? "Diagnóstico" : "Transmissão");
+            Field<SettingsView>(form, "_settingsPage").SelectCategory(i % 2 == 0 ? "Diagnóstico" : "Aparência");
             Draw(); Application.DoEvents();
         }
     }

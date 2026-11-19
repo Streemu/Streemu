@@ -160,7 +160,7 @@ public sealed class LiveCardsView : Control
         int top = thumb.Bottom + (band - 2 * lineHeight) / 2;
         var color = card.Watching ? Theme.TextMuted : Theme.Text;
         TextRenderer.DrawText(g, card.Nick, _fonts.Bold, new Rectangle(textX, top, textWidth, lineHeight), color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-        string line2 = card.Watching ? "Você assiste" : card.Game;
+        string line2 = card.Watching ? "Assistindo" : card.Game;
         TextRenderer.DrawText(g, line2, Font, new Rectangle(textX, top + lineHeight, textWidth, lineHeight), Theme.TextMuted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
     }
 

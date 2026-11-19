@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "ebbb4766efd102d0c0963276b3a025b0c261a1ce",
-    "notas":  "- Move Transmitir para logo abaixo de Início na barra lateral (#273)",
+    "privado":  "49dc8a5792d5c21177522be388fd37ac1fe61270",
+    "notas":  "- Troca \u0027Você assiste\u0027 por \u0027Assistindo\u0027 e começa a qualidade em Original (#274)",
     "obrigatoria":  false
 }

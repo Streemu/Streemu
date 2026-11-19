@@ -510,7 +510,7 @@ public sealed class SidePanel : Control
     string LabelFor(Row row) => row.Kind switch
     {
         Kind.Transmit => _self == null ? "Transmitir" : "Sua transmissão · AO VIVO",
-        Kind.Profile => _profileName + " · Perfil", Kind.Friend => row.Friend!.Nick + (row.Friend.OnScreen ? " · Você assiste" : row.Friend.Live ? " · Ao vivo" : row.Friend.Offline ? " · Offline" : " · Online"),
+        Kind.Profile => _profileName + " · Perfil", Kind.Friend => row.Friend!.Nick + (row.Friend.OnScreen ? " · Assistindo" : row.Friend.Live ? " · Ao vivo" : row.Friend.Offline ? " · Offline" : " · Online"),
         Kind.Diag => _diagTitle.Length > 0 ? _diagTitle : "Diagnóstico",
         Kind.Bell => _bellText, Kind.Atividade => "Atividade recente", Kind.Update => _update == UpdateState.Available ? "Atualizar agora" : "Procurar atualização", Kind.Problem => "Marcar problema",
         Kind.Toggle => _collapsed ? "Abrir navegação" : "Recolher navegação", Kind.Theme => ThemeLabel, _ => row.Text
@@ -868,7 +868,7 @@ public sealed class SidePanel : Control
         if (f.Live && !f.OnScreen) DrawWatchButton(g, new Rectangle(r.Right - tagWidth - Dp(4), r.Y + (r.Height - Dp(24)) / 2, tagWidth, Dp(24)), hover);
     }
 
-    /// <summary>A segunda linha do amigo: bolinha vermelha e "AO VIVO", o olho e "Você assiste", ou o detalhe de sempre ("online").</summary>
+    /// <summary>A segunda linha do amigo: bolinha vermelha e "AO VIVO", o olho e "Assistindo", ou o detalhe de sempre ("online").</summary>
     void DrawFriendStatus(Graphics g, SideFriend f, Rectangle line)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -876,7 +876,7 @@ public sealed class SidePanel : Control
         var textRect = new Rectangle(line.X + (f.Live ? icon + gap : 0), line.Y, Math.Max(0, line.Width - (f.Live ? icon + gap : 0)), line.Height);
         var iconRect = new Rectangle(line.X, line.Y + (line.Height - icon) / 2, icon, icon);
         var flags = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.VerticalCenter | Clipped;
-        if (f.OnScreen) { UiIcons.Draw(g, UiIcon.Eye, iconRect, Theme.Accent); TextRenderer.DrawText(g, "Você assiste", SmallFont, textRect, Theme.TextMuted, flags); return; }
+        if (f.OnScreen) { UiIcons.Draw(g, UiIcon.Eye, iconRect, Theme.Accent); TextRenderer.DrawText(g, "Assistindo", SmallFont, textRect, Theme.TextMuted, flags); return; }
         if (f.Live)
         {
             using (var red = new SolidBrush(Theme.Error)) g.FillEllipse(red, Rectangle.Inflate(iconRect, -Dp(3), -Dp(3)));

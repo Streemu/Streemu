@@ -65,7 +65,9 @@ public sealed class AppState
     /// <summary>Id desta instalação na sala do grupo (não expira: é como os amigos acham você).</summary>
     public string? InstallId { get; set; }
     /// <summary>Última escolha da janela Transmitir: altura (0 = Fonte), FPS, modo de áudio e o processo da janela.</summary>
-    public int GoLiveHeight { get; set; } = 1080;
+    public int GoLiveHeight { get; set; } = 0; // 0 = Original (Fonte): padrão até a pessoa escolher outra qualidade (issue #173)
+    /// <summary>Migração do padrão para Original já aplicada neste estado (ver <see cref="Load"/>).</summary>
+    public bool GoLiveOriginalPadrao { get; set; }
     public int GoLiveFps { get; set; } = 60;
     public int GoLiveAudio { get; set; }
     public string? GoLiveProcess { get; set; }
@@ -129,7 +131,12 @@ public sealed class AppState
             if (File.Exists(FilePath))
             {
                 var s = JsonSerializer.Deserialize<AppState>(File.ReadAllText(FilePath));
-                if (s != null) return s;
+                if (s != null)
+                {
+                    // migração única (issue #173): todo mundo cai em Original, inclusive quem já tinha 1080 salvo; depois disso a escolha da pessoa vale
+                    if (!s.GoLiveOriginalPadrao) { s.GoLiveHeight = 0; s.GoLiveOriginalPadrao = true; }
+                    return s;
+                }
             }
         }
         catch (Exception e) { Log.Info("Não consegui ler o estado salvo: " + e.Message); }

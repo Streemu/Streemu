@@ -57,15 +57,15 @@ PESSOAS OFFLINE E APELIDOS
   O apelido precisa de 2 letras ou mais e não pode repetir o nome de alguém do grupo, o seu nome ou o apelido de
   outro amigo (o Streemu avisa e não salva).
 
-SEUS GRUPOS (Configurações > Grupos)
+SEUS GRUPOS (Grupos, na barra lateral)
 - Você pode estar em vários grupos ao mesmo tempo. A barra lateral e o Início mostram as pessoas de todos juntas
   (quem está em dois grupos aparece uma vez só). Com mais de um grupo, o título "Amigos" da barra vira um seletor:
   "Todos os grupos" ou um grupo só. O seletor só muda a lista da barra.
 - Criar: "Criar grupo", dê um nome. O link do convite é copiado: mande para quem você quer no grupo.
 - Entrar: abra o link de convite (o Streemu abre e pergunta antes de entrar) ou cole o código ou o link em "Entrar
   com código". Convite que não vale mais: peça um novo a quem te convidou.
-- Sair: o botão "Sair" avisa que você deixa de ver as pessoas do grupo. Se for a última pessoa, o grupo é apagado.
-- Quem criou o grupo também pode "Renomear", "Trocar convite" (o antigo deixa de valer na hora) e "Remover" uma pessoa.
+- Sair: quem é membro tem o botão "Sair" no cartão do grupo; o dono acha "Sair do grupo" no menu "Mais". Ele avisa que você deixa de ver as pessoas do grupo. Se for a última pessoa, o grupo é apagado.
+- Cada grupo é um cartão com "Copiar convite" à vista. Quem criou o grupo também acha, no menu "Mais", "Renomear" e "Trocar convite" (o antigo deixa de valer na hora), e "Remover" uma pessoa no próprio cartão.
   Quem é removido é avisado e só volta com um convite novo.
 
 O GRUPO

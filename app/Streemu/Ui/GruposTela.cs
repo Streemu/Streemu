@@ -11,6 +11,9 @@ public sealed class GruposTela : UserControl
 {
     public const string TextoApoio = "Crie um grupo, entre com um convite ou gerencie quem está nos seus grupos.";
 
+    /// <summary>Teto de largura do conteúdo, em dp: acima disso as linhas de texto ficam longas demais para ler (as Configurações usam 800; aqui cabem dois cartões lado a lado).</summary>
+    const int ConteudoMax = 960;
+
     readonly Label _titulo = new() { Text = "Grupos", AutoSize = true };
     readonly Label _apoio = new() { Text = TextoApoio, AutoSize = true, ForeColor = Theme.TextMuted };
     readonly Panel _cabecalho = new() { Dock = DockStyle.Top };
@@ -51,9 +54,10 @@ public sealed class GruposTela : UserControl
             if (_cabecalho.Height != altura) _cabecalho.Height = altura;
             // reserva a barra vertical antes de ela aparecer: senão ela rouba a largura depois do layout e abre a rolagem horizontal
             int reserva = _rolagem.VerticalScroll.Visible ? 0 : SystemInformation.GetVerticalScrollBarWidthForDpi(DeviceDpi);
-            int largura = Math.Max(UiScale.Dp(this, 180), Math.Min(UiScale.Dp(this, UiMetrics.SettingsContentMax), _rolagem.ClientSize.Width - 2 * pad - reserva));
+            // a página usa a largura toda, com um teto de leitura; o GruposView se organiza sozinho por essa largura (cartões lado a lado ou empilhados)
+            int largura = Math.Max(UiScale.Dp(this, 180), Math.Min(UiScale.Dp(this, ConteudoMax), _rolagem.ClientSize.Width - 2 * pad - reserva));
             _rolagem.SuspendLayout();
-            SettingsLayout.Constrain(_lista, largura);
+            if (_lista.Width != largura) _lista.Width = largura;
             _lista.Location = new Point(pad, gap + _rolagem.AutoScrollPosition.Y);
             _rolagem.ResumeLayout();
         }

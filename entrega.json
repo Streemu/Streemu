@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "17ae6e76de3eeb79c651aa62a52c8c919f091a42",
-    "notas":  "- Tira a página Transmissão das Configurações\n- Tira nome de pessoa do comentário da Transmissão\n- Tira fonte, qualidade e áudio de Configurações \u003e Transmissão",
+    "privado":  "a69379ea371056b2dc2f4913f0e69e5ec58d2cde",
+    "notas":  "- Leva glifos e cor da fila do Cinema para UiGlyphs e Theme\n- Atualiza SettingsLayout e checagem de identidade à interface de novembro\n- Mede a tela pela posição da janela sem criar o handle e registra no CHANGELOG\n- Abre a tela de entrada larga o bastante para a Mumu e leva quem não tem grupo direto para Grupos",
     "obrigatoria":  false
 }

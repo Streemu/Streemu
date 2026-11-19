@@ -200,9 +200,10 @@ public sealed partial class MainForm
         if (_conta is not { TemConta: true } conta || _roomServerUrl == null || conta.ContaId == null) return;
         if (conta.Grupos.Count == 0 && !_salaDeConta)
         {
-            _groupStatus.Text = "Você ainda não está em nenhum grupo. Crie um ou entre com o convite de um amigo (Configurações > Grupos).";
+            _groupStatus.Text = "Você ainda não está em nenhum grupo. Crie um ou entre com o convite de um amigo em Grupos, na barra lateral.";
             _contaSemGrupoNoTeste = true; // RunRoomTestAsync: o cenário falha logo em vez de esperar a sala que não vem
             AtualizarFiltroGrupos();
+            AbrirGruposSemGrupo();
             return;
         }
         if (!_salaDeConta)
@@ -215,6 +216,19 @@ public sealed partial class MainForm
             _salaDeConta = true;
         }
         SincronizarSalas();
+    }
+
+    bool _gruposAbertosSemGrupo;
+
+    /// <summary>
+    /// Sem grupo não há nada para fazer no Início: a pessoa caía nele lendo "vá em Configurações > Grupos". Abre a tela Grupos uma vez por sessão;
+    /// a checagem da conta repete a cada 10 min e não pode tirar a pessoa de onde ela foi depois.
+    /// </summary>
+    void AbrirGruposSemGrupo()
+    {
+        if (_gruposAbertosSemGrupo || _gruposTela == null) return;
+        _gruposAbertosSemGrupo = true;
+        MostrarGrupos();
     }
 
     /// <summary>Faz as salas abertas ficarem iguais à lista de grupos da conta: abre as que faltam, fecha as que sobram, renomeia. As outras não caem.</summary>
@@ -303,8 +317,25 @@ public sealed partial class MainForm
         if (!mostrar && _entrada == null) return;
         GarantirEntrada();
         _entrada!.PodeFechar = false; // a conta é obrigatória: não dá para fechar a tela de entrada sem entrar
-        if (mostrar) { _entrada.Bounds = ClientRectangle; _entrada.BringToFront(); }
+        if (mostrar) { AumentarParaEntrada(); _entrada.Bounds = ClientRectangle; _entrada.BringToFront(); }
         _entrada.Visible = mostrar;
+    }
+
+    bool _entradaAumentada;
+
+    /// <summary>
+    /// No tamanho de sempre (990 × 660) a tela de entrada abria só com o cartão: a Mumu precisa de janela mais larga (EntradaMedidas.LarguraComMascote),
+    /// e ela é a primeira impressão do app. Cresce uma vez para 1280 × 800 na escala do monitor, sem passar da área útil, e não encolhe depois do login.
+    /// </summary>
+    void AumentarParaEntrada()
+    {
+        if (_entradaAumentada || Automated || WindowState != FormWindowState.Normal) return; // teste automático escolhe o tamanho (STREEMU_TEST_SIZE)
+        _entradaAumentada = true;
+        var area = Screen.FromRectangle(Bounds).WorkingArea; // FromControl criaria o handle: isto roda no construtor, antes de a janela aparecer
+        double k = DeviceDpi / 96.0;
+        int w = Math.Max(Width, Math.Min((int)(1280 * k), area.Width - 40)), h = Math.Max(Height, Math.Min((int)(800 * k), area.Height - 40));
+        if (w == Width && h == Height) return;
+        Bounds = new Rectangle(area.X + (area.Width - w) / 2, area.Y + (area.Height - h) / 2, w, h);
     }
 
     async Task IniciarEntradaUiAsync()

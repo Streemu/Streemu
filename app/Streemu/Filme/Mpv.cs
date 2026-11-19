@@ -81,6 +81,9 @@ public sealed class Mpv : IDisposable
         foreach (var a in new[]
         {
             "--no-config", $"--wid={wid.ToInt64()}", $@"--input-ipc-server=\\.\pipe\{pipe}", "--pause", "--keep-open=yes", "--hr-seek=yes",
+            // --ytdl=no: o mpv nunca chama youtube-dl/yt-dlp por causa de uma URL que veio de um amigo. --load-scripts=no só desliga os
+            // scripts automáticos das pastas do mpv; o streemu-osc.lua entra por --script= (conferido: continua rodando).
+            "--ytdl=no", "--load-scripts=no",
             "--osc=no", "--input-default-bindings=no", "--input-vo-keyboard=no", "--input-cursor=no", "--cursor-autohide=no",
             "--vo=gpu-next", "--hwdec=auto-safe", "--video-sync=display-resample", "--audio-pitch-correction=yes",
             $"--volume={volume}", "--msg-level=all=warn",

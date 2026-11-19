@@ -22,11 +22,24 @@ public static class TextoDoPedido
     public static string Letra(string apelido) => apelido.Length > 0 ? char.ToUpperInvariant(apelido[0]).ToString() : "?";
 
     /// <summary>"mumu.png", "a.png e b.zip" ou "a.png e mais 2".</summary>
-    public static string Nomes(OfertaDeArquivos o) => o.Arquivos.Count switch
+    public static string Nomes(OfertaDeArquivos o) => Nomes(o.Arquivos.Select(a => a.Nome).ToList());
+
+    /// <summary>
+    /// Como <see cref="Nomes(OfertaDeArquivos)"/>, mas, no que já chegou, com o nome que ficou gravado na pasta: o que o amigo anunciou
+    /// ("foto.png") pode não ser o que foi gravado ("foto.png.exe"), e a tela precisa mostrar a extensão real.
+    /// </summary>
+    static string Nomes(PedidoEmCurso p)
     {
-        1 => o.Arquivos[0].Nome,
-        2 => $"{o.Arquivos[0].Nome} e {o.Arquivos[1].Nome}",
-        _ => $"{o.Arquivos[0].Nome} e mais {o.Arquivos.Count - 1}",
+        bool gravados = p.Sentido == Sentido.Recebido && p.Caminhos.Count == p.Oferta.Arquivos.Count && p.Oferta.Arquivos.All(a => p.Caminhos.ContainsKey(a.Identidade));
+        return gravados ? Nomes(p.Oferta.Arquivos.Select(a => Path.GetFileName(p.Caminhos[a.Identidade])).ToList()) : Nomes(p.Oferta);
+    }
+
+    // sempre ParaMostrar: o nome vem do outro PC e pode trazer caracteres que invertem o texto e escondem a extensão
+    static string Nomes(IReadOnlyList<string> nomes) => nomes.Count switch
+    {
+        1 => NomeSeguro.ParaMostrar(nomes[0]),
+        2 => $"{NomeSeguro.ParaMostrar(nomes[0])} e {NomeSeguro.ParaMostrar(nomes[1])}",
+        _ => $"{NomeSeguro.ParaMostrar(nomes[0])} e mais {nomes.Count - 1}",
     };
 
     static string Tamanho(long bytes) => EnviarArquivoView.TextoDoTamanho(bytes);
@@ -43,7 +56,7 @@ public static class TextoDoPedido
     public static DadosDaLinha Linha(PedidoEmCurso p, DateTime agora)
     {
         string titulo = p.Fase == FaseArquivo.PedidoDeNovo ? $"{p.Apelido} quer {Nomes(p.Oferta)} de novo"
-            : p.Sentido == Sentido.Enviado ? $"{Nomes(p.Oferta)} para {p.Apelido}" : $"{Nomes(p.Oferta)} de {p.Apelido}";
+            : p.Sentido == Sentido.Enviado ? $"{Nomes(p.Oferta)} para {p.Apelido}" : $"{Nomes(p)} de {p.Apelido}";
         if (p.Terminado) return Fim(p, titulo);
         var (apoio, acoes) = EmCurso(p, agora);
         int? pct = p.Fase == FaseArquivo.Transferindo ? Porcentagem(p) : null;
@@ -106,7 +119,7 @@ public static class TextoDoPedido
     public static CardDoPedido? Card(PedidoEmCurso p, string pasta, DateTime agora)
     {
         if (!EsperaPorMim(p)) return null;
-        var arquivos = p.Oferta.Arquivos.Select(a => (a.Nome, Tamanho(a.Tamanho))).ToList();
+        var arquivos = p.Oferta.Arquivos.Select(a => (NomeSeguro.ParaMostrar(a.Nome), Tamanho(a.Tamanho))).ToList();
         int n = p.Oferta.Arquivos.Count;
         return p.Fase switch
         {
@@ -118,7 +131,7 @@ public static class TextoDoPedido
                 $"{p.Apelido} quer {Nomes(p.Oferta)} de novo", $"Pediu pelo histórico. Se o arquivo mudou ou saiu do lugar, o {UiBrand.Name} avisa e não manda.",
                 arquivos, null, [new("Mandar", true, Mandar), new("Recusar", false, Recusar)]),
             _ => new CardDoPedido(p.Pedido, Letra(p.Apelido), Cor(p.AmigoId), false,
-                $"{p.Apelido} quer te mandar {(n == 1 ? p.Oferta.Arquivos[0].Nome : $"{n} arquivos")}",
+                $"{p.Apelido} quer te mandar {(n == 1 ? NomeSeguro.ParaMostrar(p.Oferta.Arquivos[0].Nome) : $"{n} arquivos")}",
                 $"{Tamanho(p.Oferta.Total)}{(n > 1 ? " no total" : "")} · expira em {MinutosAte(p, p.Criado, agora)} min",
                 arquivos, pasta, [new("Aceitar", true, Aceitar), new("Recusar", false, Recusar)]),
         };
@@ -146,7 +159,9 @@ public static class TextoDoPedido
             Resultado.Expirou => ("Expirou", TomDoSelo.Neutro),
             _ => ("Cancelado", TomDoSelo.Neutro),
         };
-        return new DadosDaLinha(Letra(i.Apelido), Cor(i.AmigoId), i.Nome, apoio, selo, tom, null, AcoesDoHistorico(i));
+        // recebido e gravado: o nome do arquivo na pasta (com a extensão real); senão, o anunciado, sem invisíveis
+        string nome = i.Sentido == Sentido.Recebido && i.Caminho != null ? Path.GetFileName(i.Caminho) : i.Nome;
+        return new DadosDaLinha(Letra(i.Apelido), Cor(i.AmigoId), NomeSeguro.ParaMostrar(nome), apoio, selo, tom, null, AcoesDoHistorico(i));
     }
 
     static IReadOnlyList<AcaoDaLinha> AcoesDoHistorico(ItemHistorico i)

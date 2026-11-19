@@ -236,6 +236,9 @@ public sealed class StreamTela : Form
         // Na memória, não no disco: some quando a janela fecha, sem arquivo para limpar.
         var aberto = await Mpv.OpenAsync(mpvExe, _url, _tela.Handle, _volume.Value, new[]
         {
+            // Só o MPEG-TS do anfitrião, pelo SRT: --demuxer=lavf impede o mpv de adivinhar outro formato (sem ele um .mkv passava pelo
+            // demuxer próprio do mpv); format_whitelist e protocol_whitelist recusam o resto. Sem codec_whitelist: o anfitrião copia o codec do filme.
+            "--demuxer=lavf", "--demuxer-lavf-format=mpegts", "--demuxer-lavf-o-append=format_whitelist=mpegts", "--stream-lavf-o-append=protocol_whitelist=srt",
             "--demuxer-lavf-probesize=250000", "--demuxer-lavf-analyzeduration=0.3", "--cache=yes", "--rebase-start-time=no", "--demuxer-seekable-cache=yes",
             "--demuxer-max-bytes=256MiB", "--demuxer-max-back-bytes=192MiB", "--cache-pause-wait=0.5",
         });

@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "49dc8a5792d5c21177522be388fd37ac1fe61270",
-    "notas":  "- Troca \u0027Você assiste\u0027 por \u0027Assistindo\u0027 e começa a qualidade em Original (#274)",
+    "privado":  "aab671292776bdb7af34d279d261935abf15d777",
+    "notas":  "- Protege contra o PC de um amigo infectado (player, ligações, sala e arquivos)",
     "obrigatoria":  false
 }

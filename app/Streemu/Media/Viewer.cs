@@ -181,7 +181,14 @@ public sealed class Viewer
         args.AddRange(WindowArgs(OpenAt));
         if (Borderless) args.Add("-noborder");
         if (hardware) args.AddRange(new[] { "-enable_vulkan", "-hwaccel", "vulkan" });
-        if (_localTap != null) args.AddRange(new[] { "-an", "-f", "mpegts" });
+        if (_localTap != null) args.Add("-an");
+        // O que chega do amigo é só MPEG-TS com H.264 + Opus (o que o StreamSender gera). Um app adulterado no PC dele poderia mandar bytes
+        // de outro formato para explorar demuxer/decodificador do ffmpeg (o build tem centenas, incluindo hls/concat/image2, que abrem outros
+        // arquivos e URLs). Por isso formato, protocolo e decodificadores são fixados ANTES da entrada (valem só para o -i seguinte).
+        // codec_whitelist confere o nome do DECODIFICADOR: h264 (com -hwaccel vulkan continua sendo o "h264") e opus/libopus (os dois que o
+        // build tem para Opus). Medido com ffplay (CPU, Vulkan, pipe) e com SRT em loopback: o protocolo srt sozinho basta.
+        args.AddRange(new[] { "-f", "mpegts", "-format_whitelist", "mpegts",
+            "-protocol_whitelist", _localTap != null ? "pipe" : "srt", "-codec_whitelist", "h264,opus,libopus" });
         args.AddRange(ExtraArgs);
         args.Add(_localTap != null ? "pipe:0" : $"srt://127.0.0.1:{_relayPort}?mode=caller&latency={latencyUs}&passphrase={_passphrase}&pbkeylen=16&transtype=live&connect_timeout=10000");
         UsingHardware = hardware;

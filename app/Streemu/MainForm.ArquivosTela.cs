@@ -180,6 +180,16 @@ public partial class MainForm
     void AbrirOuMostrar(string caminho, bool naPasta)
     {
         if (!File.Exists(caminho)) { Notify("Esse arquivo saiu da pasta ou foi apagado."); return; }
+        // programa ou script: o SmartScreen avisa pouco ou nada (scripts, contêineres), então o app pergunta antes; o padrão é só mostrar
+        if (!naPasta && TipoArriscado.Eh(caminho))
+        {
+            var r = MessageBox.Show(this,
+                $"\"{NomeSeguro.ParaMostrar(Path.GetFileName(caminho))}\" é um programa ou script recebido de um amigo. Abra só se você pediu esse arquivo e confia nele.\n\n"
+                + "Sim: mostrar na pasta (recomendado)\nNão: abrir mesmo assim\nCancelar: não fazer nada",
+                UiBrand.Name, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1);
+            if (r == DialogResult.Cancel) return;
+            if (r == DialogResult.Yes) naPasta = true;
+        }
         try
         {
             if (naPasta) Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{caminho}\"") { UseShellExecute = true });

@@ -302,6 +302,13 @@ public sealed partial class MainForm
     {
         string tipo = msg["tipo"]?.GetValue<string>() ?? "", sid = msg["sessao"]?.GetValue<string>() ?? "";
         _links.TryGetValue(sid, out var link);
+        // A sala carimba o remetente (from), mas o "sessao" é escrito pelo app do amigo: um membro mal-intencionado poderia mandar "aceito"/"parar"
+        // com a sessão de outra pessoa. Só quem é o outro lado da ligação pode mexer nela.
+        if (link != null && link.PeerId != from)
+        {
+            Log.Info("Sala: mensagem de sessão de outra pessoa; ignorei.");
+            link = null;
+        }
         switch (tipo)
         {
             case "quero_assistir":
@@ -434,24 +441,54 @@ public sealed partial class MainForm
             await _room.SendTo(from, new JsonObject { ["tipo"] = "recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} fez essa transmissão só para convidados." });
             return;
         }
-        PeerLink link;
-        try
+        // Uma ligação de envio por pessoa e por transmissão: quem reabre o player ou reconecta manda um pedido novo, e o novo vale.
+        // Sem isso, um app adulterado abriria centenas de ligações (socket, threads, reserva no relay e um envio SRT cada) e esgotaria o upload de quem joga.
+        // Os pedidos EM ANDAMENTO também contam: o CreateAsync leva segundos (STUN + relay) e o link só entra em _links depois dele, então uma rajada de
+        // pedidos passaria toda pela checagem com _links ainda vazio. (OnRoomMessage roda na thread da tela, via Ui; o await volta para ela: sem lock.)
+        if (_aceitandoViewer.Contains(from))
         {
-            link = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, streamId);
-            link.Connect(code);
-        }
-        catch (Exception e)
-        {
-            Log.Info($"{nick} pediu para assistir, mas não deu para preparar a conexão: {e.Message}");
-            await _room.SendTo(from, new JsonObject { ["tipo"] = "recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} não conseguiu preparar a conexão ({e.Message})." });
+            Log.Info($"{nick} pediu para assistir de novo antes de eu terminar o pedido anterior; ignorei este.");
             return;
         }
-        AddLink(link);
-        if (_sender.Running) _sender.AddOutput(sid, nick, link.Relay, () => link.Tunnel.Passphrase);
-        Log.Info($"{nick} pediu para assistir; conectando (agora são {SenderLinks} espectador(es) pela sala).");
-        await _room.SendTo(from, new JsonObject { ["tipo"] = "aceito", ["sessao"] = sid, ["codigo"] = link.MyCode });
-        UpdateLive();
+        if (SenderLinks + _aceitandoViewer.Count >= MaxEspectadores &&
+            !_links.Values.Any(l => l.IAmSender && l.PeerId == from && l.StreamId == streamId)) // quem já assiste e reabre troca a sua, não ocupa vaga nova
+        {
+            Log.Info($"{nick} pediu para assistir, mas já são {SenderLinks} espectadores (o máximo); recusei.");
+            await _room.SendTo(from, new JsonObject { ["tipo"] = "recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} já tem o máximo de {MaxEspectadores} pessoas assistindo. Tente quando alguém sair." });
+            return;
+        }
+        _aceitandoViewer.Add(from);
+        try
+        {
+            foreach (var (velhaSid, velha) in _links.ToList())
+                if (velha.IAmSender && velha.PeerId == from && velha.StreamId == streamId)
+                {
+                    Log.Info($"{nick} pediu para assistir de novo; troco a ligação antiga pela nova.");
+                    EndLink(velhaSid, tellPeer: false, why: null); // tellPeer false: foi o próprio amigo que pediu de novo
+                }
+            PeerLink link;
+            try
+            {
+                link = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, streamId);
+                link.Connect(code);
+            }
+            catch (Exception e)
+            {
+                Log.Info($"{nick} pediu para assistir, mas não deu para preparar a conexão: {e.Message}");
+                await _room.SendTo(from, new JsonObject { ["tipo"] = "recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} não conseguiu preparar a conexão ({e.Message})." });
+                return;
+            }
+            AddLink(link);
+            if (_sender.Running) _sender.AddOutput(sid, nick, link.Relay, () => link.Tunnel.Passphrase);
+            Log.Info($"{nick} pediu para assistir; conectando (agora são {SenderLinks} espectador(es) pela sala).");
+            await _room.SendTo(from, new JsonObject { ["tipo"] = "aceito", ["sessao"] = sid, ["codigo"] = link.MyCode });
+            UpdateLive();
+        }
+        finally { _aceitandoViewer.Remove(from); }
     }
+
+    /// <summary>Quem está com um pedido de "quero_assistir" sendo preparado agora (ver AcceptViewerAsync). Só a thread da tela mexe.</summary>
+    readonly HashSet<string> _aceitandoViewer = new();
 
     void AddLink(PeerLink link)
     {
@@ -464,6 +501,12 @@ public sealed partial class MainForm
         link.Tunnel.OneWayChanged += ida => Ui(() => { if (_links.ContainsKey(link.SessionId)) TelemetriaAvisoLigacao(link, ida); }); // MainForm.Sincronia.cs
         TelemetriaLigacao(link, comecou: true);
     }
+
+    /// <summary>
+    /// Teto de pessoas assistindo a uma transmissão ao mesmo tempo. Cada espectador é uma cópia do vídeo saindo pelo upload de quem joga,
+    /// então sem teto um app adulterado (ou só muita gente) esgotaria a internet de quem transmite. 16 é bem mais que o grupo costuma ter.
+    /// </summary>
+    const int MaxEspectadores = 16;
 
     int SenderLinks => _links.Values.Count(l => l.IAmSender);
 

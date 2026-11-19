@@ -156,6 +156,12 @@ public partial class MainForm
         if (!FilmeLigado) return;
         string sid = msg["sessao"]?.GetValue<string>() ?? "";
         _filmeLinks.TryGetValue(sid, out var link);
+        // o "sessao" vem do app do amigo (só o "from" é carimbado pela sala): só o outro lado da ligação pode mexer nela
+        if (link != null && link.PeerId != from)
+        {
+            Log.Info("[filme] Sala: mensagem de sessão de outra pessoa; ignorei.");
+            link = null;
+        }
         switch (Tipo(msg, "tipo"))
         {
             case "filme_aberto":
@@ -336,6 +342,9 @@ public partial class MainForm
         Task.Delay(1000).ContinueWith(_ => Ui(() => { foreach (var sid in links) FimLigacaoFilme(sid); }));
     }
 
+    // tetos de ligações de envio do modo filme: o upload do anfitrião é o que acaba (ver MaxEspectadores na live)
+    const int MaxLigacoesFilmePorPessoa = 4, MaxLigacoesFilme = 24;
+
     /// <summary>Anfitrião: um amigo quer entrar. Ligação nova só para o filme, como o AcceptViewerAsync da live.</summary>
     async Task AceitarFilmeAsync(string from, string nick, string sid, string code, string filme)
     {
@@ -345,22 +354,44 @@ public partial class MainForm
             await _room.SendTo(from, new JsonObject { ["tipo"] = "filme_recusado", ["sessao"] = sid, ["motivo"] = $"O filme de {Nick} já fechou." });
             return;
         }
-        PeerLink link;
-        try
+        // Aqui NÃO vale "uma ligação por pessoa" como na live: a mesma pessoa abre legitimamente mais de uma (player pela transmissão e download do arquivo,
+        // ou dois players, caso de 11/11). Então só há tetos folgados, para um app adulterado não abrir ligações sem fim (socket, threads e relay cada).
+        // Os pedidos em andamento também contam (o CreateAsync leva segundos e o link só entra em _filmeLinks depois dele: uma rajada passaria toda).
+        // OnFilmeSala roda na thread da tela (Ui) e o await volta para ela: sem lock.
+        var doAmigo = _filmeLinks.Values.Count(l => l.IAmSender && l.PeerId == from) + _filmeAceitando.GetValueOrDefault(from);
+        if (doAmigo >= MaxLigacoesFilmePorPessoa || _filmeLinks.Values.Count(l => l.IAmSender) + _filmeAceitando.Values.Sum() >= MaxLigacoesFilme)
         {
-            link = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, "filme");
-            link.Connect(code);
-        }
-        catch (Exception e)
-        {
-            Log.Info($"[filme] {nick} quis entrar, mas não deu para preparar a conexão: {e.Message}");
-            await _room.SendTo(from, new JsonObject { ["tipo"] = "filme_recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} não conseguiu preparar a conexão ({e.Message})." });
+            Log.Info($"[filme] {nick} pediu para entrar, mas já há ligações demais ({doAmigo} dele); recusei.");
+            await _room.SendTo(from, new JsonObject { ["tipo"] = "filme_recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} já tem gente demais ligada neste filme. Feche o filme aberto aí e tente de novo." });
             return;
         }
-        AdicionarLinkFilme(link);
-        Log.Info($"[filme] {nick} está entrando no filme.");
-        await _room.SendTo(from, new JsonObject { ["tipo"] = "filme_aceito", ["sessao"] = sid, ["codigo"] = link.MyCode });
+        _filmeAceitando[from] = _filmeAceitando.GetValueOrDefault(from) + 1;
+        try
+        {
+            PeerLink link;
+            try
+            {
+                link = await PeerLink.CreateAsync(sid, from, nick, iAmSender: true, _localMode, Nick, CarrierIp, LinkRelay, "filme");
+                link.Connect(code);
+            }
+            catch (Exception e)
+            {
+                Log.Info($"[filme] {nick} quis entrar, mas não deu para preparar a conexão: {e.Message}");
+                await _room.SendTo(from, new JsonObject { ["tipo"] = "filme_recusado", ["sessao"] = sid, ["motivo"] = $"{Nick} não conseguiu preparar a conexão ({e.Message})." });
+                return;
+            }
+            AdicionarLinkFilme(link);
+            Log.Info($"[filme] {nick} está entrando no filme.");
+            await _room.SendTo(from, new JsonObject { ["tipo"] = "filme_aceito", ["sessao"] = sid, ["codigo"] = link.MyCode });
+        }
+        finally
+        {
+            if (_filmeAceitando.GetValueOrDefault(from) <= 1) _filmeAceitando.Remove(from); else _filmeAceitando[from]--;
+        }
     }
+
+    /// <summary>Pedidos de entrada sendo preparados agora, por pessoa (ver AceitarFilmeAsync). Só a thread da tela mexe.</summary>
+    readonly Dictionary<string, int> _filmeAceitando = new();
 
     /// <summary>Quem assiste: liga ao anfitrião e espera a ligação e o relógio comum (o primeiro pong novo).</summary>
     async Task<string?> EntrarSalaAsync(JsonObject a)

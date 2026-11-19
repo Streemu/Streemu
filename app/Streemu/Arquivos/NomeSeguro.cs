@@ -46,8 +46,34 @@ public static class NomeSeguro
         return Reservados.Contains(antesDoPonto) ? "_" + limpo : limpo;
     }
 
-    // sem \ / : nenhum pedaço vira pasta; ".." sozinho vira vazio pelo TrimEnd de quem chama
-    static string SemInvalidos(string texto) => string.Concat(texto.Split(Path.GetInvalidFileNameChars()));
+    // sem \ / : nenhum pedaço vira pasta; ".." sozinho vira vazio pelo TrimEnd de quem chama.
+    // Os invisíveis saem antes: Path.GetInvalidFileNameChars() não inclui U+202E (inverte a direção do texto), então "foto\u202Egnp.exe"
+    // aparecia na tela e no Explorer como "fotoexe.png" sendo um .exe.
+    static string SemInvalidos(string texto) => string.Concat(SemInvisiveis(texto).Split(Path.GetInvalidFileNameChars()));
+
+    /// <summary>
+    /// Tira os caracteres de formatação (categoria Cf: U+202A-202E, U+2066-2069, U+200B-200F, U+FEFF, tags) e de controle, que mudam a
+    /// direção ou escondem pedaços do nome. Efeito colateral aceito: some também o ZWJ que junta emojis compostos (a família vira
+    /// três emojis soltos); um nome vindo de outro PC vale menos que a certeza do que está escrito.
+    /// </summary>
+    static string SemInvisiveis(string texto)
+    {
+        var sb = new System.Text.StringBuilder(texto.Length);
+        foreach (var r in texto.EnumerateRunes()) // por Rune: os caracteres Cf fora do plano básico (tags U+E00xx) são pares de surrogates
+        {
+            var cat = System.Text.Rune.GetUnicodeCategory(r);
+            if (cat is System.Globalization.UnicodeCategory.Format or System.Globalization.UnicodeCategory.Control) continue;
+            sb.Append(r.ToString());
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// O nome de um arquivo que veio de outro PC, pronto para aparecer na tela: sem os invisíveis de direção do texto, que fariam
+    /// "foto\u202Egnp.exe" parecer "fotoexe.png". Não corta a extensão: quem mostra o nome mostra sempre ele inteiro.
+    /// Ex.: <c>NomeSeguro.ParaMostrar("foto\u202Egnp.exe")</c> → <c>fotognp.exe</c>.
+    /// </summary>
+    public static string ParaMostrar(string? nome) => SemInvisiveis(nome ?? "");
 
     static void ConferirDentro(string pasta, string final)
     {

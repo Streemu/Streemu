@@ -17,6 +17,11 @@ public static class TextoDiagnostico
 
     public static string TituloDoAviso => "Sobre o diagnóstico do Streemu";
 
+    /// <summary>A frase da faixa do topo: curta, sem assustar; o detalhe fica no "Saiba mais". Quem tinha desligado lê o que mudou para ela.</summary>
+    public static string Faixa(bool tinhaDesligado) => tinhaDesligado
+        ? "Você tinha desligado o diagnóstico. Agora, desligado, o Streemu ainda manda um diagnóstico anônimo para corrigir bugs."
+        : "O Streemu manda diagnóstico para a equipe corrigir bugs; desligado, manda só um anônimo. Nada do diagnóstico sai do PC antes de você responder aqui.";
+
     /// <summary>O aviso curto. Quem tinha desligado o diagnóstico lê outra coisa: para essa pessoa o que mudou é justamente o que acontece quando desliga.</summary>
     public static string Aviso(bool tinhaDesligado) => tinhaDesligado
         ? "Você tinha desligado o diagnóstico. Agora, desligado, o Streemu ainda manda um diagnóstico ANÔNIMO: log e dados do PC sem o seu nome, o seu Discord nem o nome dos amigos que ele conhece, com um id que não se liga ao que você mandou antes. É para a gente achar bugs que só acontecem com quem desliga. Só a equipe do Streemu lê. Para apagar o que já foi enviado, peça à equipe."

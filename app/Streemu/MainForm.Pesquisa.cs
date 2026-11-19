@@ -13,7 +13,7 @@ public sealed partial class MainForm
     {
         if (Automated) return;
         if (_state.PrimeiroUsoEm == default) { _state.PrimeiroUsoEm = DateTime.Now; _state.Save(); }
-        if (_convitePesquisa != null || _avisoDiagnostico != null || !Visible || WindowState == FormWindowState.Minimized) return;
+        if (_convitePesquisa != null || _faixaDiagnostico.Visible || !Visible || WindowState == FormWindowState.Minimized) return;
         if (!ConvitePesquisa.Deve(_state, DateTime.Now)) return;
         MostrarConvitePesquisa();
     }

@@ -109,7 +109,7 @@ public sealed class Envio : IDisposable
     {
         var agora = DateTime.UtcNow;
         if (Aguardando)
-            return new(EstadoEnvio.Neutro, "Diagnóstico aguardando", "O diagnóstico só começa a subir depois que você fechar o aviso sobre ele (na janela do Streemu).");
+            return new(EstadoEnvio.Neutro, "Diagnóstico aguardando", "O diagnóstico só começa a subir depois que você responder à faixa sobre ele, no topo da janela do Streemu (ela aparece depois de você entrar num grupo).");
         if (Atual.E.NaoEnviar)
             return new(EstadoEnvio.Neutro, "Diagnóstico desligado", "Você desligou nesta sessão: nada mais sai do PC até abrir o Streemu de novo. Ao abrir, sobe só o mínimo (versão e falhas graves, sem log, sem perfil do PC e sem seu nome). Para ligar tudo: Ajustes > Diagnóstico > \"Enviar diagnóstico\".");
         if (Atual.FalhaLocal is string disco)

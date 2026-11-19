@@ -108,15 +108,18 @@ public sealed partial class MainForm : IStageHost
         if (_side.Parent != this) return false;
         int side = Controls.GetChildIndex(_side);
         return Controls.Cast<Control>().Any(c => c.Dock == DockStyle.Fill && Controls.GetChildIndex(c) > side)
-            || _updateBar.Parent == this && Controls.GetChildIndex(_updateBar) < side;
+            || FaixasDoTopo.Any(f => f.Parent == this && Controls.GetChildIndex(f) < side);
     }
+
+    /// <summary>As faixas de largura toda no topo (atualização e diagnóstico): encaixam antes da barra lateral, em cima dela.</summary>
+    Control[] FaixasDoTopo => [_updateBar, _faixaDiagnostico];
 
     void CorrigirOrdemDoEncaixe()
     {
         if (!OrdemDoEncaixeErrada()) return;
         Log.Info("Ordem do encaixe trocada pelo WinForms: a barra lateral volta para depois dos painéis.");
         Controls.SetChildIndex(_side, Controls.Count - 1);
-        if (_updateBar.Parent == this) Controls.SetChildIndex(_updateBar, Controls.Count - 1); // a faixa de atualização encaixa primeiro: largura toda, em cima da barra
+        foreach (var f in FaixasDoTopo) if (f.Parent == this) Controls.SetChildIndex(f, Controls.Count - 1);
         PerformLayout();
     }
 
@@ -179,7 +182,7 @@ public sealed partial class MainForm : IStageHost
     void AjustarAlturaMinima()
     {
         if (!IsHandleCreated || WindowState == FormWindowState.Minimized || _fullscreenStage) return;
-        int moldura = Height - ClientSize.Height, faixa = _updateBar.Visible ? _updateBar.Height : 0;
+        int moldura = Height - ClientSize.Height, faixa = FaixasDoTopo.Where(f => f.Visible).Sum(f => f.Height);
         int teto = Screen.FromControl(this).WorkingArea.Height - 40;
         int altura = Math.Min(teto, Math.Max(_baseMinHeight, _side.MinimumHeight() + moldura + faixa));
         if (MinimumSize.Height != altura) MinimumSize = new Size(MinimumSize.Width, altura);

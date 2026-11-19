@@ -34,12 +34,12 @@ public sealed class SidePanel : Control
     static readonly NavigationItem[] Navigation =
     [
         new(Kind.Home, SideView.Home, "Início", UiIcon.Home),
+        new(Kind.Transmit, SideView.Transmit, "Transmitir", UiIcon.Broadcast),
         new(Kind.Filme, SideView.Filme, "Cinema", UiIcon.Cinema),
         new(Kind.Arquivos, SideView.Arquivos, "Enviar arquivo", UiIcon.Upload), // spec 020; só com ArquivosVisivel
         new(Kind.Grupos, SideView.Grupos, "Grupos", UiIcon.People), // só com GruposVisivel (servidor com contas)
         new(Kind.Diag, SideView.Settings, "Diagnóstico", UiIcon.Shield), // item de navegação no desenho; abre os Ajustes, onde está o detalhe
         new(Kind.Settings, SideView.Settings, "Configurações", UiIcon.Settings),
-        new(Kind.Transmit, SideView.Transmit, "Transmitir", UiIcon.Broadcast),
         new(Kind.Stage, SideView.Stage, "Em tela", UiIcon.Stage),
     ];
     readonly record struct Row(Rectangle Bounds, Kind Kind, string Text = "", SideFriend? Friend = null);

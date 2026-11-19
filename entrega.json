@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "2ee6351711933ea0d0de76d7d86c06bd80cf6c75",
-    "notas":  "- Adiciona o canal de atualização Stable/Nightly em Configurações \u003e Sistema",
+    "privado":  "ebbb4766efd102d0c0963276b3a025b0c261a1ce",
+    "notas":  "- Move Transmitir para logo abaixo de Início na barra lateral (#273)",
     "obrigatoria":  false
 }

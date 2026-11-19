@@ -81,6 +81,8 @@ public sealed partial class MainForm
         // a versão fica em Configurações > Sistema e no log; a barra de título mostra só o nome (mockups do Streemu: sem versão nem build)
         Log.Info("Versão: " + Updater.CurrentLabel);
         if (JustUpdated) Load += (_, _) => Notify($"{UiBrand.Name} atualizado: {Updater.CurrentLabel}.");
+        // a troca do exe não renova o cache de ícones do Explorer (atalho e botão ficavam com o ícone antigo, 2026-11-19): uma vez por atualização, fora da thread da tela
+        if (JustUpdated && !Automated && Environment.ProcessPath is { } exeAtual) _ = Task.Run(() => SeloBarraTarefas.RenovarCacheDeIcones(exeAtual));
         // teste automático não atualiza (nem apaga o exe antigo); STREEMU_TEST_ATUALIZAR=1 liga o atualizador também nos testes (contra um servidor falso: STREEMU_ATUALIZACAO_URL)
         if (Automated && Environment.GetEnvironmentVariable("STREEMU_TEST_ATUALIZAR") != "1") return;
         // o exe anterior (Streemu.old.exe) só some depois que a versão anterior fechou de vez

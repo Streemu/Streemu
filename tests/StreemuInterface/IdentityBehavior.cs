@@ -169,6 +169,51 @@ static class IdentityBehavior
                 $"Ícone errado para cinema={cinema} transmitindo={transmitindo} assistindo={assistindo}: veio {IconeAtividade.Escolher(cinema, transmitindo, assistindo)}, esperado {esperado}");
         }
         Check(Enum.GetValues<AtividadeIcone>().Select(IconeAtividade.Arquivo).Distinct().Count() == 4, "Duas atividades apontam para o mesmo .ico");
+        Selos();
+    }
+
+    /// <summary>Selo da barra de tarefas: ocioso sem selo; os outros três têm ícone 16x16 (e 32x32) com desenho e diferentes entre si. O COM real só roda com a barra.</summary>
+    static void Selos()
+    {
+        Check(SeloBarraTarefas.Criar(AtividadeIcone.Ocioso, 16) == null, "Ocioso não devia ter selo");
+        var comSelo = Enum.GetValues<AtividadeIcone>().Where(SeloBarraTarefas.TemSelo).ToArray();
+        Check(comSelo.Length == 3, "Esperava selo para transmitindo, assistindo e Cinema");
+        foreach (int tamanho in new[] { 16, 32 })
+        {
+            var bitmaps = comSelo.ToDictionary(a => a, a =>
+            {
+                var icone = SeloBarraTarefas.Criar(a, tamanho);
+                Check(icone != null && icone.Width == tamanho && icone.Height == tamanho, $"Selo {a} não tem {tamanho}x{tamanho}");
+                Check(!string.IsNullOrWhiteSpace(SeloBarraTarefas.Descricao(a)), $"Selo {a} sem descrição");
+                return icone!.ToBitmap();
+            });
+            try
+            {
+                foreach (var (a, bmp) in bitmaps) Check(Drawn(bmp, new Rectangle(0, 0, tamanho, tamanho), Color.Transparent) > tamanho, $"Selo {a} vazio em {tamanho}px");
+                foreach (var x in comSelo) foreach (var y in comSelo.Where(y => y > x))
+                    Check(!SamePixels(bitmaps[x], bitmaps[y], new Rectangle(0, 0, tamanho, tamanho)), $"Selo {x} igual ao {y} em {tamanho}px");
+            }
+            finally { foreach (var bmp in bitmaps.Values) bmp.Dispose(); }
+        }
+        var rascunho = Environment.GetEnvironmentVariable("STREEMU_SELO_SAIDA");
+        if (rascunho != null)
+        {
+            // folha de conferência: cada selo ampliado 8x em fundo claro e escuro
+            using var folha = new Bitmap(3 * 144, 2 * 144);
+            using var g = Graphics.FromImage(folha);
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+            for (int linha = 0; linha < 2; linha++)
+                for (int c = 0; c < comSelo.Length; c++)
+                {
+                    using var fundo = new SolidBrush(linha == 0 ? Color.FromArgb(243, 243, 243) : Color.FromArgb(32, 32, 32));
+                    g.FillRectangle(fundo, c * 144, linha * 144, 144, 144);
+                    using var bmp = SeloBarraTarefas.Desenhar(comSelo[c], 16);
+                    g.DrawImage(bmp, c * 144 + 8, linha * 144 + 8, 128, 128);
+                }
+            Directory.CreateDirectory(rascunho);
+            folha.Save(Path.Combine(rascunho, "selos-8x.png"));
+        }
     }
 
     /// <summary>A janela e a bandeja usam o mesmo .ico do exe e do instalador (embutido no build): trocar a arte num lugar troca em todos.</summary>

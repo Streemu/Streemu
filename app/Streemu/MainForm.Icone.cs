@@ -24,6 +24,28 @@ public partial class MainForm
         return icone;
     }
 
+    /// <summary>Põe o selo da atividade atual no botão da barra de tarefas; sem botão ainda (ou sem COM), só tenta de novo quando o Explorer avisar.</summary>
+    void AplicarSelo()
+    {
+        if (!IsHandleCreated || !_botaoCriado || _iconeAplicado is not { } atividade) return;
+        SeloBarraTarefas.Aplicar(Handle, atividade, DeviceDpi >= 144 ? 32 : 16);
+    }
+
+    bool _botaoCriado;
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        SeloBarraTarefas.PermitirMensagem(Handle);
+    }
+
+    /// <summary>O Explorer avisa quando cria o botão da janela (e de novo se reiniciar): o selo só pega depois disso, então reaplica o estado atual.</summary>
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        if (SeloBarraTarefas.MensagemBotaoCriado != 0 && (uint)m.Msg == SeloBarraTarefas.MensagemBotaoCriado) { _botaoCriado = true; AplicarSelo(); }
+    }
+
     AtividadeIcone? _iconeAplicado;
     string? _iconeTexto;
 
@@ -64,7 +86,8 @@ public partial class MainForm
         if (atividade != _iconeAplicado)
         {
             _iconeAplicado = atividade;
-            try { Icon = IconeJanela(atividade); } catch (Exception ex) { Log.Info($"Ícone da janela não trocou: {ex.Message}"); }
+            // Form.Icon fica fixo no ocioso (barra de título): o botão da barra de tarefas não o segue (ver SeloBarraTarefas), então a atividade vai no selo
+            AplicarSelo();
             if (_tray != null) try { _tray.Icon = IconeBandeja(atividade); } catch (Exception ex) { Log.Info($"Ícone da bandeja não trocou: {ex.Message}"); }
         }
         _iconeTexto = texto;

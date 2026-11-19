@@ -10,6 +10,9 @@ namespace Streemu.Ui.Multistream;
 /// <summary>O cabeçalho de um vídeo: onde fica (pixels de tela), o texto ("Amigo · Jogo · ao vivo há 12 min") e o avatar de quem transmite (nulo = a inicial colorida).</summary>
 public sealed record StageCaption(Rectangle Area, string Text, Streemu.Ui.Avatars.AvatarImage? Avatar);
 
+/// <summary>Um vídeo aberto que ainda não mostrou o primeiro quadro: onde ele vai ficar (pixels de tela), a frase e se já passou do tempo razoável.</summary>
+public sealed record StageLoading(Rectangle Area, string Text, bool TimedOut);
+
 public interface IStageHost
 {
     /// <summary>Área (pixels de tela) onde os vídeos ficam. Nula se a janela está escondida ou minimizada: aí nada é mexido.</summary>
@@ -24,6 +27,8 @@ public interface IStageHost
     void StreamsChanged(int count);
     /// <summary>Legendas no alto de cada vídeo (áreas em pixels de tela).</summary>
     void ShowCaptions(IReadOnlyList<StageCaption> captions);
+    /// <summary>Os vídeos que ainda esperam o primeiro quadro (áreas em pixels de tela): o palco desenha o carregamento no lugar deles.</summary>
+    void ShowLoading(IReadOnlyList<StageLoading> loading);
     void ToggleSidebar();
     void ToggleFullscreen();
     /// <summary>O palco ocupa o monitor (sem barra lateral nem moldura): os controles trocam "Tela cheia" por "Sair da tela cheia".</summary>
@@ -54,6 +59,9 @@ public sealed class PlayerStage : IDisposable
     readonly Dictionary<Viewer, Func<Streemu.Ui.Avatars.AvatarImage?>> _avatars = new();
     readonly Dictionary<Viewer, IntPtr> _owned = new();
     readonly HashSet<Viewer> _small = new();
+    readonly Dictionary<Viewer, DateTime> _addedAt = new();
+    /// <summary>Sem o primeiro quadro depois disto, a frase de espera vira o motivo provável e o que fazer (a prévia sai em 1 a 2 s; a conexão com um amigo pode levar mais).</summary>
+    static readonly TimeSpan LoadingGrace = TimeSpan.FromSeconds(20);
     readonly SynchronizationContext _ui = SynchronizationContext.Current ?? new SynchronizationContext();
     readonly System.Windows.Forms.Timer _tick = new() { Interval = 250 };
     readonly StageEscape _escape;
@@ -101,6 +109,7 @@ public sealed class PlayerStage : IDisposable
         if (avatar != null) _avatars[viewer] = avatar;
         viewer.OpenAt = PlannedRect(_tiles.Count + 1, _tiles.Count);
         _tiles.Add(viewer);
+        _addedAt[viewer] = DateTime.UtcNow;
         viewer.Exited += () => _ui.Post(_ => Remove(viewer), null);
         _host.StreamsChanged(_tiles.Count);
         Relayout();
@@ -109,7 +118,7 @@ public sealed class PlayerStage : IDisposable
     public void Remove(Viewer viewer)
     {
         if (!_tiles.Remove(viewer)) return;
-        _captions.Remove(viewer); _avatars.Remove(viewer); _owned.Remove(viewer); _small.Remove(viewer);
+        _captions.Remove(viewer); _avatars.Remove(viewer); _owned.Remove(viewer); _small.Remove(viewer); _addedAt.Remove(viewer);
         if (_emphasized == viewer || _tiles.Count < 2) _emphasized = null;
         _host.StreamsChanged(_tiles.Count);
         Relayout();
@@ -216,12 +225,14 @@ public sealed class PlayerStage : IDisposable
         // Esc no vídeo sai da tela cheia (StageEscape) só com o palco em tela cheia e à vista; nos outros casos o gancho nem existe.
         bool escapeActive = _host.Fullscreen && _host.StageShown;
         _escape.Update(escapeActive, escapeActive ? managed.Select(v => v.Window.Handle).Where(h => h != IntPtr.Zero).ToArray() : []);
+        if (managed.Count == 0) _host.ShowLoading(Array.Empty<StageLoading>());
         if (managed.Count == 0 || _host.VideoArea is not { } area) return;
         bool shown = _host.StageShown;
         int n = managed.Count;
         var cells = Layout(managed, Rectangle.Inflate(area, -PadFor(n), -PadFor(n)));
         var captions = new List<StageCaption>();
         var targets = new Dictionary<Viewer, Rectangle>();
+        var loading = new List<StageLoading>();
         for (int i = 0; i < managed.Count && i < cells.Count; i++)
         {
             var video = VideoIn(cells[i], n, AspectOf(managed[i]));
@@ -229,11 +240,27 @@ public sealed class PlayerStage : IDisposable
             var target = shown ? video : new Rectangle(Parked, video.Size);
             targets[managed[i]] = target;
             Place(managed[i], target);
+            // a janela do ffplay só fica visível com o primeiro quadro: até lá o palco desenha o carregamento no lugar do vídeo
+            if (shown && managed[i].Window.Handle == IntPtr.Zero) loading.Add(LoadingFor(managed[i], video));
         }
         _targets = targets;
         _cells = cells.ToList();
         _host.ShowCaptions(shown ? captions : Array.Empty<StageCaption>());
+        _host.ShowLoading(loading);
         Placed?.Invoke();
+    }
+
+    StageLoading LoadingFor(Viewer viewer, Rectangle video)
+    {
+        bool late = DateTime.UtcNow - _addedAt.GetValueOrDefault(viewer, DateTime.UtcNow) > LoadingGrace;
+        // a legenda ("Amigo · Jogo · ao vivo há 12 min") começa pelo nome
+        string who = (_captions.GetValueOrDefault(viewer)?.Invoke() ?? "").Split(" · ")[0].Trim();
+        string text = viewer.IsPreview
+            ? (late ? "A prévia não chegou. A live pode ter pausado ou o encoder travou: feche a prévia e abra de novo." : "Abrindo sua prévia...")
+            : who.Length == 0
+                ? (late ? "A imagem não chegou. A live pode ter pausado ou a conexão caiu: feche e abra de novo." : "Abrindo a live...")
+                : (late ? $"A imagem de {who} não chegou. A live pode ter pausado ou a conexão caiu: feche e abra de novo." : $"Abrindo a live de {who}...");
+        return new StageLoading(video, text, late);
     }
 
     // ------------------------------------------------------------------ trocar de lugar arrastando a legenda

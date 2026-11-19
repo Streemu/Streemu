@@ -172,6 +172,8 @@ public sealed partial class MainForm : IStageHost
         _stageCanvas.SetCaptions(captions);
     }
 
+    public void ShowLoading(IReadOnlyList<StageLoading> loading) => _stageCanvas.SetLoading(loading);
+
     bool _wasNarrow, _sideAutoCollapsed;
     int _baseMinHeight; // a altura mínima de sempre (MainForm.FitToScreen); a barra lateral pode pedir mais
 

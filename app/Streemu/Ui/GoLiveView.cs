@@ -33,7 +33,8 @@ public sealed class GoLiveView : UserControl
     readonly System.Windows.Forms.Timer _watch = new() { Interval = 1500 };
     Label? _emptyHint;
     bool _watching;
-    readonly FlowLayoutPanel _grid = new() { Dock = DockStyle.Fill, AutoScroll = false, WrapContents = true, Padding = new Padding(4) };
+    // grade posicionada à mão (OnLayout): o FlowLayoutPanel quebrava a linha por 1 px de arredondamento e deixava os cartões numa coluna só
+    readonly Panel _grid = new() { AutoScroll = false };
     readonly Segmented _tabs = new("Aplicativos", "Telas");
     readonly Segmented _resSeg = new("720p", "1080p", "1440p", "Original");
     readonly Segmented _fpsSeg = new("30", "60"); // o rótulo "FPS" já está no título da seção, como no desenho
@@ -90,8 +91,7 @@ public sealed class GoLiveView : UserControl
         _go = new Button { Text = changing ? "Aplicar alteração" : "Começar a transmitir", AccessibleName = changing ? "Aplicar alteração" : "Começar a transmitir" };
         _go.Click += (_, _) => { if (!_busy && SelectedSource != null) SubmitRequested?.Invoke(); };
         _footer.Controls.Add(_go);
-        _body.Controls.AddRange([_title, _showLabel, _grid, _more, _options, _summary, _failure]);
-        _more.Click += (_, _) => { _showAllTiles = !_showAllTiles; PerformLayout(); };
+        _body.Controls.AddRange([_title, _showLabel, _grid, _options, _summary, _failure]);
         Controls.AddRange([_body, _footer, _back]);
         ScrollSkin.Attach(_body);
         Theme.Paint(this, new HashSet<Button> { _go });
@@ -111,13 +111,6 @@ public sealed class GoLiveView : UserControl
     readonly Label _title = new() { AutoSize = true };
     /// <summary>"O que mostrar" acima da lista de telas e janelas, como no desenho.</summary>
     readonly Label _showLabel = new() { AutoSize = true, Text = "O que mostrar" };
-    /// <summary>
-    /// Como no desenho, a lista mostra só as 4 primeiras peças (telas primeiro) e o resto fica atrás de "Mostrar mais": o painel não vira uma página enorme com muitas janelas abertas.
-    /// A escolhida sempre aparece (se ela está além da quarta, a lista abre inteira).
-    /// </summary>
-    const int CollapsedTiles = 4;
-    readonly Label _more = new() { AutoSize = true, Cursor = Cursors.Hand, Visible = false, ForeColor = Theme.AccentSoft, TabStop = true, AccessibleRole = AccessibleRole.PushButton };
-    bool _showAllTiles;
     readonly NoticeBox _failure = new();
     readonly TableLayoutPanel _options = new() { ColumnCount = 1, AutoSize = true };
     bool _layout;
@@ -186,6 +179,9 @@ public sealed class GoLiveView : UserControl
         e.Graphics.DrawLine(line, 0, 0, 0, Height);
     }
 
+    /// <summary>Mudou de monitor ou a escala do Windows: a largura útil e o tamanho de tudo mudam, e o número de colunas junto.</summary>
+    protected override void OnDpiChangedAfterParent(EventArgs e) { base.OnDpiChangedAfterParent(e); PerformLayout(); }
+
     protected override void OnLayout(LayoutEventArgs e)
     {
         base.OnLayout(e);
@@ -215,23 +211,10 @@ public sealed class GoLiveView : UserControl
             _title.Location = new Point(x, y); y += _title.PreferredHeight + gap;
             _showLabel.Visible = !_changing;
             if (_showLabel.Visible) { _showLabel.Location = new Point(x, y); y += _showLabel.PreferredHeight + S(6); }
-            // duas colunas de cartões que ocupam a largura toda (uma só quando o painel é estreito)
-            int inner = available - S(8);
-            int columns = inner >= S(200) ? 2 : 1;
-            // com mais de 4 peças a lista pode precisar rolar: já deixa a barra de rolagem fora das colunas (reservar só depois de ela aparecer fazia a 2ª coluna não caber e a lista ficar numa coluna só)
-            int tileWidth = TileWidthFor(inner, columns);
-            int shown = ShownTiles();
-            for (int i = 0; i < _tiles.Count; i++) { _tiles[i].Visible = i < shown; _tiles[i].Compact = !_inline; _tiles[i].FitWidth(tileWidth); }
-            int used = Math.Min(columns, Math.Max(1, _tiles.Count)) * (tileWidth + TileMargin);
-            _grid.Padding = new Padding(Math.Max(S(4), (available - used) / 2), S(4), S(4), S(4));
+            // Grade de todas as fontes (sem "Mostrar mais"): quantas colunas couberem na largura útil de AGORA, com cartão de largura mínima legível, e os
+            // cartões dividem a largura toda. Recalculada a cada layout (janela, escala do Windows e escala do Streemu mudam a largura útil).
+            y = ArrumarGrade(x, y, available) + gap;
             SettingsLayout.Constrain(_options, available);
-            _grid.Bounds = new Rectangle(x, y, available, SourceListHeight(available, tileWidth, shown)); y += _grid.Height + gap;
-            _more.Visible = _tiles.Count > CollapsedTiles && !SelectedBeyondCollapsed();
-            if (_more.Visible)
-            {
-                _more.Text = _showAllTiles ? "Mostrar menos" : $"Mostrar mais {_tiles.Count - CollapsedTiles}";
-                _more.Location = new Point(x + Math.Max(0, (available - _more.PreferredWidth) / 2), y - gap / 2); y += _more.PreferredHeight;
-            }
             _options.Location = new Point(x, y);
             // a altura vem de onde termina o último controle visível: o PreferredSize da tabela deixava um vazio de ~500 px no fim da página com os controles novos (mais altos)
             int optionsHeight = _options.Controls.Cast<Control>().Where(c => c.Visible).Select(c => c.Bottom + c.Margin.Bottom).DefaultIfEmpty(0).Max();
@@ -244,28 +227,43 @@ public sealed class GoLiveView : UserControl
         finally { _layout = false; }
     }
     /// <summary>
-    /// A lista de telas/janelas ocupava a altura de duas fileiras mesmo com uma fonte só (diagnóstico de UX, item 10, que o #138 resolveu na janela antiga).
-    /// Aqui ela encolhe até as fileiras que as fontes pedem (no mínimo uma) e para no teto de antes; quem passa disso rola dentro da lista.
+    /// Põe os cartões das fontes em grade dentro de <c>_grid</c> e devolve o y logo abaixo dela. Posição e tamanho saem só da largura útil (<paramref name="available"/>),
+    /// sem depender do que o WinForms mediu antes. Antes eram no máximo 2 colunas num FlowLayoutPanel que passava para 1 se faltasse 1 px, e a lista mostrava só 4
+    /// peças até clicar em "Mostrar mais" (teste de primeiro uso, 2026-11-19). Quem rola é a página (<c>_body</c>, com a barra do tema).
     /// </summary>
-    /// <summary>A margem da peça é a que o WinForms já escalou pelo DPI (não 12 px fixos): era a diferença que fazia a segunda coluna não caber.</summary>
-    int TileMargin => _tiles.Count > 0 ? _tiles[0].Margin.Horizontal : S(12);
-
-    int TileWidthFor(int inner, int columns) => Math.Max(S(96), inner / columns - TileMargin);
-
-    int TileHeightFor(int tileWidth) => Math.Max(1, tileWidth - 8) * 9 / 16 + 8 + (_tiles.Count > 0 ? _tiles[0].Margin.Vertical : S(12));
-
-    /// <summary>A lista mostra todas as peças de uma vez (como no desenho) e quem rola é a página: uma lista rolando dentro de outra rolagem era o que dava a sensação de pouca responsividade.</summary>
-    bool SelectedBeyondCollapsed() => _tiles.FindIndex(t => t.Selected) >= CollapsedTiles;
-
-    int ShownTiles() => _showAllTiles || SelectedBeyondCollapsed() ? _tiles.Count : Math.Min(_tiles.Count, CollapsedTiles);
-
-    int SourceListHeight(int available, int tileWidth, int shown)
+    int ArrumarGrade(int x, int y, int available)
     {
-        int cell = tileWidth + TileMargin;
-        int perRow = Math.Max(1, (available - _grid.Padding.Horizontal) / Math.Max(1, cell));
-        int tileHeight = (_tiles.Count > 0 ? _tiles[0].Height : Math.Max(1, tileWidth - S(10)) * 9 / 16 + S(10) + Font.Height + S(16)) + S(12);
-        int rows = Math.Max(1, (shown + perRow - 1) / perRow);
-        return rows * tileHeight + _grid.Padding.Vertical + S(4);
+        int cardGap = S(10), minCard = S(_inline ? 128 : 150);
+        int columns = Math.Max(1, (available + cardGap) / (minCard + cardGap));
+        int cardWidth = Math.Max(1, (available - (columns - 1) * cardGap) / columns);
+        int extra = Math.Max(0, available - (columns * cardWidth + (columns - 1) * cardGap)); // os pixels que sobram vão 1 a 1 para as primeiras colunas
+        int rowHeight = 0;
+        for (int i = 0; i < _tiles.Count; i++)
+        {
+            var tile = _tiles[i];
+            tile.Visible = true; tile.Compact = !_inline;
+            tile.FitWidth(cardWidth + (i % columns < extra ? 1 : 0));
+            rowHeight = Math.Max(rowHeight, tile.Height);
+        }
+        for (int i = 0; i < _tiles.Count; i++)
+        {
+            int column = i % columns;
+            _tiles[i].Location = new Point(column * (cardWidth + cardGap) + Math.Min(column, extra), i / columns * (rowHeight + cardGap));
+        }
+        int height;
+        if (_emptyHint != null)
+        {
+            _emptyHint.MaximumSize = new Size(Math.Max(1, available - S(16)), 0);
+            _emptyHint.Location = new Point(S(8), S(8));
+            height = _emptyHint.PreferredHeight + S(16);
+        }
+        else
+        {
+            int rows = (_tiles.Count + columns - 1) / columns;
+            height = rows == 0 ? 0 : rows * rowHeight + (rows - 1) * cardGap + S(4);
+        }
+        _grid.Bounds = new Rectangle(x, y, available, height);
+        return _grid.Bottom;
     }
 
     void ChooseInitialSource()
@@ -391,7 +389,7 @@ public sealed class GoLiveView : UserControl
             return;
         }
         if (_emptyHint != null) return;
-        _emptyHint = new Label { Text = "Nenhuma tela ou janela encontrada. Abra o jogo e ele aparece aqui.", AutoSize = true, ForeColor = Theme.TextMuted, Margin = new Padding(8) };
+        _emptyHint = new Label { Text = "Nenhuma tela ou janela encontrada. Abra o jogo e ele aparece aqui.", AutoSize = true, ForeColor = Theme.TextMuted };
         _grid.Controls.Add(_emptyHint);
     }
 
@@ -428,7 +426,8 @@ public sealed class GoLiveView : UserControl
         foreach (var gone in _tiles.Where(t => !shown.Contains(t.Source)).ToList()) { _tiles.Remove(gone); _grid.Controls.Remove(gone); gone.Dispose(); }
         foreach (var s in shown.Where(s => _tiles.All(t => t.Source != s))) AddTile(s);
         ShowEmptyHint();
-        for (int i = 0; i < shown.Count; i++) _grid.Controls.SetChildIndex(_tiles.First(t => t.Source == shown[i]), i);
+        _tiles.Sort((a, b) => shown.IndexOf(a.Source).CompareTo(shown.IndexOf(b.Source))); // a ordem da lista (e a do Tab) é a das fontes, telas primeiro
+        for (int i = 0; i < _tiles.Count; i++) _grid.Controls.SetChildIndex(_tiles[i], i);
         _grid.ResumeLayout();
         if (_tiles.Count != shownBefore) PerformLayout(); // jogo abriu ou fechou: a lista cresce ou encolhe junto
         if (SelectedSource != null && !merged.Contains(SelectedSource)) SelectedSource = null; // o app escolhido fechou

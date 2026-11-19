@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "af28ef1502f9432f052482506177292f2ec3c37b",
-    "notas":  "- Troca o ícone conforme a atividade e a arte da Mumu",
+    "privado":  "9c15047fe21fb9c96efec5fb979c2d092c023790",
+    "notas":  "- Mostra todas as fontes do Transmitir numa grade que usa a largura\n- Mostra carregamento ao abrir a prévia e deixa ver o espelho\n- Tira dois textos que sobravam nas telas",
     "obrigatoria":  false
 }

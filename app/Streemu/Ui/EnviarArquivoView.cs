@@ -22,7 +22,6 @@ public sealed class EnviarArquivoView : UserControl
     readonly Panel _pagina = new() { AutoScroll = true };
     readonly Label _paraTitulo = Secao("Para quem"), _arquivosTitulo = Secao("Arquivos"), _andamentoTitulo = Secao("Em andamento");
     readonly SeletorDeAmigo _seletor = new();
-    readonly Label _semAmigos = new() { AutoSize = true, ForeColor = Theme.TextMuted, Text = $"Nenhum amigo online agora. Quem recebe precisa estar com o {UiBrand.Name} aberto." };
     readonly AreaDeSoltar _soltar = new();
     readonly Label _total = new() { AutoSize = true, ForeColor = Theme.TextMuted, Visible = false };
     readonly Button _enviar = new() { AutoSize = true, Text = "Enviar arquivos", AccessibleName = "Enviar arquivos" };
@@ -48,7 +47,7 @@ public sealed class EnviarArquivoView : UserControl
         Dock = DockStyle.Fill; BackColor = Theme.Surface; ForeColor = Theme.Text; AllowDrop = true;
         _titulo.Font = _fonteTitulo;
         EstilizarBotoes();
-        _pagina.Controls.AddRange([_paraTitulo, _seletor, _semAmigos, _arquivosTitulo, _soltar, _total, _enviar, _aviso, _andamentoTitulo, _linha, _pasta, _trocarPasta]);
+        _pagina.Controls.AddRange([_paraTitulo, _seletor, _arquivosTitulo, _soltar, _total, _enviar, _aviso, _andamentoTitulo, _linha, _pasta, _trocarPasta]);
         ScrollSkin.Attach(_pagina);
         Controls.AddRange([_titulo, _abas, _pagina, Historico]);
         Theme.Changed += EstilizarBotoes;
@@ -102,8 +101,7 @@ public sealed class EnviarArquivoView : UserControl
     void MontarAmigos()
     {
         _seletor.Mostrar(_listaAmigos, _amigo);
-        _seletor.Visible = _listaAmigos.Count > 0;
-        _semAmigos.Visible = _listaAmigos.Count == 0;
+        // sem ninguém online o seletor fica como está ("Escolher amigo", sem lista): o texto avulso embaixo era ruído
         Arrumar();
     }
 
@@ -212,7 +210,7 @@ public sealed class EnviarArquivoView : UserControl
         void Por(Control c, int altura) { if (!c.Visible) return; c.SetBounds(pad, y, largura, altura); y += altura + gap; }
         void Texto(Control c) { if (!c.Visible) return; c.Location = new Point(pad, y); y += c.PreferredSize.Height + gap / 2; }
         Texto(_paraTitulo);
-        if (_seletor.Visible) { _seletor.Size = _seletor.GetPreferredSize(Size.Empty); _seletor.Location = new Point(pad, y); y += _seletor.Height + gap; } else Texto(_semAmigos);
+        _seletor.Size = _seletor.GetPreferredSize(Size.Empty); _seletor.Location = new Point(pad, y); y += _seletor.Height + gap;
         Texto(_arquivosTitulo);
         Por(_soltar, _soltar.AlturaPadrao);
         foreach (var l in _escolhidos) Por(l, l.Height);

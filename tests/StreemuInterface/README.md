@@ -2,6 +2,7 @@
 
 ```powershell
 dotnet run --project tests/StreemuInterface -- --layout-check
+dotnet run --project tests/StreemuInterface -- --fontes-check _local/streemu-interface/fontes
 dotnet run --project tests/StreemuInterface -- --check _local/streemu-interface/validacao-bloco2
 dotnet run --project tests/StreemuInterface -- --native-check
 dotnet run --project tests/StreemuInterface -- --identity-check _local/streemu-interface/validacao-bloco6/identidade
@@ -13,6 +14,8 @@ dotnet run --project tests/StreemuInterface -- _local/streemu-interface/desempen
 ```
 
 `--layout-check` verifica a compensação exclusiva QHD/125% em 15 combinações de resolução/DPI, alinhamento dos títulos/opções e três ciclos de mensagens nativas de desativação/ativação com barras aninhadas. A janela permanece minimizada; não prova a aparência após clicar fora e dentro em cada monitor físico.
+
+`--fontes-check [pasta]` confere a grade de "O que mostrar" do Transmitir (página e coluna do Início, 5 larguras, 1/3/9/25 fontes fictícias): todas à vista, sem "Mostrar mais", cartões dentro da lista e sem sobreposição, no mínimo legível e com todas as colunas que cabem, e que a rolagem e a fonte escolhida não mudam quando uma janela abre ou fecha. Não prova a aparência com miniaturas reais.
 
 `--entrada-check [pasta]` confere que a tela de entrada da conta cabe na janela em seis tamanhos, antes e depois do primeiro clique (cartão entre o cabeçalho e o rodapé, controles dentro do cartão, título e frase sob a Mumu sem corte), e salva as imagens se receber a pasta. `--check` verifica comportamento/layout com dados fictícios e pode gerar imagens locais (inclui a Mumu dormindo só no Início vazio, dentro da área e centrada com a frase); inclui Encerrar live por mouse, espaço e ação acessível, sob Sua transmissão em três tamanhos de lateral, e os controles do player de lives (barra criada sem ser mostrada, `Viewer` sem `Start`): nomes acessíveis, ícone/dica de sair da tela cheia, `Esc` da janela principal e a decisão do `StageEscape` (Esc com o foco no vídeo, com janela fictícia e sem gancho real). `--native-check` exercita Load/Shown e navegação com a janela minimizada, em modo local e sem miniaturas. Sem opção, mede repouso, navegação, resize e desenho para bitmap com até 30 cards. Os testes usam estado isolado e não iniciam captura, encoder, player nem sala externa. Não execute builds enquanto houver instâncias do mesmo diretório em uso.
 

@@ -30,7 +30,7 @@ static class LayoutBehavior
                 typeof(GoLiveView).GetMethod("ChooseInitialSource", Hidden)!.Invoke(view, null);
                 view.PerformLayout();
                 var body = Field<Panel>(view, "_body");
-                var grid = Field<FlowLayoutPanel>(view, "_grid");
+                var grid = Field<Panel>(view, "_grid");
                 _ = body.Handle; _ = grid.Handle;
                 view.PerformLayout();
                 var title = Field<Label>(view, "_title");

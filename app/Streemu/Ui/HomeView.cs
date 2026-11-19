@@ -38,12 +38,21 @@ public sealed class HomeView : UserControl
         _scroll.Controls.AddRange([heading, all, invites, cards, _mumu, empty, status]);
         Controls.AddRange([_scroll, _preparation]);
         ScrollSkin.Attach(_scroll);
+        status.TextChanged += (_, _) => AplicarVisibilidadeDoStatus();
+        AplicarVisibilidadeDoStatus();
         foreach (var control in new Control[] { cards, invites, empty, all, heading, status })
         {
             control.SizeChanged += ContentChanged;
             control.VisibleChanged += ContentChanged;
         }
     }
+    /// <summary>
+    /// O estado normal ("Na sala do grupo como X. Discord conectado.") não diz nada de novo na tela e só ocupava o espaço sob "Ninguém está transmitindo"
+    /// (teste de primeiro uso, 2026-11-19). O texto continua no label porque a barra lateral lê o mesmo; aqui só some o que é rotina.
+    /// </summary>
+    void AplicarVisibilidadeDoStatus() { _statusRotina = _status.Text.StartsWith("Na sala do grupo como", StringComparison.OrdinalIgnoreCase); _status.Visible = !_statusRotina; }
+    bool _statusRotina; // guardado à parte: Visible devolve falso enquanto a tela inteira está escondida
+    int AlturaDoStatus => _statusRotina ? 0 : _status.PreferredHeight;
     void ContentChanged(object? sender, EventArgs e) { if (!_arranging) PerformLayout(); }
     protected override void OnLayout(LayoutEventArgs e)
     {
@@ -77,7 +86,7 @@ public sealed class HomeView : UserControl
             {
                 // Mumu e frase como um bloco no meio do espaço que sobra (mockup 01); sem altura para a Mumu, fica só a frase.
                 var label = _empty.GetPreferredSize(new Size(width, 0));
-                int room = _scroll.ClientSize.Height - (y - _scroll.AutoScrollPosition.Y) - pad - _status.PreferredHeight;
+                int room = _scroll.ClientSize.Height - (y - _scroll.AutoScrollPosition.Y) - pad - AlturaDoStatus;
                 int art = Math.Min(Math.Min(width, Dp(MumuMaxAt96)), room - label.Height - gap);
                 bool showArt = art >= Dp(MumuMinAt96);
                 int block = (showArt ? art + gap : 0) + label.Height;
@@ -96,7 +105,7 @@ public sealed class HomeView : UserControl
             _status.MaximumSize = new Size(width, 0);
             var statusSize = _status.GetPreferredSize(new Size(width, 0));
             _status.Location = new Point(pad + Math.Max(0, (width - statusSize.Width) / 2), y);
-            _scroll.AutoScrollMinSize = new Size(0, y - _scroll.AutoScrollPosition.Y + _status.PreferredHeight + pad);
+            _scroll.AutoScrollMinSize = new Size(0, y - _scroll.AutoScrollPosition.Y + AlturaDoStatus + pad);
             if (changed) PreparationSpaceChanged?.Invoke();
         }
         finally { _arranging = false; }

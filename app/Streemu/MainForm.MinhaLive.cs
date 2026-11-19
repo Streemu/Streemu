@@ -147,18 +147,21 @@ public sealed partial class MainForm
         if (_myLive != null) { _myLive.Stop(); return; }
         if (!_sender.Running) { Notify("Você não está ao vivo."); return; }
         if (_playerStage is { Full: true }) { Notify($"Já são {PlayerStage.MaxStreams} streams na janela. Feche uma para ver a sua live."); return; }
-        if (MirrorRisk() is { } why) { Notify(why); return; }
+        // aviso curto e sem bloquear: quem pediu a prévia quer ver (teste de primeiro uso, 2026-11-19)
+        if (MirrorRisk() is { } why) Notify(why);
         StartMyLive();
     }
 
     /// <summary>
-    /// Transmitindo o MONITOR inteiro e com a janela do Streemu nele, a prévia entraria na própria transmissão (efeito espelho, e os amigos a veriam): o
+    /// Transmitindo o MONITOR inteiro e com a janela do Streemu nele, a prévia entra na própria transmissão (efeito espelho, e os amigos a veem): o
     /// ffplay é de outro processo e o Windows não deixa marcá-lo como fora da captura (testado: acesso negado). Com a captura só da janela do jogo não há problema.
+    /// Era um bloqueio ("Prévia desligada"). O único motivo registrado é visual (nada nos docs indica custo de CPU nem queda do encoder: a prévia lê o vídeo
+    /// já codificado, sem nova captura). Agora só avisa.
     /// </summary>
     string? MirrorRisk()
     {
         if (CapturedMonitor() is not { } monitor || Display.MonitorOf(Handle) != monitor) return null;
-        return $"Prévia desligada: você transmite a tela inteira e o {UiBrand.Name} está nela, então os amigos veriam a prévia dentro da transmissão (efeito espelho). Mova o {UiBrand.Name} para outro monitor ou transmita só a janela do jogo.";
+        return $"Você transmite a tela inteira: a prévia aparece dentro da transmissão (efeito espelho) e os amigos a veem. Para evitar, mova o {UiBrand.Name} para outro monitor ou transmita só a janela do jogo.";
     }
 
     /// <summary>O monitor inteiro que está sendo transmitido (captura de monitor, ou do jogo em tela cheia pelo ddagrab); nulo se só a janela de um app vai ao ar.</summary>

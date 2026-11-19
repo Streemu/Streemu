@@ -126,9 +126,9 @@ static class Behavior
             view.PerformLayout();
             var body = Field<Panel>(view, "_body");
             // Item 10 do diagnóstico de UX (#138): com uma fonte só, a lista mostra a peça inteira e não reserva a altura de duas fileiras.
-            var grid = Field<FlowLayoutPanel>(view, "_grid");
+            var grid = Field<Panel>(view, "_grid");
             var only = grid.Controls.Cast<Control>().First();
-            Check(grid.Height < view.LogicalToDeviceUnits(240) && only.Bottom + only.Margin.Bottom <= grid.ClientSize.Height, $"Lista de fontes não acompanhou uma fonte: {size}, lista {grid.Size}, peça {only.Bounds}");
+            Check(grid.Height < view.LogicalToDeviceUnits(240) && only.Bottom <= grid.ClientSize.Height, $"Lista de fontes não acompanhou uma fonte: {size}, lista {grid.Size}, peça {only.Bounds}");
             Check(!body.HorizontalScroll.Visible, $"Preparação com rolagem horizontal: {size}, corpo {body.ClientSize}, " + string.Join("; ", body.Controls.Cast<Control>().Select(c => c.GetType().Name + " " + c.Text + " " + c.Bounds)));
             var go = Field<Button>(view, "_go");
             var footer = Field<Panel>(view, "_footer");

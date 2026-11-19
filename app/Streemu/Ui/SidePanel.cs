@@ -627,17 +627,17 @@ public sealed class SidePanel : Control
 
     Font SmallFont => _fonts.Small;
 
-    /// <summary>A assinatura: o gato da marca (arte em <see cref="UiBrand"/>) e, com a barra aberta, o nome. No trilho fica só o gato, como nos mockups (a seta ao lado continua abrindo).</summary>
+    /// <summary>A assinatura: com a barra aberta, o logo inteiro (arte em <see cref="UiBrand"/>), à esquerda; no trilho só o gato (a seta ao lado continua abrindo).</summary>
     void DrawBrand(Graphics g)
     {
         int size = V(BrandHeightNow - 4), top = V(BrandTopAt96) + (V(BrandHeightNow) - size) / 2;
-        int textWidth = TextRenderer.MeasureText(g, UiBrand.Name, _fonts.Brand, Size.Empty, TextFormatFlags.NoPadding).Width;
-        int brandWidth = size + Dp(8) + textWidth;
-        int x = Rail ? (ClientSize.Width - size) / 2 - Dp(6) : Dp(14); // aberta, a marca fica à esquerda, como no desenho
-        UiBrand.DrawMark(g, new Rectangle(x, top, size, size));
-        if (Rail) return;
-        TextRenderer.DrawText(g, UiBrand.Name, _fonts.Brand, new Rectangle(x + size + Dp(8), V(BrandTopAt96), Math.Max(0, Math.Min(textWidth, ClientSize.Width - x - size - Dp(8))), V(BrandHeightNow)), Theme.AccentSoft,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+        if (Rail) { UiBrand.DrawMark(g, new Rectangle((ClientSize.Width - size) / 2 - Dp(6), top, size, size)); return; }
+        // medido pela barra aberta, não pela largura de agora: na animação de abrir/fechar o logo não muda de tamanho a cada quadro, só é cortado
+        var room = new Rectangle(Dp(14), top, Dp(OpenAt96) - Dp(14) - Dp(44), size);
+        var saved = g.Save();
+        g.SetClip(new Rectangle(room.X, room.Y, Math.Max(0, ClientSize.Width - room.X - Dp(44)), room.Height));
+        UiBrand.DrawWordmark(g, room);
+        g.Restore(saved);
     }
 
     /// <summary>O botão de tema na fileira de ferramentas: 2:1 como no desenho (104 × 52), centrado no que sobra da fileira.</summary>

@@ -27,12 +27,7 @@ internal static class EntradaDesenho
 
     static void Cabecalho(Graphics g, EntradaMedidas m, EntradaFontes f)
     {
-        UiBrand.DrawMark(g, m.Marca, light: false);
-        int largura = Largura(UiBrand.Name, f.Marca);
-        Texto(g, UiBrand.Name, f.Marca, ThemePalette.Dark.AccentSoft, Linha(m.TextoMarcaX, m.CabecalhoCentroY, largura, f.Marca));
-        int lado = m.Marca.Height / 7; // o ponto da marca ("Streemu.") fica na linha de base do texto
-        using var ponto = new SolidBrush(ThemePalette.Dark.Text);
-        g.FillEllipse(ponto, m.TextoMarcaX + largura + lado / 2, m.CabecalhoCentroY + m.Marca.Height / 5, lado, lado);
+        UiBrand.DrawWordmark(g, m.Marca, light: false);
         Frase(g, m, f);
     }
 

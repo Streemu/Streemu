@@ -56,14 +56,12 @@ static class IdentityBehavior
                 Check(SamePixels(empty, full, box), $"Lista de amigos vazou sobre o rodapé em {size} ({box})");
             }
 
-            // A marca (a arte do gato) aparece aberta e no trilho: o topo não pode ser só o fundo da lateral.
-            using var brandFont = new Font(side.Font.FontFamily, side.Font.Size * UiTypography.BrandScale, FontStyle.Bold);
+            // A marca aparece aberta (o logo inteiro, à esquerda) e no trilho (só o gato): o topo não pode ser só o fundo da lateral.
             int markSize = UiScale.Dp(side, 30);
-            int nameWidth = TextRenderer.MeasureText(UiBrand.Name, brandFont, Size.Empty, TextFormatFlags.NoPadding).Width;
             bool rail = side.Width < UiScale.Dp(side, (UiMetrics.RailWidth + UiMetrics.SidebarWidth) / 2);
-            int markX = rail ? (side.Width - markSize) / 2 - UiScale.Dp(side, 6) : Math.Max(UiScale.Dp(side, 8), (side.Width - markSize - UiScale.Dp(side, 8) - nameWidth) / 2);
-            var mark = new Rectangle(markX, UiScale.Dp(side, 10), markSize, UiScale.Dp(side, 34));
-            Check(Drawn(full, mark, full.GetPixel(1, 1)) > 40, $"Gato da marca ausente no topo em {size}");
+            var mark = rail ? new Rectangle((side.Width - markSize) / 2 - UiScale.Dp(side, 6), UiScale.Dp(side, 10), markSize, UiScale.Dp(side, 34))
+                : new Rectangle(UiScale.Dp(side, 14), UiScale.Dp(side, 10), UiScale.Dp(side, 150), UiScale.Dp(side, 34));
+            Check(Drawn(full, mark, full.GetPixel(1, 1)) > 40, $"Logo ausente no topo em {size}");
             if (output != null && !filme) full.Save(Path.Combine(output, $"lateral-{size.Width}x{size.Height}.png"));
         }
 

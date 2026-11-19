@@ -29,11 +29,11 @@ public static class UiTypography
     public const string Mono = "Consolas";
     /// <summary>Glifos dos botões de texto da barra do vídeo (ver <see cref="UiGlyphs"/>); o resto da interface usa <see cref="UiIcons"/>.</summary>
     public const string Symbols = "Segoe MDL2 Assets";
-    public const float Body = 10.5f, Title = 18, Heading = 13, CaptionScale = .85f, BadgeScale = .75f, InitialScale = 2.2f, BrandScale = 1.55f;
+    public const float Body = 10.5f, Title = 18, Heading = 13, CaptionScale = .85f, BadgeScale = .75f, InitialScale = 2.2f;
     /// <summary>Título de página dos Ajustes antigos, título de seção, texto de ação, legenda/estado e nota pequena.</summary>
     public const float PageTitle = 23, Section = 12, Action = 10, Caption = 9.5f, Note = 9, CardTitle = 16, EmptyState = 20, MonoBody = 11, MonoSmall = 9, MonoLog = 8.5f, Symbol = 13;
     /// <summary>Tela de entrada da conta, medida do desenho de 2026-11-17 (marca, frase do topo, destaque, apoio, títulos do cartão, rótulo, código, botão, notas e rodapé).</summary>
-    public const float LoginBrand = 21.25f, LoginTagline = 11.5f, LoginEyebrow = 8.75f, LoginHero = 24, LoginLead = 12, LoginTitle = 24.25f, LoginLabel = 11.25f, LoginCode = 19.75f, LoginAction = 13, LoginFine = 10, LoginFooter = 9.25f, LoginFooterLink = 9.25f;
+    public const float LoginTagline = 11.5f, LoginEyebrow = 8.75f, LoginHero = 24, LoginLead = 12, LoginTitle = 24.25f, LoginLabel = 11.25f, LoginCode = 19.75f, LoginAction = 13, LoginFine = 10, LoginFooter = 9.25f, LoginFooterLink = 9.25f;
     public static Font TitleFont() => new(Family, Title, FontStyle.Bold);
     public static Font HeadingFont() => new(Family, Heading, FontStyle.Bold);
     public static Font Create(float size, FontStyle style = FontStyle.Regular) => new(Family, size, style);
@@ -64,7 +64,6 @@ public sealed class UiFonts : IDisposable
     public Font Small { get; private set; } = null!;
     public Font Badge { get; private set; } = null!;
     public Font Initial { get; private set; } = null!;
-    public Font Brand { get; private set; } = null!;
     public UiFonts(Control owner) { _owner = owner; Reset(); owner.FontChanged += Changed; }
     void Changed(object? sender, EventArgs e) => Reset();
     void Reset()
@@ -74,9 +73,8 @@ public sealed class UiFonts : IDisposable
         Small = new Font(_owner.Font.FontFamily, _owner.Font.Size * UiTypography.CaptionScale, FontStyle.Bold);
         Badge = new Font(_owner.Font.FontFamily, _owner.Font.Size * UiTypography.BadgeScale, FontStyle.Bold);
         Initial = new Font(_owner.Font.FontFamily, _owner.Font.Size * UiTypography.InitialScale, FontStyle.Bold);
-        Brand = new Font(_owner.Font.FontFamily, _owner.Font.Size * UiTypography.BrandScale, FontStyle.Bold);
     }
-    void Release() { Bold?.Dispose(); Small?.Dispose(); Badge?.Dispose(); Initial?.Dispose(); Brand?.Dispose(); }
+    void Release() { Bold?.Dispose(); Small?.Dispose(); Badge?.Dispose(); Initial?.Dispose(); }
     public void Dispose() { _owner.FontChanged -= Changed; Release(); }
 }
 
@@ -180,13 +178,17 @@ public static class UiIcons
 
 /// <summary>
 /// A marca do Streemu (spec 014: o gato é a marca para ícone, bandeja e atalhos) e a arte das telas, num lugar só. O gato e a Mumu são a arte
-/// recebida em 13/11/2026 (embutida em <c>Arte/</c>); o ícone é o mesmo <c>streemu.ico</c> do exe e do instalador. Trocar a arte é trocar esses
+/// recebida em 13/11/2026 (embutida em <c>Arte/</c>; o gato e o logo foram trocados em 19/11/2026); o ícone é o mesmo <c>streemu.ico</c> do exe e do instalador. Trocar a arte é trocar esses
 /// arquivos: a lateral, a janela, a bandeja e o Início mudam juntos.
 /// </summary>
 public static class UiBrand
 {
     public const string Name = "Streemu";
     public const string Mark = "gato.png", SleepingMumu = "mumu-dormindo.png", PopcornMumu = "mumu-pipoca.png";
+    /// <summary>O logo inteiro (o gato dormindo com o "Streemu"), de 2026-11-19; <c>gato.png</c> é o mesmo gato recortado, para onde só cabe um quadrado.</summary>
+    public const string Wordmark = "logo.png";
+    const float WordmarkAspect = 800f / 161; // medida de Arte/logo.png
+    static readonly Dictionary<(Size Size, bool Light), Bitmap> WordmarkSizes = new();
     /// <summary>O gato dormindo na gaveta da área de soltar arquivos (a versão clara é <c>gato-arquivo-claro.png</c>).</summary>
     public const string FileCabinetCat = "gato-arquivo.png";
     const string LightSuffix = "-claro";
@@ -209,8 +211,9 @@ public static class UiBrand
     /// <summary>Esvazia as cópias do gato guardadas (o tema mudou e a arte é outra).</summary>
     public static void ForgetMarks()
     {
-        foreach (var scaled in MarkSizes.Values) scaled.Dispose();
+        foreach (var scaled in MarkSizes.Values.Concat(WordmarkSizes.Values)) scaled.Dispose();
         MarkSizes.Clear();
+        WordmarkSizes.Clear();
     }
 
     static Stream Resource(string name) =>
@@ -242,6 +245,31 @@ public static class UiBrand
     }
 
     /// <summary>
+    /// O logo inteiro, o maior que cabe em <paramref name="bounds"/> sem distorcer, encostado à esquerda e centrado na altura; no tema de agora ou em
+    /// <paramref name="light"/>. Só na thread da tela. Ex.: <c>UiBrand.DrawWordmark(g, new Rectangle(14, 12, 180, 42), light: false)</c>.
+    /// </summary>
+    public static void DrawWordmark(Graphics g, Rectangle bounds, bool? light = null)
+    {
+        var size = WordmarkSize(bounds.Size);
+        if (size.Width <= 0 || size.Height <= 0) return;
+        bool useLight = light ?? Theme.IsLight;
+        if (!WordmarkSizes.TryGetValue((size, useLight), out var scaled))
+        {
+            if (WordmarkSizes.Count >= MaxMarkSizes) ForgetMarks();
+            using var source = LoadArt(ThemedName(Wordmark, useLight));
+            WordmarkSizes[(size, useLight)] = scaled = Scale(source, size);
+        }
+        g.DrawImage(scaled, bounds.X, bounds.Y + (bounds.Height - size.Height) / 2, size.Width, size.Height);
+    }
+
+    /// <summary>O maior tamanho do logo dentro de <paramref name="room"/>, na proporção da arte. Ex.: <c>WordmarkSize(new(400, 40))</c> → 199 × 40.</summary>
+    public static Size WordmarkSize(Size room)
+    {
+        int width = Math.Min(room.Width, (int)(room.Height * WordmarkAspect));
+        return new Size(width, (int)(width / WordmarkAspect));
+    }
+
+    /// <summary>
     /// Acrescenta um contorno de <paramref name="radius"/> px em volta da silhueta (a transparência da arte dilatada), por baixo da arte. Feito uma vez
     /// por tamanho, no cache; descarta <paramref name="art"/> e devolve um bitmap novo.
     /// </summary>
@@ -268,14 +296,16 @@ public static class UiBrand
     }
 
     /// <summary>Reduz uma arte com boa qualidade uma vez (o desenho de cada pintura só copia).</summary>
-    public static Bitmap Scale(Image source, int size)
+    public static Bitmap Scale(Image source, int size) => Scale(source, new Size(size, size));
+
+    static Bitmap Scale(Image source, Size size)
     {
-        var result = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        var result = new Bitmap(size.Width, size.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
         using var g = Graphics.FromImage(result);
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         g.CompositingQuality = CompositingQuality.HighQuality;
-        g.DrawImage(source, new Rectangle(0, 0, size, size));
+        g.DrawImage(source, new Rectangle(Point.Empty, size));
         return result;
     }
 

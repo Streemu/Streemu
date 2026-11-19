@@ -45,7 +45,7 @@ internal sealed class EntradaMedidas
         TemMascote = area.Width >= dp(LarguraComMascote);
         CabecalhoCentroY = dp(48);
         RodapeCentroY = LinhaRodape + dp(30);
-        Marca = new Rectangle(dp(86), CabecalhoCentroY - dp(20), dp(40), dp(40));
+        Marca = new Rectangle(dp(86), CabecalhoCentroY - dp(20), dp(220), dp(40)); // o logo inteiro (gato e nome), 199 × 40 no desenho
         var (cartaoX, mascoteX) = ColunasX();
         PosicionarCartao(cartaoX);
         if (TemMascote) PosicionarMascote(mascoteX);
@@ -74,7 +74,6 @@ internal sealed class EntradaMedidas
     public int MargemDireita => _d(84);
     public int MargemRodape => _d(92);
     public int MargemEsquerda => _d(88);
-    public int TextoMarcaX => _d(144);
 
     (int CartaoX, int MascoteX) ColunasX()
     {

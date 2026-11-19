@@ -1,6 +1,6 @@
 {
     "versao":  "0.4.0",
-    "privado":  "41debe5307539290911b6a21bed24c1100d1f587",
-    "notas":  "- Diz na faixa que desligar ainda manda o anônimo e atualiza a spec 009\n- Troca a janela do diagnóstico por uma faixa que aparece depois de entrar num grupo",
+    "privado":  "03b80c41b81a3fc41c714ef98d7c6a3720964ea8",
+    "notas":  "- Usa o gato escuro como logo principal (tema escuro); o claro fica só no tema claro\n- Troca o logo do app pelo logo novo (escuro e claro)",
     "obrigatoria":  false
 }

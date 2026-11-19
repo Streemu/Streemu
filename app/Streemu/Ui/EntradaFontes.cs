@@ -9,7 +9,6 @@ namespace Streemu.Ui;
 internal sealed class EntradaFontes : IDisposable
 {
     readonly List<Font> _todas = new();
-    public Font Marca { get; }
     public Font Frase { get; }
     public Font Sobretitulo { get; }
     public Font Heroi { get; }
@@ -25,7 +24,6 @@ internal sealed class EntradaFontes : IDisposable
 
     public EntradaFontes(float fator)
     {
-        Marca = Nova(UiTypography.LoginBrand, FontStyle.Bold, fator);
         Frase = Nova(UiTypography.LoginTagline, FontStyle.Regular, fator);
         Sobretitulo = Nova(UiTypography.LoginEyebrow, FontStyle.Bold, fator);
         Heroi = Nova(UiTypography.LoginHero, FontStyle.Bold, fator);

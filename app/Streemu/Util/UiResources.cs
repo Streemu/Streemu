@@ -115,7 +115,8 @@ public static class UiIcons
             case UiIcon.Problem:
                 g.DrawLine(pen, 5, 3, 5, 22); g.DrawLines(pen, [new(5, 4), new(20, 4), new(17, 9), new(20, 14), new(5, 14)]); break;
             case UiIcon.Update:
-                g.DrawArc(pen, 4, 4, 16, 16, 30, 300); g.DrawLines(pen, [new(16, 2), new(20, 5), new(16, 8)]); break;
+                // a ponta nasce no fim do arco (330°, em 18.9;8) e aponta na direção dele; antes ficava solta acima do arco e parecia quebrada
+                g.DrawArc(pen, 4, 4, 16, 16, 30, 300); g.DrawLines(pen, [new PointF(20.1f, 3.6f), new PointF(18.9f, 8), new PointF(14.6f, 6.8f)]); break;
             case UiIcon.Check: g.DrawLines(pen, [new(4, 12), new(10, 18), new(20, 5)]); break;
             case UiIcon.Upload: // enviar arquivo (spec 020): seta para cima saindo de uma bandeja, como no mockup
                 g.DrawLine(pen, 12, 16, 12, 4); g.DrawLines(pen, [new(7, 9), new(12, 4), new(17, 9)]);

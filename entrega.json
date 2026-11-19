@@ -1,6 +1,6 @@
 {
-    "versao":  "0.4.0",
-    "privado":  "9c15047fe21fb9c96efec5fb979c2d092c023790",
-    "notas":  "- Mostra todas as fontes do Transmitir numa grade que usa a largura\n- Mostra carregamento ao abrir a prévia e deixa ver o espelho\n- Tira dois textos que sobravam nas telas",
+    "versao":  "0.5.0",
+    "privado":  "85b9aff909675f7bde454c18c5508204c632e5e4",
+    "notas":  "- Lança a 0.5.0\n- Corrige a ponta da seta do ícone de atualizar\n- Redesenha a página Grupos",
     "obrigatoria":  false
 }

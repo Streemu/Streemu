@@ -17,7 +17,7 @@ public sealed partial class MainForm
     void InitStartup()
     {
         // o ícone embutido tem todos os tamanhos; o ExtractAssociatedIcon do exe só devolve 32 px, que a barra de título reduz mal
-        try { Icon = UiBrand.CreateIcon(live: false); }
+        try { Icon = IconeJanela(AtividadeIcone.Ocioso); }
         catch { try { if (Environment.ProcessPath is { } exe) Icon = Icon.ExtractAssociatedIcon(exe); } catch { } }
         // teste automático nunca mexe no registro do usuário (AGENTS.md, regra 3)
         if (Automated) { _startWithWindows.Visible = false; return; }

@@ -74,38 +74,51 @@ static class IdentityBehavior
             Check(Rows(low).Count(r => r.Kind == "Friend") >= 1, "Na altura mínima a lateral não mostra nenhum amigo");
         }
 
-        // Ícones: vários tamanhos no .ico em memória (o Windows escolhe), bandeja no tamanho pequeno do sistema, parado ≠ ao vivo.
-        using (var idle = UiBrand.CreateIcon(false))
-        using (var live = UiBrand.CreateIcon(true))
+        // Ícones: um .ico por atividade, cada um com vários tamanhos (o Windows escolhe), todos diferentes entre si e com arte desenhada.
+        var atividades = Enum.GetValues<AtividadeIcone>();
+        var porAtividade = atividades.ToDictionary(x => x, x => UiBrand.CreateIcon(x));
+        try
         {
-            foreach (int s in new[] { 16, 20, 24, 32, 40, 48, 64 })
-            {
-                using var exact = new Icon(idle, s, s);
-                Check(exact.Width == s, $"Ícone sem o tamanho {s}");
-            }
-            using var a = new Icon(idle, 32, 32); using var b = new Icon(live, 32, 32);
-            using var ba = a.ToBitmap(); using var bb = b.ToBitmap();
-            Check(!SamePixels(ba, bb, new Rectangle(0, 0, 32, 32)), "Ícone ao vivo igual ao parado");
-            Check(Drawn(ba, new Rectangle(0, 0, 32, 32), Color.Transparent) > 200, "Ícone parado vazio");
-            Check(HasColor(bb, new Rectangle(0, 0, 32, 32), Theme.Error), "Ícone ao vivo sem o ponto vermelho");
-            if (output != null)
-                using (var sheet = new Bitmap(6 * 72, 2 * 72))
-                using (var g = Graphics.FromImage(sheet))
+            foreach (var (atividade, icone) in porAtividade)
+                foreach (int s in new[] { 16, 20, 24, 32, 40, 48, 64 })
                 {
-                    g.Clear(Theme.Backdrop);
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                    int column = 0;
-                    foreach (int s in new[] { 16, 20, 24, 32, 48, 64 })
-                    {
-                        using var i1 = new Icon(idle, s, s); using var i2 = new Icon(live, s, s);
-                        using var p1 = i1.ToBitmap(); using var p2 = i2.ToBitmap();
-                        g.DrawImage(p1, column * 72 + 4, 4, 64, 64); g.DrawImage(p2, column * 72 + 4, 76, 64, 64);
-                        column++;
-                    }
-                    sheet.Save(Path.Combine(output, "icones-16-20-24-32-48-64.png"));
+                    using var exact = new Icon(icone, s, s);
+                    Check(exact.Width == s, $"Ícone {atividade} sem o tamanho {s}");
                 }
+            var bitmaps = porAtividade.ToDictionary(kv => kv.Key, kv => { using var i = new Icon(kv.Value, 32, 32); return i.ToBitmap(); });
+            try
+            {
+                foreach (var (atividade, bmp) in bitmaps)
+                    Check(Drawn(bmp, new Rectangle(0, 0, 32, 32), Color.Transparent) > 200, $"Ícone {atividade} vazio");
+                foreach (var x in atividades)
+                    foreach (var y in atividades.Where(y => y > x))
+                        Check(!SamePixels(bitmaps[x], bitmaps[y], new Rectangle(0, 0, 32, 32)), $"Ícone {x} igual ao {y}");
+                if (output != null)
+                    using (var sheet = new Bitmap(6 * 72, atividades.Length * 72))
+                    using (var g = Graphics.FromImage(sheet))
+                    {
+                        g.Clear(Theme.Backdrop);
+                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                        int linha = 0;
+                        foreach (var (_, icone) in porAtividade)
+                        {
+                            int column = 0;
+                            foreach (int s in new[] { 16, 20, 24, 32, 48, 64 })
+                            {
+                                using var i1 = new Icon(icone, s, s); using var p1 = i1.ToBitmap();
+                                g.DrawImage(p1, column * 72 + 4, linha * 72 + 4, 64, 64);
+                                column++;
+                            }
+                            linha++;
+                        }
+                        sheet.Save(Path.Combine(output, "icones-16-20-24-32-48-64.png"));
+                    }
+            }
+            finally { foreach (var bmp in bitmaps.Values) bmp.Dispose(); }
         }
-        using (var tray = TrayVisuals.CreateIcon(false)) Check(tray.Size == SystemInformation.SmallIconSize, $"Bandeja fora do tamanho pequeno do sistema: {tray.Size}");
+        finally { foreach (var icone in porAtividade.Values) icone.Dispose(); }
+        Atividade();
+        using (var tray = TrayVisuals.CreateIcon(AtividadeIcone.Transmitindo)) Check(tray.Size == SystemInformation.SmallIconSize, $"Bandeja fora do tamanho pequeno do sistema: {tray.Size}");
         Check(PlayerOverlay.FullscreenLook(true, false).Glyph == UiGlyphs.Fullscreen && PlayerOverlay.FullscreenLook(true, true).Glyph == UiGlyphs.ExitFullscreen,
             "Barra do vídeo não usa a tabela única de glifos");
 
@@ -145,16 +158,33 @@ static class IdentityBehavior
         Check(found.Count == 0, "Cor, fonte ou glifo fora do Theme/UiResources: " + string.Join(", ", found));
     }
 
+    /// <summary>Prioridade do ícone por atividade: Cinema, depois transmitindo, depois assistindo, depois ocioso. As 8 combinações.</summary>
+    static void Atividade()
+    {
+        for (int bits = 0; bits < 8; bits++)
+        {
+            bool cinema = (bits & 4) != 0, transmitindo = (bits & 2) != 0, assistindo = (bits & 1) != 0;
+            var esperado = cinema ? AtividadeIcone.Cinema : transmitindo ? AtividadeIcone.Transmitindo : assistindo ? AtividadeIcone.Assistindo : AtividadeIcone.Ocioso;
+            Check(IconeAtividade.Escolher(cinema, transmitindo, assistindo) == esperado,
+                $"Ícone errado para cinema={cinema} transmitindo={transmitindo} assistindo={assistindo}: veio {IconeAtividade.Escolher(cinema, transmitindo, assistindo)}, esperado {esperado}");
+        }
+        Check(Enum.GetValues<AtividadeIcone>().Select(IconeAtividade.Arquivo).Distinct().Count() == 4, "Duas atividades apontam para o mesmo .ico");
+    }
+
     /// <summary>A janela e a bandeja usam o mesmo .ico do exe e do instalador (embutido no build): trocar a arte num lugar troca em todos.</summary>
     static void SameIconAsExe()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root != null && !Directory.Exists(Path.Combine(root.FullName, "app", "Streemu"))) root = root.Parent;
         if (root == null) { Console.WriteLine("Aviso: código-fonte não encontrado; comparação do ícone pulada."); return; }
-        using var embedded = typeof(UiBrand).Assembly.GetManifestResourceStream("Streemu.Arte.streemu.ico")!;
-        using var copy = new MemoryStream(); embedded.CopyTo(copy);
-        Check(copy.ToArray().AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(root.FullName, "app", "Streemu", "streemu.ico"))),
-            "Ícone embutido diferente do streemu.ico do exe");
+        foreach (var atividade in Enum.GetValues<AtividadeIcone>())
+        {
+            string arquivo = IconeAtividade.Arquivo(atividade);
+            using var embedded = typeof(UiBrand).Assembly.GetManifestResourceStream("Streemu.Arte." + arquivo)!;
+            using var copy = new MemoryStream(); embedded.CopyTo(copy);
+            Check(copy.ToArray().AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(root.FullName, "app", "Streemu", arquivo))),
+                $"Ícone embutido diferente do {arquivo} do app (o ocioso é o mesmo do exe)");
+        }
         foreach (var art in new[] { UiBrand.Mark, UiBrand.SleepingMumu })
             using (var image = UiBrand.LoadArt(art)) Check(image.Width == image.Height && image.Width >= 256, $"Arte {art} fora do formato (quadrada, 256 px ou mais)");
     }

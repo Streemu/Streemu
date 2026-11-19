@@ -28,7 +28,6 @@ public sealed partial class MainForm
     public static string[] LaunchArgs { get; set; } = Array.Empty<string>();
 
     static readonly bool TestRoom = Environment.GetEnvironmentVariable("STREEMU_TEST_ROOM") == "1";
-    static readonly Icon IconIdle = TrayVisuals.CreateIcon(false), IconLive = TrayVisuals.CreateIcon(true);
 
     ISala? _room;
     DiscordPresence? _discord;
@@ -165,7 +164,7 @@ public sealed partial class MainForm
         var menu = new ContextMenuStrip();
         TrayVisuals.Style(menu);
         menu.Opening += (_, e) => { BuildTrayMenu(menu); e.Cancel = false; };
-        _tray = new NotifyIcon { Icon = IconIdle, Text = UiBrand.Name, Visible = true, ContextMenuStrip = menu };
+        _tray = new NotifyIcon { Icon = IconeBandeja(AtividadeIcone.Ocioso), Text = UiBrand.Name, Visible = true, ContextMenuStrip = menu };
         _tray.DoubleClick += (_, _) => ShowMain();
         _tray.BalloonTipClicked += (_, _) => ShowMain();
     }
@@ -562,6 +561,7 @@ public sealed partial class MainForm
         v.Start(link.Relay.Port, link.Tunnel.Passphrase, LatencyMs, $"{UiBrand.Name} — {link.PeerNick}");
         PlayerOverlay.ShowFor(v, () => _room?.Members.FirstOrDefault(m => m.Id == link.PeerId)?.Live?.Quality ?? "", () => WatchersRoster(link), new AppStateMiniStore(_state, !Automated), text => Ui(() => Notify(text)), stage);
         _groupStatus.Text = DefaultStatus();
+        AtualizarIconeAtividade(); // passou a assistir (o fim sai pelo EndLink, que chama o UpdateLive)
         AvisarSomDoAmigoNaLive(); // MainForm.AvisoSom.cs
     }
 
@@ -661,12 +661,7 @@ public sealed partial class MainForm
         RefreshSide();
         PlacePreparation();
         _room?.SetLive(publica);
-        if (_tray != null)
-        {
-            _tray.Icon = live ? IconLive : IconIdle;
-            string text = live ? $"{UiBrand.Name}: transmitindo {_liveGame}" : UiBrand.Name;
-            _tray.Text = text.Length > 63 ? text[..63] : text;
-        }
+        AtualizarIconeAtividade(); // MainForm.Icone.cs: minha live entrou ou saiu do ar
         if (_discord == null) return;
         if (info == null || publica == null) { _discord.Set(null); return; }
         string watching = info.Watching switch { 0 => "esperando amigos", 1 => "1 assistindo", var n => $"{n} assistindo" };
@@ -837,6 +832,7 @@ public sealed partial class MainForm
     void GroupTick()
     {
         KeepLiveCards(); // MainForm.Janela.cs
+        AtualizarIconeAtividade(); // rede de segurança de 1 s: Cinema, player que fecha sozinho e falhas não têm um gancho só
         var now = DateTime.Now;
         foreach (var (sid, link) in _links.ToList())
         {

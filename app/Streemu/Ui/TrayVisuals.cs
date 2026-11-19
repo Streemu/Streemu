@@ -6,12 +6,12 @@ namespace Streemu.Ui;
 public static class TrayVisuals
 {
     /// <summary>
-    /// O gato da marca (<see cref="UiBrand"/>) no tamanho pequeno do sistema; ao vivo ganha um ponto vermelho no canto. Antes era um quadrado
-    /// com "L" feito por <c>GetHicon</c>, cujo handle nunca era liberado.
+    /// O ícone da atividade (<see cref="AtividadeIcone"/>) no tamanho pequeno do sistema. Antes era um quadrado com "L" feito por <c>GetHicon</c>,
+    /// cujo handle nunca era liberado.
     /// </summary>
-    public static Icon CreateIcon(bool live)
+    public static Icon CreateIcon(AtividadeIcone atividade)
     {
-        using var all = UiBrand.CreateIcon(live);
+        using var all = UiBrand.CreateIcon(atividade);
         return new Icon(all, SystemInformation.SmallIconSize);
     }
 

@@ -7,8 +7,8 @@ namespace Streemu.Ui;
 internal sealed class EntradaMedidas
 {
     const int CabecalhoAltura = 93, RodapeAltura = 58, CartaoLargura = 582, CartaoMargem = 47, CartaoRaio = 20;
-    const int GrupoLargura = 1182, GrupoDeslocamento = 46, GrupoFolga = 24, MascoteColuna = 185, MascoteAltura = 556, ColunaAltura = 681;
-    const int ArteLargura = 960, ArteAltura = 1476, LarguraComMascote = 1040;
+    const int GrupoLargura = 1182, GrupoDeslocamento = 46, GrupoFolga = 24, MascoteColuna = 210, MascoteAltura = 490, ColunaAltura = 681;
+    const int ArteLargura = 800, ArteAltura = 939, LarguraComMascote = 1040;
 
     readonly Func<int, int> _d;
     public Size Area { get; }

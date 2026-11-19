@@ -178,7 +178,7 @@ public static class UiIcons
 
 /// <summary>
 /// A marca do Streemu (spec 014: o gato é a marca para ícone, bandeja e atalhos) e a arte das telas, num lugar só. O gato e a Mumu são a arte
-/// recebida em 13/11/2026 (embutida em <c>Arte/</c>; o gato e o logo foram trocados em 19/11/2026); o ícone é o mesmo <c>streemu.ico</c> do exe e do instalador. Trocar a arte é trocar esses
+/// recebida em 13/11/2026 (embutida em <c>Arte/</c>; o gato e o logo foram trocados em 19/11/2026); o ícone ocioso é o mesmo <c>streemu.ico</c> do exe e do instalador, e há mais três (assistindo, transmitindo, cinema) que a janela e a bandeja trocam conforme a atividade (<see cref="AtividadeIcone"/>). Trocar a arte é trocar esses
 /// arquivos: a lateral, a janela, a bandeja e o Início mudam juntos.
 /// </summary>
 public static class UiBrand
@@ -310,58 +310,12 @@ public static class UiBrand
     }
 
     /// <summary>
-    /// O ícone com todos os tamanhos (o Windows escolhe o certo na barra de título, na barra de tarefas e na bandeja). <paramref name="live"/> acrescenta
-    /// o ponto vermelho de "ao vivo" no canto, em cada tamanho; o gato continua o mesmo.
+    /// O ícone da atividade com todos os tamanhos (o Windows escolhe o certo na barra de título, na barra de tarefas e na bandeja). Cada
+    /// atividade tem o seu <c>.ico</c> pronto (o de transmitindo já traz o indicador ao vivo); quem chama guarda o resultado e não recria a cada tick.
     /// </summary>
-    public static Icon CreateIcon(bool live)
+    public static Icon CreateIcon(AtividadeIcone atividade)
     {
-        using var stream = Resource("streemu.ico");
-        var icon = new Icon(stream);
-        if (!live) return icon;
-        using (icon) return WithLiveDot(icon);
-    }
-
-    static readonly int[] IconSizes = [16, 20, 24, 32, 40, 48, 64, 256];
-
-    static Icon WithLiveDot(Icon source)
-    {
-        var images = new List<(int Size, byte[] Png)>();
-        foreach (int s in IconSizes)
-        {
-            using var frame = new Icon(source, s, s);
-            using var bmp = new Bitmap(s, s, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bmp))
-            using (var art = frame.ToBitmap())
-            {
-                g.Clear(Color.Transparent);
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.DrawImage(art, 0, 0, s, s);
-                float d = Math.Max(6, s * .42f);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                using var ring = new SolidBrush(Theme.OnMedia);
-                g.FillEllipse(ring, s - d, 0, d, d);
-                using var dot = new SolidBrush(Theme.Error);
-                float inset = Math.Max(1, d * .16f);
-                g.FillEllipse(dot, s - d + inset, inset, d - 2 * inset, d - 2 * inset);
-            }
-            using var png = new MemoryStream();
-            bmp.Save(png, System.Drawing.Imaging.ImageFormat.Png);
-            images.Add((s, png.ToArray()));
-        }
-        using var ico = new MemoryStream();
-        using (var w = new BinaryWriter(ico, System.Text.Encoding.UTF8, leaveOpen: true))
-        {
-            w.Write((short)0); w.Write((short)1); w.Write((short)images.Count);
-            int offset = 6 + 16 * images.Count;
-            foreach (var (s, data) in images)
-            {
-                w.Write((byte)(s >= 256 ? 0 : s)); w.Write((byte)(s >= 256 ? 0 : s)); w.Write((byte)0); w.Write((byte)0);
-                w.Write((short)1); w.Write((short)32); w.Write(data.Length); w.Write(offset);
-                offset += data.Length;
-            }
-            foreach (var (_, data) in images) w.Write(data);
-        }
-        ico.Position = 0;
-        return new Icon(ico);
+        using var stream = Resource(IconeAtividade.Arquivo(atividade));
+        return new Icon(stream);
     }
 }

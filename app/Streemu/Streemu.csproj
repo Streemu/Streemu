@@ -73,7 +73,8 @@
   <!-- arte do Streemu (gato da marca, Mumu): embutida para a atualização automática levar junto; os originais em alta ficam fora do git -->
   <ItemGroup>
     <EmbeddedResource Include="Arte\*.png" LogicalName="Streemu.Arte.%(Filename)%(Extension)" />
-    <EmbeddedResource Include="streemu.ico" LogicalName="Streemu.Arte.streemu.ico" />
+    <!-- um ícone por atividade (ocioso, assistindo, transmitindo, cinema): streemu*.ico -->
+    <EmbeddedResource Include="streemu*.ico" LogicalName="Streemu.Arte.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- os binários que este exe quer, com o SHA-256 de cada arquivo (spec 004, seção 8): scripts/publicar-ffmpeg.ps1, publicar-ffplay.ps1 e publicar-mpv.ps1 gravam. O app só usa o que bater com eles (Util/Binarios.cs) -->

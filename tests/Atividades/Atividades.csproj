@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Só as regras puras: ler a atividade do servidor e montar as frases do Início (plano 019, etapa 9). Sem janela, sem rede, sem estado salvo. -->
+    <Compile Include="../../app/Streemu/Net/Atividade.cs" Link="Atividade.cs" />
+    <Compile Include="../../app/Streemu/Net/FrasesDeAtividade.cs" Link="FrasesDeAtividade.cs" />
+  </ItemGroup>
+</Project>

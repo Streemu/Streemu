@@ -1,0 +1,25 @@
+# Interface Streemu sem player
+
+```powershell
+dotnet run --project tests/StreemuInterface -- --layout-check
+dotnet run --project tests/StreemuInterface -- --check _local/streemu-interface/validacao-bloco2
+dotnet run --project tests/StreemuInterface -- --native-check
+dotnet run --project tests/StreemuInterface -- --identity-check _local/streemu-interface/validacao-bloco6/identidade
+dotnet run --project tests/StreemuInterface -- --cinema-check _local/streemu-interface/validacao-bloco3
+dotnet run --project tests/StreemuInterface -- --sidebar-audit _local/streemu-interface/barra-lateral
+dotnet run --project tests/StreemuInterface -- --sidebar-rows _local/streemu-interface/barra-lateral
+dotnet run --project tests/StreemuInterface -- --cinema-cost _local/streemu-interface/desempenho/cinema.json
+dotnet run --project tests/StreemuInterface -- _local/streemu-interface/desempenho/medicao.json
+```
+
+`--layout-check` verifica a compensação exclusiva QHD/125% em 15 combinações de resolução/DPI, alinhamento dos títulos/opções e três ciclos de mensagens nativas de desativação/ativação com barras aninhadas. A janela permanece minimizada; não prova a aparência após clicar fora e dentro em cada monitor físico.
+
+`--entrada-check [pasta]` confere que a tela de entrada da conta cabe na janela em seis tamanhos, antes e depois do primeiro clique (cartão entre o cabeçalho e o rodapé, controles dentro do cartão, título e frase sob a Mumu sem corte), e salva as imagens se receber a pasta. `--check` verifica comportamento/layout com dados fictícios e pode gerar imagens locais (inclui a Mumu dormindo só no Início vazio, dentro da área e centrada com a frase); inclui Encerrar live por mouse, espaço e ação acessível, sob Sua transmissão em três tamanhos de lateral, e os controles do player de lives (barra criada sem ser mostrada, `Viewer` sem `Start`): nomes acessíveis, ícone/dica de sair da tela cheia, `Esc` da janela principal e a decisão do `StageEscape` (Esc com o foco no vídeo, com janela fictícia e sem gancho real). `--native-check` exercita Load/Shown e navegação com a janela minimizada, em modo local e sem miniaturas. Sem opção, mede repouso, navegação, resize e desenho para bitmap com até 30 cards. Os testes usam estado isolado e não iniciam captura, encoder, player nem sala externa. Não execute builds enquanto houver instâncias do mesmo diretório em uso.
+
+`--identity-check` (também executado dentro do `--check`) confere a identidade visual do bloco 6: Transmitir na mesma posição em todos os estados e separado de Configurações, perfil no rodapé, lista de amigos sem vazar sobre o rodapé (comparação de pixels com 0 e 30 amigos), ao menos um amigo na altura mínima, gato da marca aberta e no trilho, ícone de 16 a 64 px (o embutido igual byte a byte ao `streemu.ico` do exe, ao vivo com ponto vermelho) e bandeja no tamanho do sistema, e uma guarda que falha se aparecer cor, fonte ou glifo fora de `Theme`/`UiResources` (exceções com motivo no próprio teste).
+
+`--sidebar-audit` abre a janela real fora da tela (sem rede, player nem estado pessoal) e passa por Início, Configurações, Transmitir (página e coluna), palco com 1 e 3 lives e Cinema (lista, entrada e player) em 4 tamanhos, com a barra aberta e recolhida: falha se um controle visível de fora da barra, ou a área dos vídeos, cair embaixo dela, se uma live sozinha não ocupar o palco inteiro com o cabeçalho por cima do vídeo (com várias, o cabeçalho fica na faixa), se a barra flutuante puder abrir com vídeo na tela, ou com um menu da barra aberto ou nas Configurações; ali confere que o mouse abre a barra encaixada sem cobrir nada (foto `ajustes-*-mouse.png`), que ela abre e recolhe sem deslizar (deslizando, a tela piscava), que recolhe quando o mouse sai e que o « a deixa aberta; e se a barra ainda deslizar logo depois de sair das Configurações (a troca de tela muda a largura na hora). `--sidebar-rows` confere que as linhas da própria barra não se cobrem da altura mínima da janela até +600 dp, aberta e no trilho, com e sem live, em 100/125/175 %. Nenhum dos dois prova o z-order real das janelas do ffplay e do mpv (não abrem player).
+
+`--cinema-check` verifica seleção por anfitrião/arquivo, desaparecimento/reabertura, criação independente, participação existente, Cinema vazio (texto e Mumu sem se cobrir nem cortar, centros alinhados, sem barra de rolagem à toa; fotos `cinema-vazio-*.png`), encaminhamento de anúncio na entrada e contexto durante conexão fictícia do download, quatro tamanhos/rolagem e encerramento dos timers de movimento. Não baixa mídia nem abre player. `--cinema-cost` mede 60 ciclos de listagem/resize/desenho e hover em dados fictícios, com drenagem das pinturas e verificação de timers parados antes de medir repouso.
+
+Métricas de CPU são tempo de processador do processo; divida pelo tempo de parede para obter utilização relativa a um núcleo. Memória/recursos são amostrados após GC explícito, sem representar picos. Veja condições, resultados e limites em `docs/planejamento/streemu/BLOCO-2.md` e `BLOCO-3.md`.

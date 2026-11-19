@@ -1,0 +1,87 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Streemu</AssemblyName>
+    <RootNamespace>Streemu</RootNamespace>
+    <Version>0.4.0</Version>
+    <!-- nome que o Windows mostra (Gerenciador de Tarefas, notificações da bandeja): o nome do produto, Streemu -->
+    <Product>Streemu</Product>
+    <AssemblyTitle>Streemu</AssemblyTitle>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- o gato do Streemu; o instalador (instalador/streemu.iss) usa o mesmo arquivo -->
+    <ApplicationIcon>streemu.ico</ApplicationIcon>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!--
+    Identidade do build para a atualização automática (spec 004): commit, hora do commit, carimbo do código
+    (hash da árvore desta pasta no git: código igual = carimbo igual) e canal (dev | release | main).
+    O build-release.ps1 passa -p:StreemuCanal=release e o GitHub Actions -p:StreemuCanal=main; build local fica "dev" e não se atualiza.
+  -->
+  <PropertyGroup>
+    <StreemuCanal Condition="'$(StreemuCanal)' == ''">dev</StreemuCanal>
+  </PropertyGroup>
+  <Target Name="StreemuBuildInfo" BeforeTargets="CoreCompile">
+    <Exec Command="git rev-parse HEAD" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="StreemuCommit" />
+    </Exec>
+    <Exec Command="git rev-parse HEAD:./" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="StreemuTree" />
+    </Exec>
+    <Exec Command="git log -1 --format=%%ct" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="StreemuCommitTime" />
+    </Exec>
+    <PropertyGroup>
+      <StreemuCommitTime Condition="'$(StreemuCommitTime)' == '' Or !$([System.Text.RegularExpressions.Regex]::IsMatch('$(StreemuCommitTime)', '^\d+$'))">0</StreemuCommitTime>
+      <StreemuInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</StreemuInfoFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <StreemuInfoLine Include="namespace Streemu%3B" />
+      <StreemuInfoLine Include="/// &lt;summary&gt;Gerado pelo Streemu.csproj (target StreemuBuildInfo). Não editar.&lt;/summary&gt;" />
+      <StreemuInfoLine Include="static class BuildInfo" />
+      <StreemuInfoLine Include="{" />
+      <StreemuInfoLine Include="    public const string Commit = &quot;$(StreemuCommit)&quot;%3B" />
+      <StreemuInfoLine Include="    public const string Tree = &quot;$(StreemuTree)&quot;%3B" />
+      <StreemuInfoLine Include="    public const long CommitTime = $(StreemuCommitTime)%3B" />
+      <StreemuInfoLine Include="    public const string Canal = &quot;$(StreemuCanal)&quot;%3B" />
+      <StreemuInfoLine Include="}" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(StreemuInfoFile)" Lines="@(StreemuInfoLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(StreemuInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="3.3.0" />
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- sons de quem transmite (live abriu/fechou, alguém entrou/saiu): embutidos para a atualização automática levar junto -->
+  <ItemGroup>
+    <EmbeddedResource Include="Sons\*.wav" LogicalName="Streemu.Sons.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- arte do Streemu (gato da marca, Mumu): embutida para a atualização automática levar junto; os originais em alta ficam fora do git -->
+  <ItemGroup>
+    <EmbeddedResource Include="Arte\*.png" LogicalName="Streemu.Arte.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="streemu.ico" LogicalName="Streemu.Arte.streemu.ico" />
+  </ItemGroup>
+
+  <!-- os binários que este exe quer, com o SHA-256 de cada arquivo (spec 004, seção 8): scripts/publicar-ffmpeg.ps1, publicar-ffplay.ps1 e publicar-mpv.ps1 gravam. O app só usa o que bater com eles (Util/Binarios.cs) -->
+  <ItemGroup>
+    <EmbeddedResource Include="ffmpeg-desejado.json" LogicalName="ffmpeg-desejado.json" />
+    <EmbeddedResource Include="ffplay-desejado.json" LogicalName="ffplay-desejado.json" />
+    <EmbeddedResource Include="mpv-desejado.json" LogicalName="mpv-desejado.json" />
+    <EmbeddedResource Include="Filme\streemu-osc.lua" LogicalName="streemu-osc.lua" />
+  </ItemGroup>
+
+</Project>

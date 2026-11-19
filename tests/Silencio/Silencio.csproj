@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Só o interruptor das notificações: sem janela nem relógio de verdade (spec 012, T8). -->
+    <Compile Include="../../app/Streemu/Avisos/Silencio.cs" Link="Silencio.cs" />
+  </ItemGroup>
+</Project>

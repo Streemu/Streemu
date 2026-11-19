@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <!-- Referencia o app inteiro: Envio e SessaoLocal dependem de Ids, Higiene, Log, Program.Version e BuildInfo. Sem janela: nada aqui abre formulário. -->
+  <ItemGroup><ProjectReference Include="../../app/Streemu/Streemu.csproj" /></ItemGroup>
+</Project>

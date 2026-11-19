@@ -1,0 +1,8 @@
+bin/
+obj/
+dist/
+ffmpeg/
+mpv/
+grupo.json
+*.user
+.vs/

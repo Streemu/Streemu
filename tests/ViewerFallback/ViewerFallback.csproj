@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Mesmo ciclo de vida e leitura de stderr do app; só janela, áudio e executável são simulados. -->
+    <Compile Include="../../app/Streemu/Media/Viewer.cs" Link="Viewer.cs" />
+    <Compile Include="../../app/Streemu/Media/Tools.cs" Link="Tools.cs" />
+    <Compile Include="../../app/Streemu/Media/LiveSync.cs" Link="LiveSync.cs" />
+  </ItemGroup>
+</Project>

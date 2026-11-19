@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Só as regras puras: apelidos locais e o filtro do log (plano 019, etapa 7). Sem janela, sem rede, sem estado salvo. -->
+    <Compile Include="../../app/Streemu/Util/ApelidosLocais.cs" Link="ApelidosLocais.cs" />
+    <Compile Include="../../app/Streemu/Util/Log.cs" Link="Log.cs" />
+  </ItemGroup>
+</Project>

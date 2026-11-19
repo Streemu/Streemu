@@ -1,0 +1,10 @@
+{
+    "versao":  "20261111-git-bcde6b93cc",
+    "tag":  "mpv-20261111-git-bcde6b93cc",
+    "zip_sha256":  "c9082925ab6b5acc3b4f991d04e199751a01d7616ffdff22701764f8a27b88d9",
+    "zip_tamanho":  49334873,
+    "arquivos":  {
+        "mpv.exe":  "3ea89fe7a4284b25dff3c72e1bde83e27324c90cfc4a074fe679293d19ee7c85",
+        "d3dcompiler_43.dll":  "4b074a3976399dc735484f5d43d04b519b7bdee8ac719d9ab8ed6bd4e6be0345"
+    }
+}

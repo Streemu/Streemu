@@ -1,0 +1,27 @@
+{
+  "atualizado_em": "2026-11-20T16:59:43Z",
+  "ultima": "instalador",
+  "instalador": {
+    "versao": "0.5.0",
+    "tag": "v0.5.0",
+    "arquivo": "Streemu-Instalador.exe",
+    "sha256": "c3be5481f075d4c44df463729b8b76f8cdd96a2c2ab1caa71b30226310fca652",
+    "publicado_em": "2026-11-19T21:02:52Z",
+    "virustotal": {
+      "status": "ok",
+      "deteccoes": 0,
+      "total": 70,
+      "motores_que_acusaram": [],
+      "link": "https://www.virustotal.com/gui/file/c3be5481f075d4c44df463729b8b76f8cdd96a2c2ab1caa71b30226310fca652",
+      "analisado_em": "2026-11-20T05:22:41Z"
+    },
+    "metadefender": {
+      "status": "ok",
+      "deteccoes": 0,
+      "total": 21,
+      "motores_que_acusaram": [],
+      "link": "https://metadefender.com/results/hash/c3be5481f075d4c44df463729b8b76f8cdd96a2c2ab1caa71b30226310fca652",
+      "analisado_em": "2026-11-20T16:15:01Z"
+    }
+  }
+}

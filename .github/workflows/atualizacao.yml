@@ -24,6 +24,8 @@ jobs:
       contents: write      # publicar a pré-release
       id-token: write      # atestado de origem
       attestations: write
+    outputs:
+      defender: ${{ steps.defender.outputs.json }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -68,6 +70,13 @@ jobs:
           Copy-Item $exe pub/Streemu.exe
           Get-Content pub/versao.json
 
+      # Varredura do Microsoft Defender do runner (scripts/varredura-defender.ps1), ANTES do atestado e da publicação: se acusar o zip ou o exe,
+      # a atualização não sai (a main-atual anterior continua valendo). O resultado vai para o job "varredura" como saída do job.
+      - name: Varredura do Defender
+        id: defender
+        shell: pwsh
+        run: ./scripts/varredura-defender.ps1 -Arquivos pub/streemu-main.zip,pub/Streemu.exe -Saida defender.json
+
       # o exe também, para quem quiser conferir o que já está instalado
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -83,3 +92,43 @@ jobs:
           gh release create main-atual -R $env:GITHUB_REPOSITORY pub/streemu-main.zip pub/versao.json --prerelease --target $env:GITHUB_SHA `
             --title "Atualização automática" --notes-file pub/notas.md
           if ($LASTEXITCODE -ne 0) { throw "não consegui publicar a pré-release" }
+
+  # Antivírus na nuvem (VirusTotal e MetaDefender) depois da pré-release publicada: o resultado entra nas notas dela e no branch "status"
+  # (badge do README e JSON do site; a seção "atualizacao"). Nunca derruba a entrega: detecção externa só é registrada.
+  varredura:
+    needs: atualizacao
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: write      # editar as notas da pré-release e escrever no branch status
+    concurrency:
+      group: varredura-status
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEFENDER_JSON: ${{ needs.atualizacao.outputs.defender }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Varrer a atualização
+        shell: pwsh
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          METADEFENDER_API_KEY: ${{ secrets.METADEFENDER_API_KEY }}
+        run: |
+          gh release download main-atual -R $env:GITHUB_REPOSITORY -p streemu-main.zip -p versao.json -D baixados --clobber
+          if ($LASTEXITCODE -ne 0) { throw "não consegui baixar streemu-main.zip e versao.json da main-atual" }
+          $v = Get-Content baixados/versao.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $sha = (Get-FileHash baixados/streemu-main.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha -ne ([string]$v.sha256).ToLowerInvariant()) { throw "o streemu-main.zip baixado tem SHA-256 $sha; o versao.json diz $($v.sha256). A main-atual mudou no meio; a próxima entrega tem a sua varredura." }
+          $publicado = gh release view main-atual -R $env:GITHUB_REPOSITORY --json publishedAt -q .publishedAt
+          New-Item -ItemType Directory -Force varredura-out | Out-Null
+          if ($env:DEFENDER_JSON) { [IO.File]::WriteAllText("$PWD/varredura-out/defender.json", $env:DEFENDER_JSON, (New-Object Text.UTF8Encoding($false))) }
+          ./scripts/varredura.ps1 -Tipo atualizacao -Arquivo baixados/streemu-main.zip -Tag main-atual -Versao $v.versao -Commit $v.commit -PublicadoEm $publicado -Saida varredura-out -Esperar
+
+      - name: Publicar o resultado
+        shell: pwsh
+        run: ./scripts/publicar-varredura.ps1 -Pasta varredura-out -Tipo atualizacao

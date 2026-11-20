@@ -1,0 +1,176 @@
+# Reconferência diária do antivírus: os antivírus revisam o veredito com o tempo, então toda manhã consulta de novo o resultado
+# dos DOIS alvos pelo SHA-256: o instalador (a última release, ou a tag informada) e a atualização automática (a pré-release main-atual).
+# Atualiza as notas da release e o branch "status" (badge e varredura.json). Só consulta; o arquivo só é baixado e enviado se um
+# serviço não conhecer o hash.
+# Chaves: secrets VT_API_KEY e METADEFENDER_API_KEY (veja docs/varredura.md).
+name: Varredura
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+    inputs:
+      alvo:
+        description: 'O que reconferir'
+        type: choice
+        options: [ambos, instalador, atualizacao]
+        default: ambos
+      tag:
+        description: 'Tag do instalador (vazio = a última release)'
+        required: false
+
+permissions: {}
+
+# o mesmo grupo dos jobs de varredura do instalador.yml e do atualizacao.yml: nunca dois escrevendo no branch status ao mesmo tempo
+concurrency:
+  group: varredura-status
+  cancel-in-progress: false
+
+jobs:
+  instalador:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.alvo != 'atualizacao' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write      # editar as notas da release e escrever no branch status
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG_ENTRADA: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Achar a release e o hash
+        id: rel
+        shell: pwsh
+        run: |
+          $tag = $env:TAG_ENTRADA
+          if (-not $tag) { $tag = gh release view -R $env:GITHUB_REPOSITORY --json tagName -q .tagName }
+          if (-not $tag) { throw "não achei a última release" }
+          if ($tag -notmatch '^(v\d+\.\d+\.\d+|instalador-\d{4}-\d{2}-\d{2}(-\d+)?)$') { throw "Tag '$tag' fora do padrão." }
+          $nome = gh release view $tag -R $env:GITHUB_REPOSITORY --json name -q .name
+          $versao = if ($nome -match '^Streemu (\S+)') { $Matches[1] } else { $tag }
+          $publicado = gh release view $tag -R $env:GITHUB_REPOSITORY --json publishedAt -q .publishedAt
+          gh release download $tag -R $env:GITHUB_REPOSITORY -p SHA256SUMS.txt -D baixados --clobber
+          if ($LASTEXITCODE -ne 0) { throw "a release $tag não tem SHA256SUMS.txt" }
+          $sha = ((Get-Content baixados/SHA256SUMS.txt -TotalCount 1) -split '\s+')[0].ToLowerInvariant()
+          if ($sha -notmatch '^[0-9a-f]{64}$') { throw "SHA-256 ilegível em SHA256SUMS.txt" }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "versao=$versao" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "publicado=$publicado" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $global:LASTEXITCODE = 0
+
+      - name: Varrer de novo
+        shell: pwsh
+        env:
+          TAG: ${{ steps.rel.outputs.tag }}
+          VERSAO: ${{ steps.rel.outputs.versao }}
+          PUBLICADO: ${{ steps.rel.outputs.publicado }}
+          SHA: ${{ steps.rel.outputs.sha }}
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          METADEFENDER_API_KEY: ${{ secrets.METADEFENDER_API_KEY }}
+        run: |
+          New-Item -ItemType Directory -Force varredura-out | Out-Null
+          # o Defender só roda na hora de compilar: guarda o resultado dele que já está no branch status, se for do mesmo arquivo (mesmo SHA-256)
+          try {
+            $ant = Invoke-RestMethod "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/status/varredura.json"
+            if ($ant.instalador -and $ant.instalador.sha256 -eq $env:SHA -and $ant.instalador.defender) {
+              [IO.File]::WriteAllText("$PWD/varredura-out/defender.json", ($ant.instalador.defender | ConvertTo-Json -Depth 5 -Compress), (New-Object Text.UTF8Encoding($false)))
+            }
+          } catch { Write-Host "sem varredura anterior no branch status ($($_.Exception.Message))" }
+
+          # 1) só consulta pelo hash
+          ./scripts/varredura.ps1 -Tipo instalador -Sha256 $env:SHA -Tag $env:TAG -Versao $env:VERSAO -PublicadoEm $env:PUBLICADO -Saida varredura-out
+          # 2) algum serviço não conhece o hash: baixa o instalador e envia
+          $j = Get-Content varredura-out/secao.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $novo = @($j.virustotal, $j.metadefender) | Where-Object { $_.mensagem -like 'hash-desconhecido*' }
+          if ($novo) {
+            gh release download $env:TAG -R $env:GITHUB_REPOSITORY -p Streemu-Instalador.exe -D baixados --clobber
+            if ($LASTEXITCODE -ne 0) { throw "não consegui baixar o instalador da release $env:TAG" }
+            ./scripts/varredura.ps1 -Tipo instalador -Arquivo baixados/Streemu-Instalador.exe -Sha256 $env:SHA -Tag $env:TAG -Versao $env:VERSAO -PublicadoEm $env:PUBLICADO -Saida varredura-out -Esperar
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Publicar o resultado
+        shell: pwsh
+        env:
+          TAG: ${{ steps.rel.outputs.tag }}
+        run: ./scripts/publicar-varredura.ps1 -Pasta varredura-out -Tipo instalador -Tag $env:TAG
+
+  atualizacao:
+    # depois do instalador (o plano grátis do VirusTotal limita as consultas por minuto); roda mesmo se o instalador falhou ou foi pulado
+    needs: instalador
+    if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.alvo != 'instalador') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write      # editar as notas da pré-release e escrever no branch status
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Achar a atualização e o hash
+        id: rel
+        shell: pwsh
+        run: |
+          # a main-atual é apagada e recriada a cada entrega; se ela ainda não existe, não há o que conferir
+          gh release download main-atual -R $env:GITHUB_REPOSITORY -p versao.json -D baixados --clobber
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning::não achei a pré-release main-atual; nada a reconferir"
+            "existe=nao" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            $global:LASTEXITCODE = 0
+            return
+          }
+          $v = Get-Content baixados/versao.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $sha = ([string]$v.sha256).ToLowerInvariant()
+          if ($sha -notmatch '^[0-9a-f]{64}$') { throw "SHA-256 ilegível em versao.json" }
+          $publicado = gh release view main-atual -R $env:GITHUB_REPOSITORY --json publishedAt -q .publishedAt
+          "existe=sim" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "versao=$($v.versao)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "commit=$($v.commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "publicado=$publicado" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $global:LASTEXITCODE = 0
+
+      - name: Varrer de novo
+        if: ${{ steps.rel.outputs.existe == 'sim' }}
+        shell: pwsh
+        env:
+          VERSAO: ${{ steps.rel.outputs.versao }}
+          COMMIT: ${{ steps.rel.outputs.commit }}
+          PUBLICADO: ${{ steps.rel.outputs.publicado }}
+          SHA: ${{ steps.rel.outputs.sha }}
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          METADEFENDER_API_KEY: ${{ secrets.METADEFENDER_API_KEY }}
+        run: |
+          New-Item -ItemType Directory -Force varredura-out | Out-Null
+          # o Defender só roda na hora de compilar: guarda o resultado dele que já está no branch status, se for do mesmo arquivo (mesmo SHA-256)
+          try {
+            $ant = Invoke-RestMethod "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/status/varredura.json"
+            if ($ant.atualizacao -and $ant.atualizacao.sha256 -eq $env:SHA -and $ant.atualizacao.defender) {
+              [IO.File]::WriteAllText("$PWD/varredura-out/defender.json", ($ant.atualizacao.defender | ConvertTo-Json -Depth 5 -Compress), (New-Object Text.UTF8Encoding($false)))
+            }
+          } catch { Write-Host "sem varredura anterior no branch status ($($_.Exception.Message))" }
+
+          # 1) só consulta pelo hash
+          ./scripts/varredura.ps1 -Tipo atualizacao -Sha256 $env:SHA -Versao $env:VERSAO -Commit $env:COMMIT -PublicadoEm $env:PUBLICADO -Saida varredura-out
+          # 2) algum serviço não conhece o hash: baixa o zip e envia
+          $j = Get-Content varredura-out/secao.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $novo = @($j.virustotal, $j.metadefender) | Where-Object { $_.mensagem -like 'hash-desconhecido*' }
+          if ($novo) {
+            gh release download main-atual -R $env:GITHUB_REPOSITORY -p streemu-main.zip -D baixados --clobber
+            if ($LASTEXITCODE -ne 0) { throw "não consegui baixar o streemu-main.zip da main-atual" }
+            # com -Sha256 junto, o script confere que o zip baixado é o do versao.json (se a main-atual mudou no meio, ele para)
+            ./scripts/varredura.ps1 -Tipo atualizacao -Arquivo baixados/streemu-main.zip -Sha256 $env:SHA -Versao $env:VERSAO -Commit $env:COMMIT -PublicadoEm $env:PUBLICADO -Saida varredura-out -Esperar
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Publicar o resultado
+        if: ${{ steps.rel.outputs.existe == 'sim' }}
+        shell: pwsh
+        run: ./scripts/publicar-varredura.ps1 -Pasta varredura-out -Tipo atualizacao

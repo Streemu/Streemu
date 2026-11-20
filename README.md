@@ -36,9 +36,15 @@ Get-FileHash .\Streemu-Instalador.exe -Algorithm SHA256
 
 tem que dar o mesmo valor. O hash prova que o arquivo não mudou depois da release; o atestado prova também de onde ele veio.
 
+### Antivírus
+
+[![antivírus](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Streemu/Streemu/status/badge.json)](https://github.com/Streemu/Streemu/releases/latest)
+
+O selo acima mostra a **última versão disponível** do Streemu (o instalador ou a atualização automática, o que for mais novo) e o resultado da varredura dela. Cada arquivo é varrido pelo Microsoft Defender dentro do próprio workflow, **antes** de ser publicado: se ele acusar alguma coisa, o instalador ou a atualização não sai. Depois de publicado, é conferido no [VirusTotal](https://www.virustotal.com) (cerca de 70 antivírus) e no [MetaDefender](https://metadefender.com). Isso vale para o instalador (`Streemu-Instalador.exe`) e para cada atualização automática (`streemu-main.zip`, o que a maioria das pessoas recebe). O resultado fica nas notas da release e em <https://raw.githubusercontent.com/Streemu/Streemu/status/varredura.json>, e é reconferido todo dia, porque os antivírus revisam o veredito com o tempo. Como o app ainda não é assinado, às vezes 1 a 3 antivírus pouco conhecidos o marcam por engano (falso positivo); o resultado é mostrado do jeito que vier. Detalhes em [docs/varredura.md](docs/varredura.md).
+
 ### E as atualizações?
 
-Depois de instalado, o Streemu se atualiza sozinho. As atualizações também são compiladas aqui (`.github/workflows/atualizacao.yml`), saem na pré-release `main-atual` e têm atestado. O app confere o SHA-256 do pacote antes de instalar. Para conferir o exe que já está no seu PC:
+Depois de instalado, o Streemu se atualiza sozinho. As atualizações também são compiladas aqui (`.github/workflows/atualizacao.yml`), saem na pré-release `main-atual`, têm atestado e passam pela varredura de antivírus descrita acima. O app confere o SHA-256 do pacote antes de instalar. Para conferir o exe que já está no seu PC:
 
 ```powershell
 gh attestation verify "$env:LOCALAPPDATA\Programs\Streemu\Streemu.exe" -R Streemu/Streemu

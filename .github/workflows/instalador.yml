@@ -27,6 +27,9 @@ jobs:
       contents: write      # criar a release
       id-token: write      # atestado de origem
       attestations: write
+    outputs:
+      defender: ${{ steps.defender.outputs.json }}
+      versao: ${{ steps.publicar.outputs.versao }}
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -79,11 +82,19 @@ jobs:
           [IO.File]::WriteAllText("$PWD/pub/SHA256SUMS.txt", "$h  Streemu-Instalador.exe`n", (New-Object Text.UTF8Encoding($false)))
           Get-Content pub/SHA256SUMS.txt
 
+      # Varredura do Microsoft Defender do runner (scripts/varredura-defender.ps1), ANTES do atestado e da publicação: se acusar, a release não sai.
+      # O resultado vai para o job "varredura" como saída do job (defender.json NÃO vira asset da release).
+      - name: Varredura do Defender
+        id: defender
+        shell: pwsh
+        run: ./scripts/varredura-defender.ps1 -Arquivos pub/Streemu-Instalador.exe -Saida defender.json
+
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: pub/Streemu-Instalador.exe
 
       - name: Publicar a release
+        id: publicar
         shell: pwsh
         run: |
           $ver = ([regex]::Match((Get-Content app/Streemu/Streemu.csproj -Raw), '<Version>([^<]+)</Version>')).Groups[1].Value
@@ -103,3 +114,43 @@ jobs:
           gh release create $env:TAG -R $env:GITHUB_REPOSITORY pub/Streemu-Instalador.exe pub/SHA256SUMS.txt --target $env:GITHUB_SHA --latest `
             --title "Streemu $ver ($env:TAG)" --notes-file pub/notas.md
           if ($LASTEXITCODE -ne 0) { throw "não consegui publicar a release" }
+          "versao=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  # Antivírus na nuvem (VirusTotal e MetaDefender) depois da release publicada: o resultado entra nas notas, no branch "status"
+  # (badge do README e JSON do site; a seção "instalador"). Nunca derruba a release: detecção externa só é registrada, falso positivo é comum.
+  varredura:
+    needs: instalador
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: write      # editar as notas da release e escrever no branch status
+    concurrency:
+      group: varredura-status
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      VERSAO: ${{ needs.instalador.outputs.versao }}
+      DEFENDER_JSON: ${{ needs.instalador.outputs.defender }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Varrer o instalador
+        shell: pwsh
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          METADEFENDER_API_KEY: ${{ secrets.METADEFENDER_API_KEY }}
+        run: |
+          gh release download $env:TAG -R $env:GITHUB_REPOSITORY -p Streemu-Instalador.exe -D baixados --clobber
+          if ($LASTEXITCODE -ne 0) { throw "não consegui baixar o instalador da release $env:TAG" }
+          $publicado = gh release view $env:TAG -R $env:GITHUB_REPOSITORY --json publishedAt -q .publishedAt
+          New-Item -ItemType Directory -Force varredura-out | Out-Null
+          if ($env:DEFENDER_JSON) { [IO.File]::WriteAllText("$PWD/varredura-out/defender.json", $env:DEFENDER_JSON, (New-Object Text.UTF8Encoding($false))) }
+          ./scripts/varredura.ps1 -Tipo instalador -Arquivo baixados/Streemu-Instalador.exe -Tag $env:TAG -Versao $env:VERSAO -PublicadoEm $publicado -Saida varredura-out -Esperar
+
+      - name: Publicar o resultado
+        shell: pwsh
+        run: ./scripts/publicar-varredura.ps1 -Pasta varredura-out -Tipo instalador -Tag $env:TAG

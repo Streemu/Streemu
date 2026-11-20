@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.0",
-    "privado":  "82c775d9be891bbecc442c6f9d53e169b6e4c479",
-    "notas":  "- Mostra a atividade num selo na barra de tarefas e renova o ícone depois da atualização",
+    "privado":  "5f5f9eacb4b8f01a48e03660fd20e596ef7b9436",
+    "notas":  "- Adiciona recuperação experimental do player por Direct3D 11",
     "obrigatoria":  false
 }

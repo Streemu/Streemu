@@ -17,7 +17,7 @@ public sealed partial class MainForm
         if (_sender.Running) _serieSincronia.Add(_streamId, "propria", "transmite", _sender.SyncSnapshot());
         foreach (var (id, viewer) in _linkViewers)
             if (viewer.Running && !viewer.IsPreview)
-                _serieSincronia.Add(_teleLiveDaLigacao.GetValueOrDefault(id), id, "assiste", viewer.Sync.Snapshot());
+                _serieSincronia.Add(_teleLiveDaLigacao.GetValueOrDefault(id), id, "assiste", viewer.PlaybackSnapshot());
     }
 
     /// <summary>Rede de cada ligação (etapa 10 da spec 009): uma linha a cada 5 s por ligação conectada, só contadores que o túnel já mantém.</summary>

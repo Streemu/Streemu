@@ -9,11 +9,14 @@ static class Program
     static async Task<int> Main(string[] args)
     {
         // Uma cópia do apphost se passa pelo ffplay. Nenhum teste abre janela, rede ou dispositivo de áudio.
-        if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "ffplay") return await FakePlayer(args);
+        string executable = Path.GetFileNameWithoutExtension(Environment.ProcessPath)!;
+        if (executable == "mpv") return await FakeDirect3D(args);
+        if (executable == "ffplay") return await FakePlayer(args);
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "ffplay.exe"), true);
+        File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "mpv.exe"), true);
         var results = new List<string>();
         int failed = 0;
-        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview" })
+        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview" })
         {
             if (Environment.GetEnvironmentVariable("VIEWER_CASE_FILTER") is { } filter && name != filter) continue;
             try { await Check(name); results.Add($"OK    player-{name}"); }
@@ -35,8 +38,25 @@ static class Program
         if (name == "network-close") { Console.Error.WriteLine("Connection to srt://127.0.0.1 failed: I/O error"); return 0; }
         if (name == "exit-error") return 1;
         if (name == "surface-late") await Task.Delay(4200);
-        Console.Error.WriteLine(name == "vram-loop" ? "[error] VK_ERROR_OUT_OF_DEVICE_MEMORY" : SurfaceError);
-        if (name == "vram-loop") await Task.Delay(20000);
+        if (name == "d3d11-not-memory")
+        {
+            Console.Error.WriteLine("Failed creating an unrelated resource");
+            return 0;
+        }
+        Console.Error.WriteLine(name == "vram-loop" || name.StartsWith("d3d11-") ? "[error] VK_ERROR_OUT_OF_DEVICE_MEMORY" : SurfaceError);
+        if (name == "vram-loop" || name.StartsWith("d3d11-")) await Task.Delay(20000);
+        return 0;
+    }
+
+    static async Task<int> FakeDirect3D(string[] args)
+    {
+        if (!args.Contains("--hwdec=d3d11va") || !args.Contains("--gpu-context=d3d11"))
+            return 2;
+        File.AppendAllText(Environment.GetEnvironmentVariable("VIEWER_FAKE_TRACE")!, "d3d11\n");
+        string name = Environment.GetEnvironmentVariable("VIEWER_FAKE_CASE")!;
+        Console.WriteLine(name == "d3d11-fails" ? "STREEMU_D3D11 no 1280 720 1.7778" : "STREEMU_D3D11 d3d11va 1280 720 1.7778");
+        Console.WriteLine("STREEMU_MPV_STATUS -0.012 9 2");
+        await Task.Delay(20000);
         return 0;
     }
 
@@ -46,7 +66,15 @@ static class Program
         Environment.SetEnvironmentVariable("VIEWER_FAKE_CASE", name);
         Environment.SetEnvironmentVariable("VIEWER_FAKE_TRACE", trace);
         Log.Lines.Clear();
-        var viewer = new Viewer { UseHardware = name != "cpu-error" };
+        bool direct3D = name.StartsWith("d3d11-");
+        var viewer = new Viewer
+        {
+            UseHardware = name != "cpu-error",
+            AvoidVulkan = name == "d3d11-cooldown",
+            Direct3DExecutable = direct3D ? Path.Combine(AppContext.BaseDirectory, "mpv.exe") : null,
+        };
+        int vramFailures = 0;
+        viewer.VulkanMemoryFailed += () => Interlocked.Increment(ref vramFailures);
         int restarts = 0, exits = 0;
         using var exited = new ManualResetEventSlim();
         viewer.Restarting += () =>
@@ -59,6 +87,35 @@ static class Program
         {
             if (name == "preview") viewer.StartLocal(_ => new Tap(), "teste");
             else viewer.Start(12345, "somente-teste", 80, "teste");
+            if (direct3D)
+            {
+                if (name == "d3d11-not-memory")
+                {
+                    await Until(() => Volatile.Read(ref exits) == 1);
+                    Require(vramFailures == 0 && restarts == 0 && ReadTrace(trace) == "gpu", "Erro genérico disparou recuperação de VRAM.");
+                    return;
+                }
+                string expected = name == "d3d11-cooldown" ? "d3d11" : name == "d3d11-fails" ? "gpu,d3d11,cpu" : "gpu,d3d11";
+                await Until(() => ReadTrace(trace) == expected && viewer.Running
+                    && viewer.Decoder == (name == "d3d11-fails" ? "cpu" : "d3d11va"));
+                Require(vramFailures == (name == "d3d11-cooldown" ? 0 : 1), "Registro de falha de memória incorreto.");
+                Require(restarts == expected.Count(c => c == ',') && exits == 0, "Avisou o transmissor em uma hora errada.");
+                if (name != "d3d11-fails")
+                {
+                    Require(viewer.VideoSize == new Size(1280, 720) && viewer.UsingHardware, "Não confirmou o decoder ou a resolução.");
+                    await Until(() => viewer.PlaybackSnapshot()["quadros_descartados_exibicao"]?.GetValue<int>() == 9);
+                    var stats = viewer.PlaybackSnapshot();
+                    Require(stats["quadros_descartados_decodificador"]?.GetValue<int>() == 2
+                        && stats["audio_menos_video_ms"]?.GetValue<int>() == -12, "Misturou os contadores ou perdeu o valor de sincronia.");
+                }
+                if (name == "d3d11-resize")
+                {
+                    viewer.Reopen(new Rectangle(100, 100, 480, 270));
+                    await Until(() => ReadTrace(trace) == "gpu,d3d11,d3d11" && viewer.Decoder == "d3d11va" && !viewer.Reopening);
+                    Require(exits == 0 && restarts == 2, "Redimensionar desligou o player ou trocou de decoder.");
+                }
+                return;
+            }
             bool shouldRetry = name is not ("normal-close" or "cpu-error" or "network-close");
             if (name == "stop-early")
             {

@@ -86,7 +86,7 @@ public static class Tools
     }
 
     /// <param name="binaryStdout">true: o stdout fica para quem chamou ler como bytes (ex.: mpegts da captura).</param>
-    public static Process Start(string exe, IEnumerable<string> args, string tag, bool redirectStdin, Action<string>? onStderr = null, bool hideWindow = true, bool binaryStdout = false)
+    public static Process Start(string exe, IEnumerable<string> args, string tag, bool redirectStdin, Action<string>? onStderr = null, bool hideWindow = true, bool binaryStdout = false, Action<string>? onStdout = null)
     {
         // só o caminho completo que o Binarios deu: um nome solto faria o Windows procurar o exe no PATH
         if (!Path.IsPathFullyQualified(exe)) throw new BinarioIndisponivelException($"caminho de programa sem a pasta ({Path.GetFileName(exe)}): o Streemu só roda o que vem com ele");
@@ -110,7 +110,7 @@ public static class Tools
             onStderr?.Invoke(e.Data);
             if (!e.Data.StartsWith("frame=") && !e.Data.Contains("A-V:") && !string.IsNullOrWhiteSpace(e.Data) && !IsFfplayChatter(e.Data)) filter.Write(ForLog(e.Data));
         };
-        p.OutputDataReceived += (_, _) => { };
+        p.OutputDataReceived += (_, e) => { if (e.Data is { } line) onStdout?.Invoke(line); };
         p.Start();
         Native.AddToKillOnCloseJob(p);
         p.BeginErrorReadLine();

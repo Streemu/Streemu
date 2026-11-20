@@ -1,20 +1,36 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json.Nodes;
 using Streemu.Util;
 
 namespace Streemu.Media;
 
 /// <summary>
-/// Player: ffplay em modo SRT caller, ligado ao relay local que leva os pacotes pelo túnel.
-/// Tenta primeiro decodificar na placa de vídeo (renderizador Vulkan + -hwaccel vulkan); se o ffplay
-/// não abrir assim, ou se a placa ficar sem memória de vídeo, reabre sozinho decodificando na CPU.
-///
-/// Não há degrau intermediário com d3d11va: neste ffplay o "-hwaccel" exige o renderizador Vulkan
-/// ("Vulkan renderer is not available" sem -enable_vulkan), e é o renderizador (libplacebo) que fica sem memória.
+/// Player de lives com ffplay. O modo experimental usa mpv/Direct3D 11 para recuperar
+/// uma falha do Vulkan sem abandonar a decodificação por hardware.
 /// </summary>
 public sealed class Viewer
 {
-    Process? _ffplay;
-    bool _stopRequested, _reopening;
+    Process? _player;
+    volatile bool _stopRequested, _reopening;
+    bool _direct3DActive;
+    sealed record PlayerFailure(string Reason, bool Memory = false);
+    sealed record Direct3DSample(int? AudioVideoMs, int RenderDrops, int DecoderDrops);
+    volatile Direct3DSample? _direct3DSample;
+
+    public JsonObject PlaybackSnapshot()
+    {
+        if (!_direct3DActive) return Sync.Snapshot();
+        var sample = _direct3DSample;
+        return new JsonObject
+        {
+            ["medida"] = sample == null ? "sem_medida_recente" : "relogios_do_player",
+            ["decodificador"] = Decoder,
+            ["audio_menos_video_ms"] = sample?.AudioVideoMs,
+            ["quadros_descartados_exibicao"] = sample?.RenderDrops,
+            ["quadros_descartados_decodificador"] = sample?.DecoderDrops,
+        };
+    }
     int _relayPort, _latencyMs;
     string _passphrase = "", _title = "";
     readonly Dictionary<string, int> _errors = new();
@@ -22,15 +38,19 @@ public sealed class Viewer
 
     public Viewer()
     {
-        int? PlayerPid() => _ffplay is { HasExited: false } p ? p.Id : null;
+        int? PlayerPid() => _player is { HasExited: false } p ? p.Id : null;
         Window = new PlayerWindow(PlayerPid);
         Audio = new PlayerAudio(PlayerPid);
     }
 
     /// <summary>O ffplay está sendo reaberto agora (a janela atual vai sumir).</summary>
     public bool Reopening => _reopening;
-    public bool Running => _ffplay is { HasExited: false };
+    public bool Running => _player is { HasExited: false };
     public bool UseHardware { get; set; } = true;
+    public bool AvoidVulkan { get; init; }
+    public string? Direct3DExecutable { get; init; }
+    public string Decoder => _direct3DActive ? (UsingHardware ? "d3d11va" : "inicializando_d3d11") : (UsingHardware ? "vulkan_solicitado" : "cpu");
+    public event Action? VulkanMemoryFailed;
     /// <summary>Janela do ffplay para mover e fixar no topo.</summary>
     public PlayerWindow Window { get; }
     /// <summary>Volume e mudo só do player.</summary>
@@ -83,7 +103,8 @@ public sealed class Viewer
         FellBackToCpu = null;
         VideoSize = null; VideoAspect = null;
         lock (_errors) _errors.Clear();
-        Launch(UseHardware);
+        if (UseHardware && AvoidVulkan && Direct3DExecutable != null) LaunchDirect3D();
+        else Launch(UseHardware && !AvoidVulkan);
     }
 
     /// <summary>
@@ -105,7 +126,7 @@ public sealed class Viewer
     /// <summary>Classifica uma linha do stderr do ffplay. Nulo = não é erro que interessa.</summary>
     static string? Classify(string l)
     {
-        if (l.Contains("VK_ERROR_OUT_OF_DEVICE_MEMORY") || l.Contains("No slab to serve") || l.Contains("Failed creating")) return "sem_memoria_de_video";
+        if (l.Contains("VK_ERROR_OUT_OF_DEVICE_MEMORY") || l.Contains("No slab to serve")) return "sem_memoria_de_video";
         if (l.Contains("Vulkan") && (l.Contains("rror") || l.Contains("ailed"))) return "vulkan_outro";
         if (l.Contains("error while decoding") || l.Contains("concealing") || l.Contains("non-existing PPS") || l.Contains("decode_slice")) return "decodificacao";
         if (l.Contains("PES packet size mismatch") || l.Contains("Packet corrupt") || l.Contains("continuity check")) return "pacote_perdido_ou_corrompido";
@@ -131,7 +152,7 @@ public sealed class Viewer
         return (new Size(w, h), aspect);
     }
 
-    string? OnStderr(string line)
+    PlayerFailure? OnStderr(string line)
     {
         Sync.Observe(line);
         if (line.Contains(" aq=")) return null; // linha de estado do ffplay (~30 por segundo): não é erro nem o tamanho
@@ -149,16 +170,16 @@ public sealed class Viewer
         // Teste 0.1.8 (PC do grupo, Cyberpunk aberto): o renderizador Vulkan ficou sem VRAM e repetiu o erro em loop sem sair,
         // então o "saiu em menos de 4 s" nunca disparava. Outro PC (11/11): VK_KHR_surface ausente fecha com código ZERO.
         // O erro explícito do renderizador vale mesmo sem código de falha; pacote perdido/erro de rede não pede CPU.
-        if (kind == "sem_memoria_de_video") return "placa de vídeo sem memória livre";
-        if (kind == "vulkan_outro" || line.Contains("Failed to create window")) return "o player não conseguiu abrir o vídeo pelo Vulkan";
+        if (kind == "sem_memoria_de_video") return new("falha ao alocar memória de vídeo no Vulkan", Memory: true);
+        if (kind == "vulkan_outro" || line.Contains("Failed to create window")) return new("o player não conseguiu abrir o vídeo pelo Vulkan");
         return null;
     }
 
     void Launch(bool hardware)
     {
+        _direct3DActive = false;
         Sync.Reset();
         Tools.PassphraseHint = _passphrase;
-        long latencyUs = _latencyMs * 1000L;
         var args = new List<string>
         {
             // "info" e SEM -nostats: só assim o ffplay escreve a linha "Stream #0:0 ... Video: ... 3440x1440 [SAR 1:1 ...]", de onde sai a
@@ -190,21 +211,21 @@ public sealed class Viewer
         args.AddRange(new[] { "-f", "mpegts", "-format_whitelist", "mpegts",
             "-protocol_whitelist", _localTap != null ? "pipe" : "srt", "-codec_whitelist", "h264,opus,libopus" });
         args.AddRange(ExtraArgs);
-        args.Add(_localTap != null ? "pipe:0" : $"srt://127.0.0.1:{_relayPort}?mode=caller&latency={latencyUs}&passphrase={_passphrase}&pbkeylen=16&transtype=live&connect_timeout=10000");
+        args.Add(IsPreview ? "pipe:0" : LiveUrl());
         UsingHardware = hardware;
         StartedAt = DateTime.Now;
         var lifetime = Stopwatch.StartNew();
-        string? fallbackReason = null;
+        PlayerFailure? fallback = null;
         Process? p = null;
         p = Tools.Start(Tools.Ffplay, args, "ffplay", redirectStdin: _localTap != null, hideWindow: true, onStderr: l =>
         {
-            var reason = OnStderr(l);
-            if (hardware && !_stopRequested && reason != null && Interlocked.CompareExchange(ref fallbackReason, reason, null) == null)
+            var failure = OnStderr(l);
+            if (hardware && !_stopRequested && failure != null && Interlocked.CompareExchange(ref fallback, failure, null) == null)
                 Tools.KillQuietly(p);
         });
-        _ffplay = p;
+        _player = p;
         // O stderr pode chegar antes de Tools.Start devolver o processo: não perder nem o erro nem a ordem de encerramento.
-        if (fallbackReason != null) Tools.KillQuietly(p);
+        if (fallback != null) Tools.KillQuietly(p);
         _tap?.Dispose();
         _tap = _localTap?.Invoke(p.StandardInput.BaseStream);
         if (_localTap != null && _tap == null) { Log.Info("Prévia da própria live: a transmissão não está rodando; fechando o player."); Tools.KillQuietly(p); }
@@ -214,20 +235,133 @@ public sealed class Viewer
             // Exited pode chegar ANTES da última linha do stderr (visto em duas tentativas de outro PC).
             // WaitForExitAsync drena as leituras assíncronas e também cobre um processo que já saiu antes de registrar o observador.
             await p.WaitForExitAsync().ConfigureAwait(false);
-            if (!ReferenceEquals(_ffplay, p)) return;
-            if (!_reopening && ReferenceEquals(_ffplay, p)) { _tap?.Dispose(); _tap = null; } // a prévia solta o ouvinte do vídeo (se o player reabre, liga outro)
+            if (!ReferenceEquals(_player, p)) return;
+            if (!_reopening && ReferenceEquals(_player, p)) { _tap?.Dispose(); _tap = null; } // a prévia solta o ouvinte do vídeo (se o player reabre, liga outro)
             if (_reopening) return; // fechei este ffplay de propósito para abrir outro em outro tamanho: o player não acabou
             int code = SafeExit(p);
-            if (hardware && !_stopRequested && (fallbackReason != null || lifetime.Elapsed.TotalSeconds < 4 && code != 0))
+            if (hardware && !_stopRequested && (fallback != null || lifetime.Elapsed.TotalSeconds < 4 && code != 0))
             {
-                FellBackToCpu = fallbackReason ?? $"ffplay não abriu na placa de vídeo (código {code})";
-                Log.Info($"[aviso] Player: {FellBackToCpu}; abrindo de novo decodificando na CPU.");
-                Relaunch();
+                if (fallback is { Memory: true })
+                {
+                    VulkanMemoryFailed?.Invoke();
+                    if (!IsPreview && Direct3DExecutable != null)
+                    {
+                        Log.Info("[aviso] Player: falha de memória no Vulkan; tentando Direct3D 11.");
+                        Relaunch(LaunchDirect3D);
+                        return;
+                    }
+                }
+                RecoverOnCpu(fallback?.Reason ?? $"ffplay não abriu na placa de vídeo (código {code})");
                 return;
             }
             Log.Info($"Player fechado (código {code}).");
             Exited?.Invoke();
         });
+    }
+
+    string LiveUrl() => $"srt://127.0.0.1:{_relayPort}?mode=caller&latency={_latencyMs * 1000L}&passphrase={_passphrase}&pbkeylen=16&transtype=live&connect_timeout=10000";
+
+    void LaunchDirect3D()
+    {
+        _direct3DActive = true;
+        _direct3DSample = null;
+        UsingHardware = false;
+        StartedAt = DateTime.Now;
+        Sync.Reset();
+
+        Process player;
+        int result = 0; // 0: aguardando vídeo; 1: D3D11 confirmado; 2: sem decodificação por hardware.
+        Process? opening = null;
+        try
+        {
+            player = Tools.Start(Direct3DExecutable!, Direct3DArgs(), "mpv-live", redirectStdin: false,
+                onStdout: line =>
+                {
+                    const string prefix = "STREEMU_D3D11 ";
+                    if (line.StartsWith("STREEMU_MPV_STATUS ", StringComparison.Ordinal))
+                    {
+                        ObserveDirect3DStatus(line);
+                        return;
+                    }
+                    if (!line.StartsWith(prefix, StringComparison.Ordinal)) return;
+                    var fields = line[prefix.Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (fields.Length == 4 && fields[0] == "d3d11va")
+                    {
+                        if (int.TryParse(fields[1], out int w) && int.TryParse(fields[2], out int h) && w > 0 && h > 0)
+                        {
+                            VideoSize = new Size(w, h);
+                            if (double.TryParse(fields[3], CultureInfo.InvariantCulture, out double aspect)
+                                && aspect >= 1.0 / 3 && aspect <= 5)
+                                VideoAspect = aspect;
+                        }
+                        UsingHardware = true;
+                        Volatile.Write(ref result, 1);
+                        Log.Info("Player: decodificação por hardware confirmada pelo Direct3D 11.");
+                    }
+                    else
+                    {
+                        Volatile.Write(ref result, 2);
+                        Tools.KillQuietly(opening);
+                    }
+                });
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            RecoverOnCpu("não consegui abrir o player Direct3D 11", restartSender: false);
+            return;
+        }
+
+        opening = player;
+        _player = player;
+        if (_stopRequested || Volatile.Read(ref result) == 2) Tools.KillQuietly(player);
+        Audio.AttachWhenReady();
+        _ = ObserveDirect3DAsync();
+
+        async Task ObserveDirect3DAsync()
+        {
+            var exit = player.WaitForExitAsync();
+            if (await Task.WhenAny(exit, Task.Delay(TimeSpan.FromSeconds(15))).ConfigureAwait(false) != exit
+                && ReferenceEquals(_player, player) && Volatile.Read(ref result) == 0)
+                Tools.KillQuietly(player);
+            await exit.ConfigureAwait(false);
+            if (!ReferenceEquals(_player, player) || _reopening) return;
+            if (!_stopRequested && (Volatile.Read(ref result) != 1 || SafeExit(player) != 0))
+                RecoverOnCpu("o player Direct3D 11 não conseguiu manter a reprodução");
+            else
+                Exited?.Invoke();
+        }
+    }
+
+    void ObserveDirect3DStatus(string line)
+    {
+        var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length != 4 || !int.TryParse(fields[2], out int renderDrops) || !int.TryParse(fields[3], out int decoderDrops))
+            return;
+        int? avMs = double.TryParse(fields[1], CultureInfo.InvariantCulture, out double av) && double.IsFinite(av)
+            ? (int)Math.Clamp(Math.Round(av * 1000), int.MinValue, int.MaxValue) : null;
+        _direct3DSample = new Direct3DSample(avMs, renderDrops, decoderDrops);
+    }
+
+    string[] Direct3DArgs()
+    {
+        var size = OpenAt?.Size ?? new Size(1280, 720);
+        return new[]
+        {
+            "--no-config", "--load-scripts=no", "--load-auto-profiles=no", "--ytdl=no",
+            "--access-references=no", "--autoload-files=no", "--sid=no", "--no-osc", "--drag-and-drop=no",
+            "--profile=low-latency", "--video-sync=audio", "--vo=gpu-next", "--gpu-api=d3d11",
+            "--gpu-context=d3d11", "--hwdec=d3d11va", "--hwdec-software-fallback=no",
+            // A entrada continua restrita ao SRT local e aos formatos que o transmissor usa.
+            "--demuxer=lavf", "--demuxer-lavf-format=mpegts", "--vd=h264", "--ad=opus,libopus",
+            "--demuxer-lavf-probesize=3000000", "--demuxer-lavf-analyzeduration=2.5",
+            "--stream-lavf-o=protocol_whitelist=srt",
+            "--demuxer-lavf-o=protocol_whitelist=srt,format_whitelist=mpegts,codec_whitelist=%17%h264,opus,libopus",
+            $"--title={_title}", $"--geometry={size.Width}x{size.Height}", Borderless ? "--no-border" : "--border",
+            "--msg-color=no", "--term-osd=force",
+            "--term-playing-msg=STREEMU_D3D11 ${hwdec-current} ${width} ${height} ${video-params/aspect}",
+            "--term-status-msg=STREEMU_MPV_STATUS ${=avsync} ${=frame-drop-count} ${=decoder-frame-drop-count}",
+            "--", LiveUrl(),
+        };
     }
 
     static string[] WindowArgs(Rectangle? at) => at is { } r
@@ -242,7 +376,7 @@ public sealed class Viewer
     /// </summary>
     public void Reopen(Rectangle? at)
     {
-        var old = _ffplay;
+        var old = _player;
         if (old is not { HasExited: false } || _reopening) return;
         _reopening = true;
         OpenAt = at;
@@ -253,18 +387,31 @@ public sealed class Viewer
                 Restarting?.Invoke();
                 Tools.KillQuietly(old);
                 Thread.Sleep(1200); // dá tempo do envio novo ficar pronto
-                if (!_stopRequested) Launch(UsingHardware);
+                _player = null;
+                _reopening = false;
+                if (!_stopRequested)
+                {
+                    if (_direct3DActive) LaunchDirect3D();
+                    else Launch(UsingHardware);
+                }
             }
             finally { _reopening = false; }
         });
     }
 
-    /// <summary>Reabre na CPU depois de avisar quem transmite e dar tempo do envio novo ficar pronto.</summary>
-    void Relaunch()
+    void RecoverOnCpu(string reason, bool restartSender = true)
+    {
+        FellBackToCpu = reason;
+        Log.Info($"[aviso] Player: {reason}; abrindo de novo decodificando na CPU.");
+        if (restartSender) Relaunch(() => Launch(false));
+        else if (!_stopRequested) Launch(false);
+    }
+
+    void Relaunch(Action launch)
     {
         Restarting?.Invoke();
         if (Restarting != null) Thread.Sleep(1200);
-        if (!_stopRequested) Launch(false);
+        if (!_stopRequested) launch();
     }
 
     static int SafeExit(Process? p) { try { return p?.ExitCode ?? -1; } catch { return -1; } }
@@ -272,7 +419,7 @@ public sealed class Viewer
     public void Stop()
     {
         _stopRequested = true;
-        Tools.KillQuietly(_ffplay);
+        Tools.KillQuietly(_player);
         _tap?.Dispose();
         _tap = null;
     }

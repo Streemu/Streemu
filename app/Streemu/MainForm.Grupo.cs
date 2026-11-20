@@ -540,19 +540,22 @@ public sealed partial class MainForm
 
     void StartLinkViewer(PeerLink link)
     {
-        bool hw = _hwDecode.Checked && DateTime.Now >= _cpuPlayerUntil && !SystemInfo.HasRtx50;
-        if (_hwDecode.Checked && SystemInfo.HasRtx50) Log.Info("Abrindo o player na CPU: o decodificador Vulkan da RTX série 50 deixa a imagem borrada.");
-        if (_hwDecode.Checked && !hw) Log.Info("Abrindo o player direto na CPU (a placa de vídeo ficou sem memória há pouco).");
-        var v = new Viewer { UseHardware = hw };
+        bool hw = _hwDecode.Checked && !SystemInfo.HasRtx50;
+        bool avoidVulkan = DateTime.Now < _cpuPlayerUntil;
+        string? direct3D = hw && !Automated && Environment.GetEnvironmentVariable("STREEMU_EXPERIMENTAL_D3D11") == "1"
+            ? Filme.Mpv.Find() : null;
+        if (_hwDecode.Checked && !hw) Log.Info("Abrindo o player na CPU: o decodificador Vulkan da RTX série 50 deixa a imagem borrada.");
+        else if (hw && avoidVulkan && direct3D == null) Log.Info("Abrindo o player na CPU: o Vulkan falhou ao alocar memória há pouco.");
+        var v = new Viewer { UseHardware = hw, AvoidVulkan = avoidVulkan, Direct3DExecutable = direct3D };
         if (TestDir != null) v.ExtraArgs = new[] { "-volume", "0" };
         v.Audio.Restore(_state.PlayerVolumePercent, _state.PlayerMuted);
         if (!Automated)
             v.Audio.Changed += () => { _state.PlayerVolumePercent = v.Audio.Percent; _state.PlayerMuted = v.Audio.Muted; _state.Save(); };
         string sid = link.SessionId;
         v.Exited += () => Ui(() => EndLink(sid, tellPeer: true, why: null));
+        v.VulkanMemoryFailed += () => _cpuPlayerUntil = DateTime.Now.AddMinutes(20);
         v.Restarting += () =>
         {
-            if (v.FellBackToCpu?.Contains("memória") == true) _cpuPlayerUntil = DateTime.Now.AddMinutes(20);
             _ = _room?.SendTo(link.PeerId, new JsonObject { ["tipo"] = "reabrir_player", ["sessao"] = sid });
         };
         _linkViewers[sid] = v;
@@ -881,9 +884,10 @@ public sealed partial class MainForm
             {
                 ["aberto_desde"] = v.StartedAt?.ToString("HH:mm:ss"),
                 ["decodificando_na_gpu"] = v.UsingHardware,
+                ["decodificador"] = v.Decoder,
                 ["caiu_para_cpu"] = v.FellBackToCpu,
                 ["erros"] = v.ErrorCounts(),
-                ["sincronia"] = v.Sync.Snapshot(),
+                ["sincronia"] = v.PlaybackSnapshot(),
             },
             ["bytes_recebidos"] = l.Tunnel.RxBytes,
             ["faixa"] = l.IAmSender ? null : new JsonArray(WatchersRoster(l, paraRelatorio: true).Select(e => (JsonNode)JsonValue.Create(e.Nick)!).ToArray()),

@@ -1,6 +1,6 @@
 {
-    "versao":  "0.5.0",
-    "privado":  "5b1e9ff42f7178bdd683adc15aa51e94ce20d0dd",
-    "notas":  "- Corrige o cartão cortado da página Grupos",
+    "versao":  "0.5.1",
+    "privado":  "474827d9828cac09ecbd93e9b7d5df85064b9ca3",
+    "notas":  "- Lança a 0.5.1",
     "obrigatoria":  false
 }

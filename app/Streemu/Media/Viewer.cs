@@ -17,6 +17,31 @@ public sealed class Viewer
     sealed record PlayerFailure(string Reason, bool Memory = false);
     sealed record Direct3DSample(int? AudioVideoMs, int RenderDrops, int DecoderDrops);
     volatile Direct3DSample? _direct3DSample;
+    Process? _lastCpuProcess;
+    TimeSpan _lastPlayerCpu;
+    long _lastPlayerCpuAt;
+    int? _playerCpuPerCore;
+
+    // Chamado a cada amostra da telemetria. Reabrir o player começa uma medida nova.
+    public int? SampleCpuPerCore()
+    {
+        var player = _player;
+        try
+        {
+            if (player is not { HasExited: false }) return null;
+            var cpu = player.TotalProcessorTime;
+            long now = Environment.TickCount64;
+            long elapsed = now - _lastPlayerCpuAt;
+            if (!ReferenceEquals(_lastCpuProcess, player)) _playerCpuPerCore = null;
+            else if (elapsed > 0) _playerCpuPerCore = (int)Math.Round((cpu - _lastPlayerCpu).TotalMilliseconds * 100 / elapsed);
+            _lastCpuProcess = player;
+            _lastPlayerCpuAt = now;
+            _lastPlayerCpu = cpu;
+            return _playerCpuPerCore;
+        }
+        catch (InvalidOperationException) { return null; }
+        catch (System.ComponentModel.Win32Exception) { return null; }
+    }
 
     public JsonObject PlaybackSnapshot()
     {

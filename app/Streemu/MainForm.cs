@@ -169,6 +169,7 @@ public sealed partial class MainForm : Form
             if (HideToTrayInsteadOfClosing(e.CloseReason)) { e.Cancel = true; return; }
             ShutdownGroup();
             _closing.Cancel();
+            PararAmostrasDoEspectador();
             _sender.Stop(); _statsTimer.Stop();
             SaveNick();
             Thread.Sleep(200);

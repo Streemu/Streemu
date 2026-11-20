@@ -9,15 +9,35 @@ public sealed partial class MainForm
     SerieSincronia? _serieSincronia;
     SerieRede? _serieRede;
     long _ultimaSincronia;
+    UsoGpu? _gpuSomenteAssistindo;
 
     void GravarSincronia()
     {
         if (_serieSincronia == null || Environment.TickCount64 - _ultimaSincronia < 2000) return;
         _ultimaSincronia = Environment.TickCount64;
         if (_sender.Running) _serieSincronia.Add(_streamId, "propria", "transmite", _sender.SyncSnapshot());
+        bool assistindo = _linkViewers.Values.Any(v => v.Running && !v.IsPreview);
+        var gpu = _teleGpu;
+        if (!assistindo || gpu != null) PararAmostrasDoEspectador();
+        if (!assistindo) return;
+        gpu ??= _gpuSomenteAssistindo ??= new UsoGpu(() => null);
+        var uso = gpu.Agora;
         foreach (var (id, viewer) in _linkViewers)
-            if (viewer.Running && !viewer.IsPreview)
-                _serieSincronia.Add(_teleLiveDaLigacao.GetValueOrDefault(id), id, "assiste", viewer.PlaybackSnapshot());
+        {
+            if (!viewer.Running || viewer.IsPreview) continue;
+            var amostra = viewer.PlaybackSnapshot();
+            amostra["decodificador"] = viewer.Decoder;
+            amostra["cpu_player_nucleo_pct"] = viewer.SampleCpuPerCore();
+            amostra["gpu_pc_3d_pct"] = uso?.Total3d;
+            amostra["gpu_pc_decoder_pct"] = uso?.Decoder;
+            _serieSincronia.Add(_teleLiveDaLigacao.GetValueOrDefault(id), id, "assiste", amostra);
+        }
+    }
+
+    void PararAmostrasDoEspectador()
+    {
+        _gpuSomenteAssistindo?.Dispose();
+        _gpuSomenteAssistindo = null;
     }
 
     /// <summary>Rede de cada ligação (etapa 10 da spec 009): uma linha a cada 5 s por ligação conectada, só contadores que o túnel já mantém.</summary>

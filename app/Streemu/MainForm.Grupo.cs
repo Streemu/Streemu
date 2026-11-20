@@ -534,6 +534,7 @@ public sealed partial class MainForm
     /// GPU caía para a CPU em TODA abertura e cada queda custava uma reconexão. Depois da primeira, vai direto na CPU.
     /// </summary>
     DateTime _cpuPlayerUntil;
+    int _preparandoPlayerDirect3D;
 
     /// <summary>A janela de streams (spec 006): organiza o painel "Ao vivo agora" e os vídeos de todas as streams que o usuário assiste.</summary>
     PlayerStage? _playerStage;
@@ -542,8 +543,8 @@ public sealed partial class MainForm
     {
         bool hw = _hwDecode.Checked && !SystemInfo.HasRtx50;
         bool avoidVulkan = DateTime.Now < _cpuPlayerUntil;
-        string? direct3D = hw && !Automated && Environment.GetEnvironmentVariable("STREEMU_EXPERIMENTAL_D3D11") == "1"
-            ? Filme.Mpv.Find() : null;
+        bool recuperarDirect3D = hw && !Automated;
+        string? direct3D = recuperarDirect3D ? Filme.Mpv.Find() : null;
         if (_hwDecode.Checked && !hw) Log.Info("Abrindo o player na CPU: o decodificador Vulkan da RTX série 50 deixa a imagem borrada.");
         else if (hw && avoidVulkan && direct3D == null) Log.Info("Abrindo o player na CPU: o Vulkan falhou ao alocar memória há pouco.");
         var v = new Viewer { UseHardware = hw, AvoidVulkan = avoidVulkan, Direct3DExecutable = direct3D };
@@ -553,7 +554,11 @@ public sealed partial class MainForm
             v.Audio.Changed += () => { _state.PlayerVolumePercent = v.Audio.Percent; _state.PlayerMuted = v.Audio.Muted; _state.Save(); };
         string sid = link.SessionId;
         v.Exited += () => Ui(() => EndLink(sid, tellPeer: true, why: null));
-        v.VulkanMemoryFailed += () => _cpuPlayerUntil = DateTime.Now.AddMinutes(20);
+        v.VulkanMemoryFailed += () =>
+        {
+            _cpuPlayerUntil = DateTime.Now.AddMinutes(20);
+            if (recuperarDirect3D && direct3D == null) PrepararPlayerDirect3D();
+        };
         v.Restarting += () =>
         {
             _ = _room?.SendTo(link.PeerId, new JsonObject { ["tipo"] = "reabrir_player", ["sessao"] = sid });
@@ -566,6 +571,28 @@ public sealed partial class MainForm
         _groupStatus.Text = DefaultStatus();
         AtualizarIconeAtividade(); // passou a assistir (o fim sai pelo EndLink, que chama o UpdateLive)
         AvisarSomDoAmigoNaLive(); // MainForm.AvisoSom.cs
+    }
+
+    void PrepararPlayerDirect3D()
+    {
+        if (_closing.IsCancellationRequested || Interlocked.Exchange(ref _preparandoPlayerDirect3D, 1) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var prazo = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+                prazo.CancelAfter(TimeSpan.FromMinutes(2));
+                Log.Info("Player: preparando o Direct3D 11 para a próxima live.");
+                await Filme.MpvInstalador.InstalarAsync(RelayConfig.Load(_state), progresso: null, prazo.Token);
+                Log.Info("Player: Direct3D 11 disponível para a próxima abertura.");
+            }
+            catch (OperationCanceledException) when (_closing.IsCancellationRequested) { }
+            catch (Exception e)
+            {
+                Log.Info($"Player: não consegui preparar o Direct3D 11 ({e.Message}). A reprodução pode continuar pela CPU.");
+            }
+            finally { Volatile.Write(ref _preparandoPlayerDirect3D, 0); }
+        });
     }
 
     /// <summary>Legenda da peça na janela de streams: "Amigo · Jogo · ao vivo há 12 min".</summary>

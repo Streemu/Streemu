@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.0",
-    "privado":  "5f5f9eacb4b8f01a48e03660fd20e596ef7b9436",
-    "notas":  "- Adiciona recuperação experimental do player por Direct3D 11",
+    "privado":  "b36bd8f11f58767a5d9a7b21791be4fdb89e97c2",
+    "notas":  "- Ativa a recuperação por Direct3D 11 e mede o player de lives",
     "obrigatoria":  false
 }

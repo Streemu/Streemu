@@ -108,6 +108,12 @@ static class Program
                     Require(stats["quadros_descartados_decodificador"]?.GetValue<int>() == 2
                         && stats["audio_menos_video_ms"]?.GetValue<int>() == -12, "Misturou os contadores ou perdeu o valor de sincronia.");
                 }
+                if (name == "d3d11-cooldown")
+                {
+                    Require(viewer.SampleCpuPerCore() == null, "A primeira leitura precisa de uma linha de base.");
+                    await Task.Delay(40);
+                    Require(viewer.SampleCpuPerCore() is >= 0, "O player aberto não produziu medida de CPU.");
+                }
                 if (name == "d3d11-resize")
                 {
                     viewer.Reopen(new Rectangle(100, 100, 480, 270));

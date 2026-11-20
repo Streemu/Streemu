@@ -18,14 +18,17 @@ namespace Streemu.Filme;
 public static class MpvInstalador
 {
     const string LogTag = "[mpv-instalacao]";
+    // Cinema e lives usam o mesmo pacote, arquivo parcial e pasta de destino.
+    static readonly SemaphoreSlim Instalacao = new(1);
     public static readonly PinBinario? Desejado = Binarios.Pin(Binario.Mpv);
 
     static string Dir => Path.Combine(AppContext.BaseDirectory, "mpv");
     static string Folder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Streemu", "atualizacao");
 
     /// <summary>Deixa o mpv em mpv\mpv.exe. <paramref name="progresso"/> recebe frases curtas para a tela. Falha = exceção com o motivo para o usuário.</summary>
-    public static async Task<string> InstalarAsync(RelayConfig.Settings? cfg, IProgress<string> progresso, CancellationToken ct)
+    public static async Task<string> InstalarAsync(RelayConfig.Settings? cfg, IProgress<string>? progresso, CancellationToken ct)
     {
+        await Instalacao.WaitAsync(ct);
         try
         {
             string exe = await InstalarSemRegistroAsync(cfg, progresso, ct);
@@ -33,9 +36,10 @@ public static class MpvInstalador
             return exe;
         }
         catch (Exception e) { Binarios.ReparoDoMpvTerminou(false, e.Message); throw; }
+        finally { Instalacao.Release(); }
     }
 
-    static async Task<string> InstalarSemRegistroAsync(RelayConfig.Settings? cfg, IProgress<string> progresso, CancellationToken ct)
+    static async Task<string> InstalarSemRegistroAsync(RelayConfig.Settings? cfg, IProgress<string>? progresso, CancellationToken ct)
     {
         if (Mpv.Find() is string ja) return ja;
         var pin = Desejado ?? throw new InvalidOperationException("este build não sabe qual mpv usar (falta o mpv-desejado.json)");
@@ -43,7 +47,7 @@ public static class MpvInstalador
         Directory.CreateDirectory(Folder);
         string zip = Path.Combine(Folder, pin.Tag + ".zip");
         if (!File.Exists(zip) || Sha256(zip) != pin.ZipSha256) await BaixarAsync(cfg, pin, zip, progresso, ct);
-        progresso.Report("Abrindo o player...");
+        progresso?.Report("Abrindo o player...");
         string tmp = Dir + ".novo";
         if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
         ZipFile.ExtractToDirectory(zip, tmp);
@@ -64,7 +68,7 @@ public static class MpvInstalador
         return Mpv.Find() ?? throw new InvalidOperationException("o pacote não tinha o mpv.exe");
     }
 
-    static async Task BaixarAsync(RelayConfig.Settings cfg, PinBinario pin, string zip, IProgress<string> progresso, CancellationToken ct)
+    static async Task BaixarAsync(RelayConfig.Settings cfg, PinBinario pin, string zip, IProgress<string>? progresso, CancellationToken ct)
     {
         string url = (Environment.GetEnvironmentVariable("STREEMU_ATUALIZACAO_URL") ?? cfg.Url).TrimEnd('/') + "/mpv?tag=" + Uri.EscapeDataString(pin.Tag);
         string link;
@@ -96,7 +100,7 @@ public static class MpvInstalador
                 await dst.WriteAsync(buf.AsMemory(0, n), ct);
                 have += n;
                 int pct = pin.ZipTamanho > 0 ? (int)(have * 100 / pin.ZipTamanho) : 0;
-                if (pct != ultimo) { ultimo = pct; progresso.Report($"Baixando o player do filme ({pin.ZipTamanho / 1048576} MB, só na primeira vez): {pct}%"); }
+                if (pct != ultimo) { ultimo = pct; progresso?.Report($"Baixando o player do filme ({pin.ZipTamanho / 1048576} MB, só na primeira vez): {pct}%"); }
             }
         }
         if (Sha256(tmp) != pin.ZipSha256) { File.Delete(tmp); throw new InvalidOperationException("o pacote do player veio diferente do esperado; tente de novo"); }

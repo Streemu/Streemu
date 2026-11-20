@@ -13,6 +13,12 @@ As etapas:
 
 O resultado vai para: as notas da release (bloco entre `<!-- varredura:inicio -->` e `<!-- varredura:fim -->`, na release do instalador e na `main-atual`), os badges do README e o `varredura.json` do branch `status` (branch órfão, só com `varredura.json`, `badge.json` e `badge-instalador.json`).
 
+## Falsos positivos conhecidos
+
+Falso positivo é quando um antivírus marca como perigoso um arquivo que não é. Acontece mais com programas **sem assinatura digital**, como o instalador do Streemu hoje, e com antivírus que decidem por aprendizado de máquina olhando só o formato do arquivo, sem executá-lo. Para conferir que o arquivo é o que foi compilado aqui, a partir deste código, use o SHA-256 e o atestado de origem (ver o README).
+
+- **Deep Instinct, no instalador de 20/11/2026** ([`instalador-2026-11-20`](https://github.com/Streemu/Streemu/releases/tag/instalador-2026-11-20), SHA-256 `7950041c9ccc00a387a6fc46b978f99c02d94cc3b6514218472fad29146808d9`): no VirusTotal, **1 de 70** antivírus acusou, só o Deep Instinct ("MALICIOUS"). Os outros 69 não acusaram nada, nem o Microsoft Defender (conferido antes de publicar) e o MetaDefender (0 de 21). O instalador anterior, da v0.5.0, tinha dado 0 de 70. A principal mudança desde então foi o relatório de falha do instalador, que pode enviar o relatório pela internet quando a pessoa clica em "Enviar para a equipe"; o Deep Instinct não diz o motivo da detecção. **Em 20/11/2026 entramos em contato com a Deep Instinct**, pelo endereço de falso positivo que o próprio VirusTotal indica, pedindo que revisem o veredito. Quando mudar, a reconferência diária atualiza as notas da release e o selo sozinha. Enquanto isso, o resultado da varredura não aparece no site (www.streemu.com.br): fica só aqui, nas notas da release e no selo do README.
+
 ## Configurar as chaves
 
 Contas grátis em <https://www.virustotal.com> e <https://metadefender.com>; a chave de API fica no perfil de cada uma.

@@ -5,6 +5,7 @@
          varredura.json         { atualizado_em, ultima, atualizacao, instalador }  (o site le este; mostra a secao apontada por "ultima")
          badge.json             badge do README: a ultima versao disponivel (a secao de "ultima")
          badge-instalador.json  badge so do instalador (so existe se ja houve varredura do instalador)
+         badge-atualizacao.json badge so da atualizacao automatica (so existe se ja houve varredura dela); o README mostra este e o do instalador
   "ultima" e a secao de versao numerica mais nova entre as duas; empate = atualizacao.
   -Tipo instalador (padrao): so mexe no branch se -Tag for a ultima release estavel. -Tipo atualizacao: -Tag e main-atual e o branch sempre e atualizado.
   Usado pelos workflows instalador.yml, atualizacao.yml e varredura.yml. Precisa de GH_TOKEN (contents: write) e do gh e do git.
@@ -123,6 +124,7 @@ function Montar-ArquivosStatus($varredura) {
     $a['varredura.json'] = (($varredura | ConvertTo-Json -Depth 8) + "`n")
     if ($varredura['ultima']) { $a['badge.json'] = ((Novo-BadgeSecao $varredura[[string]$varredura['ultima']]) | ConvertTo-Json) + "`n" }
     if ($varredura['instalador']) { $a['badge-instalador.json'] = ((Novo-BadgeSecao $varredura['instalador']) | ConvertTo-Json) + "`n" }
+    if ($varredura['atualizacao']) { $a['badge-atualizacao.json'] = ((Novo-BadgeSecao $varredura['atualizacao']) | ConvertTo-Json) + "`n" }
     $a
 }
 

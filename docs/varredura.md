@@ -19,17 +19,6 @@ Falso positivo é quando um antivírus marca como perigoso um arquivo que não �
 
 - **Deep Instinct, no instalador de 20/11/2026** ([`instalador-2026-11-20`](https://github.com/Streemu/Streemu/releases/tag/instalador-2026-11-20), SHA-256 `7950041c9ccc00a387a6fc46b978f99c02d94cc3b6514218472fad29146808d9`): no VirusTotal, **1 de 70** antivírus acusou, só o Deep Instinct ("MALICIOUS"). Os outros 69 não acusaram nada, nem o Microsoft Defender (conferido antes de publicar) e o MetaDefender (0 de 21). O instalador anterior, da v0.5.0, tinha dado 0 de 70. A principal mudança desde então foi o relatório de falha do instalador, que pode enviar o relatório pela internet quando a pessoa clica em "Enviar para a equipe"; o Deep Instinct não diz o motivo da detecção. **Em 20/11/2026 entramos em contato com a Deep Instinct**, pelo endereço de falso positivo que o próprio VirusTotal indica, pedindo que revisem o veredito. Quando mudar, a reconferência diária atualiza as notas da release e o selo sozinha. Enquanto isso, o resultado da varredura não aparece no site (www.streemu.com.br): fica só aqui, nas notas da release e no selo do README.
 
-## Configurar as chaves
-
-Contas grátis em <https://www.virustotal.com> e <https://metadefender.com>; a chave de API fica no perfil de cada uma.
-
-No GitHub: **Settings > Secrets and variables > Actions > New repository secret**:
-
-- `VT_API_KEY`: chave do VirusTotal (plano grátis: 4 consultas por minuto, o script já espera entre as chamadas);
-- `METADEFENDER_API_KEY`: chave do MetaDefender Cloud.
-
-Sem a chave de um serviço, ele aparece como `"sem-chave"` e a release segue normalmente.
-
 ## Formato do varredura.json
 
 URL: `https://raw.githubusercontent.com/Streemu/Streemu/status/varredura.json` (o raw.githubusercontent.com manda CORS liberado, então o site pode fazer `fetch` direto; o cache é de uns 5 minutos).
@@ -74,7 +63,7 @@ URL: `https://raw.githubusercontent.com/Streemu/Streemu/status/varredura.json` (
 - `defender` só aparece quando o resultado do runner existe. `status`: `limpo`, `ameaca` (a release nem sai) ou `indisponivel`; `arquivos` diz o status de cada arquivo varrido. O Defender só roda na hora de compilar: a reconferência diária repete o bloco dele enquanto o `sha256` for o mesmo.
 - `virustotal.status` e `metadefender.status`: `ok`, `em-analise`, `sem-chave` ou `erro` (neste caso há um campo `mensagem`). `deteccoes` e `total` só vêm preenchidos com `ok`.
 - `total` conta só os motores que deram veredito (no VirusTotal ficam de fora tipo não suportado, timeout e falha).
-- `badge.json` (mesmo branch) é o endpoint do shields.io usado no README: a **última versão disponível**, com a versão no texto (ex.: `0.5.1 · VirusTotal 0/70 · MetaDefender 0/21`). `badge-instalador.json` é o mesmo só para o instalador (só existe depois da primeira varredura de um instalador).
+- Badges do shields.io (mesmo branch), com a versão no texto (ex.: `0.5.1 · VirusTotal 0/70 · MetaDefender 0/21`): `badge-instalador.json`, só do instalador, e `badge-atualizacao.json`, só da atualização automática, que são os dois que o README mostra (cada um só existe depois da primeira varredura daquele arquivo); e `badge.json`, da seção apontada por `ultima`.
 
 ## Rodar a reconferência à mão
 

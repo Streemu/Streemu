@@ -16,7 +16,7 @@ static class Program
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "mpv.exe"), true);
         var results = new List<string>();
         int failed = 0;
-        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview" })
+        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-install", "d3d11-install-timeout", "d3d11-install-stop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview" })
         {
             if (Environment.GetEnvironmentVariable("VIEWER_CASE_FILTER") is { } filter && name != filter) continue;
             try { await Check(name); results.Add($"OK    player-{name}"); }
@@ -43,6 +43,7 @@ static class Program
             Console.Error.WriteLine("Failed creating an unrelated resource");
             return 0;
         }
+        if (name == "d3d11-surface") { Console.Error.WriteLine(SurfaceError); return 0; }
         Console.Error.WriteLine(name == "vram-loop" || name.StartsWith("d3d11-") ? "[error] VK_ERROR_OUT_OF_DEVICE_MEMORY" : SurfaceError);
         if (name == "vram-loop" || name.StartsWith("d3d11-")) await Task.Delay(20000);
         return 0;
@@ -67,14 +68,22 @@ static class Program
         Environment.SetEnvironmentVariable("VIEWER_FAKE_TRACE", trace);
         Log.Lines.Clear();
         bool direct3D = name.StartsWith("d3d11-");
+        string mpv = Path.Combine(AppContext.BaseDirectory, "mpv.exe");
+        var installation = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int preparations = 0;
         var viewer = new Viewer
         {
             UseHardware = name != "cpu-error",
             AvoidVulkan = name == "d3d11-cooldown",
-            Direct3DExecutable = direct3D ? Path.Combine(AppContext.BaseDirectory, "mpv.exe") : null,
+            PrepareDirect3D = direct3D ? () =>
+            {
+                Interlocked.Increment(ref preparations);
+                return name.StartsWith("d3d11-install") ? installation.Task : Task.FromResult<string?>(mpv);
+            } : null,
         };
-        int vramFailures = 0;
-        viewer.VulkanMemoryFailed += () => Interlocked.Increment(ref vramFailures);
+        int vulkanFailures = 0, rejected = 0;
+        viewer.VulkanFailed += () => Interlocked.Increment(ref vulkanFailures);
+        viewer.Direct3DRejected += () => Interlocked.Increment(ref rejected);
         int restarts = 0, exits = 0;
         using var exited = new ManualResetEventSlim();
         viewer.Restarting += () =>
@@ -92,13 +101,32 @@ static class Program
                 if (name == "d3d11-not-memory")
                 {
                     await Until(() => Volatile.Read(ref exits) == 1);
-                    Require(vramFailures == 0 && restarts == 0 && ReadTrace(trace) == "gpu", "Erro genérico disparou recuperação de VRAM.");
+                    Require(vulkanFailures == 0 && preparations == 0 && restarts == 0 && ReadTrace(trace) == "gpu",
+                        "Erro genérico disparou a recuperação do Vulkan.");
                     return;
+                }
+                if (name.StartsWith("d3d11-install"))
+                {
+                    await Until(() => Volatile.Read(ref preparations) == 1);
+                    Require(ReadTrace(trace) == "gpu" && restarts == 0, "Reabriu antes de o mpv estar pronto.");
+                    if (name == "d3d11-install-stop") viewer.Stop();
+                    if (name == "d3d11-install-timeout")
+                        await Until(() => ReadTrace(trace) == "gpu,cpu");
+                    installation.SetResult(mpv);
+                    if (name is "d3d11-install-stop" or "d3d11-install-timeout")
+                    {
+                        await Task.Delay(1400);
+                        bool stopped = name == "d3d11-install-stop";
+                        Require(ReadTrace(trace) == (stopped ? "gpu" : "gpu,cpu") && restarts == (stopped ? 0 : 1),
+                            "O mpv instalado atrasado reabriu uma live encerrada ou já recuperada.");
+                        return;
+                    }
                 }
                 string expected = name == "d3d11-cooldown" ? "d3d11" : name == "d3d11-fails" ? "gpu,d3d11,cpu" : "gpu,d3d11";
                 await Until(() => ReadTrace(trace) == expected && viewer.Running
                     && viewer.Decoder == (name == "d3d11-fails" ? "cpu" : "d3d11va"));
-                Require(vramFailures == (name == "d3d11-cooldown" ? 0 : 1), "Registro de falha de memória incorreto.");
+                Require(vulkanFailures == (name == "d3d11-cooldown" ? 0 : 1), "Registro da falha do Vulkan incorreto.");
+                Require(rejected == (name == "d3d11-fails" ? 1 : 0), "Registro da rejeição do Direct3D 11 incorreto.");
                 Require(restarts == expected.Count(c => c == ',') && exits == 0, "Avisou o transmissor em uma hora errada.");
                 if (name != "d3d11-fails")
                 {
@@ -171,7 +199,7 @@ static class Program
             viewer.Stop();
             await Until(() => !viewer.Running);
             // Aguarda a conclusão do observador antes de descartar o sinal e iniciar o próximo caso.
-            if (name != "stop-retry") exited.Wait(3000);
+            if (name is not ("stop-retry" or "d3d11-install-stop")) exited.Wait(3000);
             File.Delete(trace);
         }
     }

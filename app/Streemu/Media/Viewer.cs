@@ -6,15 +6,16 @@ using Streemu.Util;
 namespace Streemu.Media;
 
 /// <summary>
-/// Player de lives com ffplay. O modo experimental usa mpv/Direct3D 11 para recuperar
-/// uma falha do Vulkan sem abandonar a decodificação por hardware.
+/// Player de lives com ffplay e recuperação da decodificação por hardware via mpv/Direct3D 11.
 /// </summary>
 public sealed class Viewer
 {
+    static readonly TimeSpan Direct3DPreparationTimeout = TimeSpan.FromSeconds(5);
+    static readonly TimeSpan Direct3DPlaybackTimeout = TimeSpan.FromSeconds(8);
     Process? _player;
     volatile bool _stopRequested, _reopening;
     bool _direct3DActive;
-    sealed record PlayerFailure(string Reason, bool Memory = false);
+    sealed record PlayerFailure(string Reason);
     sealed record Direct3DSample(int? AudioVideoMs, int RenderDrops, int DecoderDrops);
     volatile Direct3DSample? _direct3DSample;
     Process? _lastCpuProcess;
@@ -73,9 +74,11 @@ public sealed class Viewer
     public bool Running => _player is { HasExited: false };
     public bool UseHardware { get; set; } = true;
     public bool AvoidVulkan { get; init; }
-    public string? Direct3DExecutable { get; init; }
+    public Func<Task<string?>>? PrepareDirect3D { get; init; }
+    string? _direct3DExecutable;
     public string Decoder => _direct3DActive ? (UsingHardware ? "d3d11va" : "inicializando_d3d11") : (UsingHardware ? "vulkan_solicitado" : "cpu");
-    public event Action? VulkanMemoryFailed;
+    public event Action? VulkanFailed;
+    public event Action? Direct3DRejected;
     /// <summary>Janela do ffplay para mover e fixar no topo.</summary>
     public PlayerWindow Window { get; }
     /// <summary>Volume e mudo só do player.</summary>
@@ -128,8 +131,11 @@ public sealed class Viewer
         FellBackToCpu = null;
         VideoSize = null; VideoAspect = null;
         lock (_errors) _errors.Clear();
-        if (UseHardware && AvoidVulkan && Direct3DExecutable != null) LaunchDirect3D();
-        else Launch(UseHardware && !AvoidVulkan);
+        _direct3DExecutable = null;
+        if (UseHardware && AvoidVulkan && PrepareDirect3D != null)
+            _ = TryDirect3DAsync(null, restartSender: false);
+        else
+            Launch(UseHardware && !AvoidVulkan);
     }
 
     /// <summary>
@@ -195,7 +201,7 @@ public sealed class Viewer
         // Teste 0.1.8 (PC do grupo, Cyberpunk aberto): o renderizador Vulkan ficou sem VRAM e repetiu o erro em loop sem sair,
         // então o "saiu em menos de 4 s" nunca disparava. Outro PC (11/11): VK_KHR_surface ausente fecha com código ZERO.
         // O erro explícito do renderizador vale mesmo sem código de falha; pacote perdido/erro de rede não pede CPU.
-        if (kind == "sem_memoria_de_video") return new("falha ao alocar memória de vídeo no Vulkan", Memory: true);
+        if (kind == "sem_memoria_de_video") return new("falha ao alocar memória de vídeo no Vulkan");
         if (kind == "vulkan_outro" || line.Contains("Failed to create window")) return new("o player não conseguiu abrir o vídeo pelo Vulkan");
         return null;
     }
@@ -249,6 +255,7 @@ public sealed class Viewer
                 Tools.KillQuietly(p);
         });
         _player = p;
+        if (_stopRequested) Tools.KillQuietly(p);
         // O stderr pode chegar antes de Tools.Start devolver o processo: não perder nem o erro nem a ordem de encerramento.
         if (fallback != null) Tools.KillQuietly(p);
         _tap?.Dispose();
@@ -266,13 +273,12 @@ public sealed class Viewer
             int code = SafeExit(p);
             if (hardware && !_stopRequested && (fallback != null || lifetime.Elapsed.TotalSeconds < 4 && code != 0))
             {
-                if (fallback is { Memory: true })
+                if (fallback != null && !IsPreview)
                 {
-                    VulkanMemoryFailed?.Invoke();
-                    if (!IsPreview && Direct3DExecutable != null)
+                    VulkanFailed?.Invoke();
+                    if (PrepareDirect3D != null)
                     {
-                        Log.Info("[aviso] Player: falha de memória no Vulkan; tentando Direct3D 11.");
-                        Relaunch(LaunchDirect3D);
+                        await TryDirect3DAsync(fallback.Reason, restartSender: true).ConfigureAwait(false);
                         return;
                     }
                 }
@@ -285,6 +291,29 @@ public sealed class Viewer
     }
 
     string LiveUrl() => $"srt://127.0.0.1:{_relayPort}?mode=caller&latency={_latencyMs * 1000L}&passphrase={_passphrase}&pbkeylen=16&transtype=live&connect_timeout=10000";
+
+    async Task TryDirect3DAsync(string? vulkanFailure, bool restartSender)
+    {
+        try
+        {
+            // A instalação pode terminar para a próxima live mesmo se esta precisar seguir na CPU.
+            _direct3DExecutable = await PrepareDirect3D!().WaitAsync(Direct3DPreparationTimeout).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            Log.Info("Player: o Direct3D 11 ainda está sendo preparado.");
+        }
+        if (_stopRequested) return;
+        if (_direct3DExecutable == null)
+        {
+            RecoverOnCpu(vulkanFailure == null ? "Direct3D 11 indisponível" : $"{vulkanFailure}; Direct3D 11 indisponível", restartSender);
+            return;
+        }
+        Log.Info(vulkanFailure == null ? "Player: abrindo a live com Direct3D 11."
+            : $"Player: {vulkanFailure}; tentando Direct3D 11 nesta live.");
+        if (restartSender) Relaunch(LaunchDirect3D);
+        else LaunchDirect3D();
+    }
 
     void LaunchDirect3D()
     {
@@ -299,7 +328,7 @@ public sealed class Viewer
         Process? opening = null;
         try
         {
-            player = Tools.Start(Direct3DExecutable!, Direct3DArgs(), "mpv-live", redirectStdin: false,
+            player = Tools.Start(_direct3DExecutable!, Direct3DArgs(), "mpv-live", redirectStdin: false,
                 onStdout: line =>
                 {
                     const string prefix = "STREEMU_D3D11 ";
@@ -332,6 +361,7 @@ public sealed class Viewer
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
+            Direct3DRejected?.Invoke();
             RecoverOnCpu("não consegui abrir o player Direct3D 11", restartSender: false);
             return;
         }
@@ -345,13 +375,17 @@ public sealed class Viewer
         async Task ObserveDirect3DAsync()
         {
             var exit = player.WaitForExitAsync();
-            if (await Task.WhenAny(exit, Task.Delay(TimeSpan.FromSeconds(15))).ConfigureAwait(false) != exit
+            if (await Task.WhenAny(exit, Task.Delay(Direct3DPlaybackTimeout)).ConfigureAwait(false) != exit
                 && ReferenceEquals(_player, player) && Volatile.Read(ref result) == 0)
                 Tools.KillQuietly(player);
             await exit.ConfigureAwait(false);
             if (!ReferenceEquals(_player, player) || _reopening) return;
-            if (!_stopRequested && (Volatile.Read(ref result) != 1 || SafeExit(player) != 0))
+            int outcome = Volatile.Read(ref result);
+            if (!_stopRequested && (outcome != 1 || SafeExit(player) != 0))
+            {
+                if (outcome == 2) Direct3DRejected?.Invoke();
                 RecoverOnCpu("o player Direct3D 11 não conseguiu manter a reprodução");
+            }
             else
                 Exited?.Invoke();
         }
@@ -434,6 +468,7 @@ public sealed class Viewer
 
     void Relaunch(Action launch)
     {
+        if (_stopRequested) return;
         Restarting?.Invoke();
         if (Restarting != null) Thread.Sleep(1200);
         if (!_stopRequested) launch();

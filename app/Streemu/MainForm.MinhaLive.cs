@@ -179,7 +179,7 @@ public sealed partial class MainForm
 
     void StartMyLive()
     {
-        bool hw = _hwDecode.Checked && DateTime.Now >= _cpuPlayerUntil && !SystemInfo.HasRtx50;
+        bool hw = _hwDecode.Checked && Environment.TickCount64 >= Interlocked.Read(ref _vulkanRetryAt) && !SystemInfo.HasRtx50;
         var v = new Viewer { UseHardware = hw, SmallWindowGuard = SmallWindowGuard };
         v.Exited += () => Ui(() => { if (ReferenceEquals(_myLive, v)) _myLive = null; RefreshSide(); });
         _myLive = v;

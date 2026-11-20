@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.0",
-    "privado":  "b36bd8f11f58767a5d9a7b21791be4fdb89e97c2",
-    "notas":  "- Ativa a recuperação por Direct3D 11 e mede o player de lives",
+    "privado":  "d10e1f050a68883d18f5658f652fbe9618a6003d",
+    "notas":  "- Escolhe automaticamente o decodificador das lives",
     "obrigatoria":  false
 }

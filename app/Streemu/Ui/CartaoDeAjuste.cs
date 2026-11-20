@@ -37,19 +37,20 @@ public sealed class CartaoDeAjuste : GroupBox
     /// <summary>O filho fica colado no topo da área útil (dentro da margem) e o cartão tem a altura dele mais a margem.</summary>
     protected override void OnLayout(LayoutEventArgs levent)
     {
-        if (!_medindo && Controls.Count > 0)
+        if (_medindo || Controls.Count == 0) { base.OnLayout(levent); return; }
+        _medindo = true;
+        try
         {
-            _medindo = true;
-            try
-            {
-                var filho = Controls[0];
-                filho.Dock = DockStyle.Top;
-                int altura = filho.GetPreferredSize(new Size(Math.Max(1, Width - Padding.Horizontal), 0)).Height + Padding.Vertical;
-                if (Height != altura) Height = altura;
-            }
-            finally { _medindo = false; }
+            var filho = Controls[0];
+            filho.Dock = DockStyle.Top;
+            int miolo = filho.GetPreferredSize(new Size(Math.Max(1, Width - Padding.Horizontal), 0)).Height;
+            if (Height != miolo + Padding.Vertical) Height = miolo + Padding.Vertical;
+            base.OnLayout(levent);
+            // O encaixe em cima mantém a altura antiga do filho. Se ele foi medido numa largura menor (o cartão nasce com 200 px), fica mais alto que o
+            // cartão e tampa a borda de baixo e os cantos (--grupos-check, Grupos vazio a 760 px, escala 100 % com o Windows em 150 %, 2026-11-20): a altura é a medida aqui.
+            if (filho.Height != miolo) filho.Height = miolo;
         }
-        base.OnLayout(levent);
+        finally { _medindo = false; }
     }
 
     protected override void OnPaint(PaintEventArgs e)

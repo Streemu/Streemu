@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.0",
-    "privado":  "18649676cc7e693a30674fa3a423f17d8926015a",
-    "notas":  "- Sobe a barra das lives acima da barra de tarefas e escolhe a proporção das peças pelas lives\n- Cria a lista do \"+N\" já no tema e avisa quando o destaque não cabe\n- Corrige o palco de lives em tamanhos apertados e adiciona a bateria de estresse\n- Corrige as cores das lives ao trocar o tema",
+    "privado":  "5b1e9ff42f7178bdd683adc15aa51e94ce20d0dd",
+    "notas":  "- Corrige o cartão cortado da página Grupos",
     "obrigatoria":  false
 }

@@ -160,11 +160,11 @@ sealed class ConteudoGrupo : PainelManual
                 _detalhe.SetBounds(-Recuo, LinhaDe(_nome) + Dp(2), largura + Recuo, LinhaDe(_detalhe));
             }
             y = alturaTexto + Dp(10);
-            if (aplicar)
-            {
-                _principal.SetBounds(0, y, Math.Min(p.Width, largura), alturaBotao);
-                _secundario.SetBounds(Math.Min(p.Width, largura) + gap, y, Math.Min(s.Width, Math.Max(1, largura - p.Width - gap)), alturaBotao);
-            }
+            if (aplicar) _principal.SetBounds(0, y, Math.Min(p.Width, largura), alturaBotao);
+            // os dois botões não cabem na mesma linha (página estreita com o Ctrl +): o segundo desce, em vez de sair cortado ("Mais ▾" com 50 px, --grupos-check 2026-11-20)
+            bool juntos = p.Width + gap + s.Width <= largura;
+            if (!juntos) y += alturaBotao + gap;
+            if (aplicar) _secundario.SetBounds(juntos ? p.Width + gap : 0, y, Math.Min(s.Width, largura), alturaBotao);
             y += alturaBotao;
         }
         if (_membros.Count == 0 || _linha == null || _pessoas == null) return y;

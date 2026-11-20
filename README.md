@@ -66,6 +66,8 @@ O código deste repositório é uma cópia do repositório de trabalho, sem o hi
 
 **Diagnóstico.** O app manda sozinho, para o servidor do grupo, o log do app e dos problemas marcados, dados do PC (processador, placa de vídeo e driver, memória, Windows, tela, áudio, provedor e região da rede) e métricas das lives (quadros por segundo, atraso, qualidade da conexão). A pessoa pode desligar em Ajustes > Diagnóstico; desligado, o envio continua anônimo (nomes trocados por "pessoa-1", "pessoa-2"...) e a nota do "Marcar problema" não sobe.
 
+**Instalador.** Se não der para instalar (Windows anterior ao 10 versão 2004, Windows de 32 bits, ou a instalação parou no meio), o instalador mostra um relatório com o motivo, a versão do instalador, o Windows (nome, build, se roda 64 bits, idioma) e, se parou no meio, o fim do log da instalação. Ele só vai para o servidor do grupo se a pessoa clicar em "Enviar para a equipe"; também dá para copiar ou salvar e mandar por conta própria. O nome do usuário do Windows sai trocado por `<usuario>`, e o servidor filtra de novo pasta do usuário, e-mail e IP. O que o instalador monta e envia está no `[Code]` de [`instalador/streemu.iss`](instalador/streemu.iss).
+
 **O que nunca vai:** IP inteiro, senha, tokens, o nome do usuário do Windows, o nome do PC, o endereço MAC da placa de rede, e áudio ou imagem das lives. O texto passa por um filtro antes de sair: veja [`app/Streemu/Telemetria/Higiene.cs`](app/Streemu/Telemetria/Higiene.cs). Dentro do app, "Ver o que é enviado" abre a pasta com uma cópia do que vai.
 
 Política de privacidade: <https://www.streemu.com.br/privacidade>

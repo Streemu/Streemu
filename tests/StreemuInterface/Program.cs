@@ -24,6 +24,9 @@ static class Program
         if (args.FirstOrDefault() == "--sidebar-rows") { SidebarOverlapBehavior.RowsCheck(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--player-bar") { SidebarOverlapBehavior.PlayerBar(args.Skip(1).FirstOrDefault() ?? "."); return; }
         if (args.FirstOrDefault() == "--sidebar-audit") { SidebarOverlapBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
+        if (args.FirstOrDefault() == "--palco-estresse-check") { PalcoEstresseBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
+        if (args.FirstOrDefault() == "--alt-tab-check") { AltTabBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
+        if (args.FirstOrDefault() == "--palco-tema-check") { PalcoTemaBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--layout-check") { LayoutBehavior.Run(); return; }
         if (args.FirstOrDefault() == "--fontes-check") { FontesBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--cinema-player-check") { CinemaPlayerBehavior.Run(args.Skip(1).FirstOrDefault()); return; }

@@ -152,7 +152,7 @@ public sealed class RosterStrip : Control
     {
         var r = ChipBounds;
         using (var fill = new SolidBrush(_hover == int.MaxValue ? Theme.NeutralHover : Theme.Neutral)) g.FillRectangle(fill, r);
-        DrawCentered(g, $"+{_hidden}", 9f, r, Theme.OnMedia);
+        DrawCentered(g, $"+{_hidden}", 9f, r, Theme.NeutralText); // o branco sumia sobre o neutro quase branco do claro
     }
 
     static void DrawCentered(Graphics g, string text, float points, Rectangle bounds, Color color)

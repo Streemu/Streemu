@@ -221,7 +221,7 @@ public sealed class PlayerOverlay : Form
         _fullscreen.Click += (_, _) => { if (_stage is { Active: true }) _stage.ToggleFullscreen(); else _viewer.Window.PressKey(Keys.F); };
         _mini.Click += (_, _) => ToggleSmall();
         _liveButton.Click += (_, _) => ToggleLiveNow();
-        _emphasis.Click += (_, _) => _stage?.ToggleEmphasis(_viewer);
+        _emphasis.Click += (_, _) => ToggleEmphasis();
         WireDrag(this);
         _close.Click += (_, _) => _viewer.Stop();
         _roster.OverflowClicked += TogglePeopleList;
@@ -282,10 +282,22 @@ public sealed class PlayerOverlay : Form
         return _viewer.Window.TryGetClientBounds(out video);
     }
 
-    /// <summary>A barra fica por cima do fim do vídeo, no palco e na janela pequena.</summary>
+    /// <summary>Onde a barra fica agora: no fim do vídeo, ou logo acima da barra de tarefas do Windows quando ela está à vista por cima do fim do vídeo.</summary>
     Rectangle BarBounds(Rectangle video)
     {
-        int height = (int)(BarHeightAt96Dpi * DeviceDpi / 96f);
+        var bar = BarRect(video, DeviceDpi);
+        var probe = new Point(video.X + video.Width / 2, video.Bottom - 2);
+        if (TaskbarCover.At(probe) is not { } taskbar || taskbar.Top <= video.Y + video.Height / 2) return bar;
+        return bar with { Y = Math.Max(video.Y, taskbar.Top - bar.Height) };
+    }
+
+    /// <summary>
+    /// A barra fica por cima do fim do vídeo, no palco e na janela pequena, e nunca mais alta que ele: num vídeo 32:9 de peça pequena do destaque ela
+    /// passava do alto do vídeo e cobria a faixa do nome (bateria de estresse, 2026-11-20). Ex.: <c>PlayerOverlay.BarRect(video, 144)</c>.
+    /// </summary>
+    public static Rectangle BarRect(Rectangle video, int dpi)
+    {
+        int height = Math.Min(video.Height, (int)(BarHeightAt96Dpi * dpi / 96f));
         return new Rectangle(video.X, video.Bottom - height, video.Width, height);
     }
 
@@ -345,11 +357,23 @@ public sealed class PlayerOverlay : Form
         _liveButton.ForeColor = _stage is { PanelOpen: true } ? Theme.Accent : Theme.Text;
         bool several = _stage is { Count: >= 2 };
         if (_emphasis.Visible != several) { _emphasis.Visible = several; LayoutZones(); }
-        bool mine = _stage?.IsEmphasized(_viewer) == true;
+        bool mine = _stage?.IsEmphasized(_viewer) == true && _stage.EmphasisShown; // pedido sem lugar na janela: a tela é a grade, o botão não diz "Grade"
         _emphasis.ForeColor = mine ? Theme.Accent : Theme.Text;
         _emphasis.Text = mine ? "Grade" : "Destacar";
         Describe(_emphasis, mine ? "Voltar à grade com todas do mesmo tamanho" : "Deixar esta live maior que as outras");
         RefreshFullscreen();
+    }
+
+    /// <summary>
+    /// Destaca esta live (ou volta à grade). Sem lugar para as outras continuarem assistíveis, o palco fica na grade e guarda o pedido: avisa o porquê,
+    /// senão o clique pareceria não fazer nada.
+    /// </summary>
+    void ToggleEmphasis()
+    {
+        if (_stage == null) return;
+        _stage.ToggleEmphasis(_viewer);
+        if (_stage.IsEmphasized(_viewer) && !_stage.EmphasisShown)
+            _notify?.Invoke("Não há espaço para destacar esta live nesta janela: aumente a janela ou diminua a escala da interface (Ctrl -).");
     }
 
     // ------------------------------------------------------------------ janela pequena (plano 002, T5)

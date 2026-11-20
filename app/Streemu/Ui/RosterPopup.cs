@@ -38,6 +38,9 @@ public sealed class RosterPopup : Form
         _list.MouseClick += (_, e) => TogglePin(_list.IndexFromPoint(e.Location));
         _clock.Tick += (_, _) => { DropStaleHover(); InvalidateAnimatedRows(); };
         Controls.Add(_list);
+        // A barra de controles cria a lista junto com ela e só a abre bem depois: sem janela criada, a troca de tema (ThemeSwitch) não a encontra e a
+        // lista abria com as cores do tema antigo (2026-11-20).
+        _ = Handle;
     }
 
     protected override bool ShowWithoutActivation => true;

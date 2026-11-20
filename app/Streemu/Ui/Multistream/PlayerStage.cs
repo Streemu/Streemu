@@ -92,6 +92,12 @@ public sealed class PlayerStage : IDisposable
     public bool HostHidden => Native.IsIconic(_host.Handle) || !Native.IsWindowVisible(_host.Handle);
     public bool IsEmphasized(Viewer viewer) => _emphasized == viewer;
 
+    /// <summary>
+    /// O destaque pedido está na tela? Sem lugar para as lives pequenas continuarem assistíveis, o palco mostra a grade e guarda o pedido (aumentando a
+    /// janela, o destaque volta sozinho); a barra de controles mostra "Destacar" e avisa em vez de "Grade" sobre uma grade.
+    /// </summary>
+    public bool EmphasisShown { get; private set; }
+
     /// <summary>Acabou de pôr os vídeos no lugar (a barra de controles de cada um se realinha na hora, sem esperar o relógio dela).</summary>
     public event Action? Placed;
 
@@ -156,6 +162,12 @@ public sealed class PlayerStage : IDisposable
 
     int Pad => _host.Dp(PadAt96);
     int CaptionHeight => _host.Dp(CaptionAt96);
+    /// <summary>
+    /// O lado maior do menor vídeo assistível, em pixels do monitor (o lado menor é 9/16 disso): o vídeo não precisa crescer com o Ctrl + da interface,
+    /// então a escala do usuário sai da conta. Sem lugar para isso nas peças pequenas, o destaque vira a grade.
+    /// </summary>
+    int MinVideo => (int)Math.Round(_host.Dp(MinVideoAt96) / UiScale.User);
+    const int MinVideoAt96 = 120;
 
     /// <summary>
     /// A folga em volta e a faixa de legenda só existem com 2 ou mais streams (é o que separa uma da outra). Com UMA stream o vídeo preenche o palco todo:
@@ -186,7 +198,7 @@ public sealed class PlayerStage : IDisposable
     Rectangle? PlannedRect(int count, int index)
     {
         if (_host.VideoArea is not { } area) return null;
-        var cells = TileLayout.Grid(count, Rectangle.Inflate(area, -PadFor(count), -PadFor(count)), Pad);
+        var cells = TileLayout.Grid(count, Rectangle.Inflate(area, -PadFor(count), -PadFor(count)), new TileRules(Pad, CaptionFor(count)));
         return index < cells.Count ? VideoIn(cells[index], count, TileLayout.Aspect) : null;
     }
 
@@ -211,9 +223,39 @@ public sealed class PlayerStage : IDisposable
     IReadOnlyList<Rectangle> Layout(IReadOnlyList<Viewer> tiles, Rectangle videos)
     {
         int emphasized = _emphasized == null ? -1 : tiles.ToList().IndexOf(_emphasized);
+        // Proporção das peças: a das lives quando todas são iguais (4 lives 32:9 numa janela estreita ficavam com 270x74 em peças 16:9); misturadas, a
+        // que deixa o menor vídeo maior (uma em pé entre deitadas ficava com 84x148 em peças 16:9). Bateria de estresse, 2026-11-20.
+        var candidates = tiles.Select(AspectOf).Append(TileLayout.Aspect).Select(a => Math.Round(a, 3)).Distinct();
+        // com destaque pedido, a disposição que destaca vem antes (a grade sempre tem o menor vídeo maior e anularia o pedido)
+        return candidates.Select(aspect => LayoutWith(tiles, emphasized, videos, aspect))
+            .MaxBy(cells => (Emphasizes(cells, emphasized), SmallestVideo(tiles, cells)))!;
+    }
+
+    /// <summary>A peça <paramref name="main"/> está maior que todas as outras (o destaque coube)?</summary>
+    static bool Emphasizes(IReadOnlyList<Rectangle> cells, int main) =>
+        main >= 0 && main < cells.Count && cells.Count >= 2 && cells.Where((_, i) => i != main).All(c => c.Width < cells[main].Width);
+
+    IReadOnlyList<Rectangle> LayoutWith(IReadOnlyList<Viewer> tiles, int emphasized, Rectangle videos, double aspect)
+    {
+        var rules = RulesFor(tiles, emphasized, aspect);
         return emphasized >= 0 && tiles.Count >= 2
-            ? TileLayout.Emphasis(tiles.Count, emphasized, videos, Pad)
-            : TileLayout.Grid(tiles.Count, videos, Pad);
+            ? TileLayout.Emphasis(tiles.Count, emphasized, videos, rules)
+            : TileLayout.Grid(tiles.Count, videos, rules);
+    }
+
+    /// <summary>Área do menor vídeo da disposição (cada vídeo na proporção dele dentro da sua peça); destaque conta só as pequenas, que são as que somem.</summary>
+    long SmallestVideo(IReadOnlyList<Viewer> tiles, IReadOnlyList<Rectangle> cells) =>
+        cells.Count < tiles.Count ? 0 : tiles.Select((t, i) => VideoIn(cells[i], tiles.Count, AspectOf(t))).Min(v => (long)v.Width * v.Height);
+
+    /// <summary>
+    /// A faixa do nome entra na conta da peça (descontada só depois, apertava o vídeo pequeno até sumir). A peça pequena do destaque tem que servir ao
+    /// vídeo mais exigente entre os pequenos.
+    /// </summary>
+    TileRules RulesFor(IReadOnlyList<Viewer> tiles, int emphasized, double aspect)
+    {
+        int minSide = emphasized < 0 || tiles.Count < 2 ? 0
+            : tiles.Where((_, i) => i != emphasized).Max(t => TileLayout.MinTileWidth(AspectOf(t), MinVideo, aspect));
+        return new TileRules(Pad, CaptionFor(tiles.Count), minSide, aspect);
     }
 
     // ------------------------------------------------------------------ manutenção (a cada 250 ms e quando a janela mexe)
@@ -236,7 +278,9 @@ public sealed class PlayerStage : IDisposable
         for (int i = 0; i < managed.Count && i < cells.Count; i++)
         {
             var video = VideoIn(cells[i], n, AspectOf(managed[i]));
-            if (CaptionFor(n) > 0) captions.Add(new StageCaption(new Rectangle(video.X, video.Y - CaptionHeight, video.Width, CaptionHeight), _captions.GetValueOrDefault(managed[i])?.Invoke() ?? "", _avatars.GetValueOrDefault(managed[i])?.Invoke()));
+            // a faixa ocupa a largura da célula, não a do vídeo: com vídeo 4:3 ou em pé ela ficava tão estreita que a pílula AO VIVO cobria a foto e o
+            // nome (bateria de estresse, 2026-11-20)
+            if (CaptionFor(n) > 0) captions.Add(new StageCaption(new Rectangle(cells[i].X, video.Y - CaptionHeight, cells[i].Width, CaptionHeight), _captions.GetValueOrDefault(managed[i])?.Invoke() ?? "", _avatars.GetValueOrDefault(managed[i])?.Invoke()));
             var target = shown ? video : new Rectangle(Parked, video.Size);
             targets[managed[i]] = target;
             Place(managed[i], target);
@@ -245,6 +289,7 @@ public sealed class PlayerStage : IDisposable
         }
         _targets = targets;
         _cells = cells.ToList();
+        EmphasisShown = Emphasizes(_cells, _emphasized == null ? -1 : managed.IndexOf(_emphasized));
         _host.ShowCaptions(shown ? captions : Array.Empty<StageCaption>());
         _host.ShowLoading(loading);
         Placed?.Invoke();

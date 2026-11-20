@@ -4,12 +4,19 @@ namespace Streemu.Ui.Multistream;
 public enum BarSide { Auto, Right, Left, Below }
 
 /// <summary>
+/// As regras de uma disposição: espaço entre as peças, a faixa do nome no alto de cada peça (pixels), a largura mínima de uma peça pequena do destaque
+/// e a proporção do vídeo das peças (16:9 até o player dizer outra). Ex.: <c>new TileRules(Gap: 8, Header: 36)</c>.
+/// </summary>
+public readonly record struct TileRules(int Gap, int Header = 0, int MinSide = 0, double Aspect = TileLayout.Aspect);
+
+/// <summary>
 /// Onde fica cada peça (vídeo) na janela de streams (spec 006), como conta pura: sem janela, sem ffplay, só retângulos.
-/// Toda peça é 16:9, cabe na área e não se sobrepõe a outra; o vídeo de cada uma fica o MAIOR possível sem distorcer.
-/// Dois modos: <see cref="Grid"/> (todas do mesmo tamanho, na disposição de colunas x linhas que deixa cada vídeo maior) e
-/// <see cref="Emphasis"/> (uma peça grande e as outras menores ao lado ou embaixo, como no desenho do grupo).
+/// Toda peça é a faixa do nome mais o vídeo na proporção das regras, cabe na área e não se sobrepõe a outra; o vídeo de cada uma fica o MAIOR possível
+/// sem distorcer. Sem descontar a faixa na conta, a peça pequena do destaque com a interface ampliada ficava só com a faixa e o vídeo com 0 px
+/// (bateria de estresse, 2026-11-20). Dois modos: <see cref="Grid"/> (todas do mesmo tamanho, na disposição de colunas x linhas que deixa cada vídeo
+/// maior) e <see cref="Emphasis"/> (uma peça grande e as outras menores ao lado ou embaixo, como no desenho do grupo).
 /// O resultado vem na ordem das peças: o retângulo de índice i é da peça i.
-/// Uso: <c>var rects = TileLayout.Grid(4, new Rectangle(0, 0, 1280, 720), gap: 8);</c>
+/// Uso: <c>var rects = TileLayout.Grid(4, new Rectangle(0, 0, 1280, 720), new TileRules(Gap: 8, Header: 36));</c>
 /// </summary>
 public static class TileLayout
 {
@@ -25,35 +32,51 @@ public static class TileLayout
     /// Todas as peças do mesmo tamanho. Escolhe o número de colunas que dá o maior vídeo (empate: mais colunas, janela larga fica lado a lado);
     /// a última linha incompleta fica centralizada, e o conjunto fica centralizado na área.
     /// </summary>
-    public static IReadOnlyList<Rectangle> Grid(int count, Rectangle area, int gap)
+    public static IReadOnlyList<Rectangle> Grid(int count, Rectangle area, TileRules rules)
     {
         if (count <= 0) return Array.Empty<Rectangle>();
-        var (columns, size) = BestColumns(count, area.Size, gap);
-        return PlaceGrid(count, columns, size, area, gap);
+        var (columns, size) = BestColumns(count, area.Size, rules);
+        return PlaceGrid(count, columns, size, area, rules.Gap);
     }
 
     /// <summary>
     /// A peça <paramref name="emphasized"/> fica grande; as outras ficam menores, do mesmo tamanho entre si, numa barra à direita, à esquerda ou embaixo
     /// (<paramref name="bar"/>; <see cref="BarSide.Auto"/> escolhe a que deixa a grande maior), em mais de uma coluna ou linha se forem muitas. Escolhe a
-    /// barra mais estreita em que as pequenas ainda são pelo menos 30% da grande, o que deixa a grande o maior possível. Com 1 peça é a grade; se a área
-    /// não comporta a ênfase, cai para a grade.
+    /// barra mais estreita em que as pequenas ainda são pelo menos 30% da grande e têm <see cref="TileRules.MinSide"/> px de largura (abaixo disso
+    /// ninguém assiste: com 4 lives numa janela pequena elas ficavam com 104 px), o que deixa a grande o maior possível. Com 1 peça é a grade; se a área
+    /// não comporta a ênfase (ou a grande ficaria menor que as pequenas), cai para a grade.
     /// </summary>
-    public static IReadOnlyList<Rectangle> Emphasis(int count, int emphasized, Rectangle area, int gap, BarSide bar = BarSide.Auto)
+    public static IReadOnlyList<Rectangle> Emphasis(int count, int emphasized, Rectangle area, TileRules rules, BarSide bar = BarSide.Auto)
     {
         if (count <= 0) return Array.Empty<Rectangle>();
-        if (count == 1) return Grid(1, area, gap);
-        var split = ChooseSplit(count - 1, area, gap, bar);
-        if (split == null) return Grid(count, area, gap);
-        var rects = PlaceEmphasis(count, Math.Clamp(emphasized, 0, count - 1), split.Value, area, gap);
+        if (count == 1) return Grid(1, area, rules);
+        var split = ChooseSplit(count - 1, area, rules, bar);
+        if (split == null) return Grid(count, area, rules);
+        var rects = PlaceEmphasis(count, Math.Clamp(emphasized, 0, count - 1), split.Value, area, rules);
         return bar == BarSide.Left ? Mirror(rects, area) : rects;
     }
 
-    static Split? ChooseSplit(int sideCount, Rectangle area, int gap, BarSide bar)
+    /// <summary>
+    /// Largura que uma peça de proporção <paramref name="tileAspect"/> precisa para o vídeo de proporção <paramref name="aspect"/> dentro dela ainda dar
+    /// para assistir: lado maior de pelo menos <paramref name="minLong"/> px e lado menor de pelo menos 9/16 disso, em qualquer orientação. Numa peça 16:9,
+    /// 16:9 pede <paramref name="minLong"/>, 4:3 pede 1,33 vez, 32:9 o dobro e um vídeo em pé (9:16) 1,78 vez.
+    /// Uso: <c>TileLayout.MinTileWidth(4.0 / 3, 180, TileLayout.Aspect)</c>.
+    /// </summary>
+    public static int MinTileWidth(double aspect, int minLong, double tileAspect)
     {
-        if (bar == BarSide.Below) return BestSplit(sideCount, area, gap, below: true);
-        var side = BestSplit(sideCount, area, gap, below: false);
+        double minShort = minLong * 9.0 / 16, t = tileAspect;
+        double need = aspect >= t ? Math.Max(minLong, minShort * aspect) // tão largo quanto a peça ou mais: a largura dela e a altura do vídeo mandam
+            : aspect >= 1 ? Math.Max(minLong * t / aspect, minShort * t)  // entre quadrado e a peça: a largura do vídeo manda
+            : Math.Max(minLong * t, minShort * t / aspect);              // em pé: a altura e a largura do vídeo mandam
+        return (int)Math.Ceiling(need);
+    }
+
+    static Split? ChooseSplit(int sideCount, Rectangle area, TileRules rules, BarSide bar)
+    {
+        if (bar == BarSide.Below) return BestSplit(sideCount, area, rules, below: true);
+        var side = BestSplit(sideCount, area, rules, below: false);
         if (bar != BarSide.Auto) return side;
-        var below = BestSplit(sideCount, area, gap, below: true);
+        var below = BestSplit(sideCount, area, rules, below: true);
         return side == null ? below : below == null ? side : below.Value.MainWidth > side.Value.MainWidth ? below : side;
     }
 
@@ -61,21 +84,21 @@ public static class TileLayout
     static IReadOnlyList<Rectangle> Mirror(IReadOnlyList<Rectangle> rects, Rectangle area) =>
         rects.Select(r => new Rectangle(2 * area.X + area.Width - r.X - r.Width, r.Y, r.Width, r.Height)).ToList();
 
-    /// <summary>O maior vídeo 16:9 que cabe numa célula (largura inteira; a altura nunca passa da célula).</summary>
-    static Size FitTile(double cellWidth, double cellHeight)
+    /// <summary>A maior peça (faixa mais vídeo na proporção das regras) que cabe numa célula (largura inteira; a altura nunca passa da célula).</summary>
+    static Size FitTile(double cellWidth, double cellHeight, TileRules rules)
     {
-        int height = Math.Max(0, (int)Math.Floor(cellHeight));
-        int width = Math.Max(0, (int)Math.Floor(Math.Min(cellWidth, height * Aspect)));
-        return new Size(width, (int)(width / Aspect));
+        int videoHeight = Math.Max(0, (int)Math.Floor(cellHeight) - rules.Header);
+        int width = Math.Max(0, (int)Math.Floor(Math.Min(cellWidth, videoHeight * rules.Aspect)));
+        return width == 0 ? Size.Empty : new Size(width, (int)(width / rules.Aspect) + rules.Header);
     }
 
-    static (int Columns, Size Tile) BestColumns(int count, Size area, int gap)
+    static (int Columns, Size Tile) BestColumns(int count, Size area, TileRules rules)
     {
         (int, Size) best = (1, Size.Empty);
         for (int columns = 1; columns <= count; columns++)
         {
             int rows = (count + columns - 1) / columns;
-            var tile = FitTile((area.Width - gap * (columns - 1)) / (double)columns, (area.Height - gap * (rows - 1)) / (double)rows);
+            var tile = FitTile((area.Width - rules.Gap * (columns - 1)) / (double)columns, (area.Height - rules.Gap * (rows - 1)) / (double)rows, rules);
             if (tile.Width >= best.Item2.Width) best = (columns, tile); // >= : no empate fica o de mais colunas
         }
         return best;
@@ -96,31 +119,32 @@ public static class TileLayout
         return rects;
     }
 
-    /// <summary>A menor faixa (ao lado ou embaixo) em que as pequenas passam de 30% da grande; nulo se nenhuma serve.</summary>
-    static Split? BestSplit(int sideCount, Rectangle area, int gap, bool below)
+    /// <summary>A menor faixa (ao lado ou embaixo) em que as pequenas passam de 30% da grande e da largura mínima; nulo se nenhuma serve.</summary>
+    static Split? BestSplit(int sideCount, Rectangle area, TileRules rules, bool below)
     {
         int length = below ? area.Height : area.Width;
-        for (int band = ScanStep; band < length - gap; band += ScanStep)
+        for (int band = ScanStep; band < length - rules.Gap; band += ScanStep)
         {
-            int mainWidth = MainWidthFor(area.Size, gap, band, below);
-            var (_, tile) = BestColumns(sideCount, BandSize(area.Size, band, below), gap);
-            if (tile.Width > 0 && mainWidth > 0 && tile.Width >= MinSideToMain * mainWidth) return new Split(below, band, mainWidth, tile);
+            int mainWidth = MainWidthFor(area.Size, band, below, rules);
+            var (_, tile) = BestColumns(sideCount, BandSize(area.Size, band, below), rules);
+            if (mainWidth <= tile.Width) return null; // a faixa só cresce daqui em diante: a grande ficaria menor que as pequenas, e isso não é destaque
+            if (tile.Width > 0 && mainWidth > 0 && tile.Width >= Math.Max(MinSideToMain * mainWidth, rules.MinSide)) return new Split(below, band, mainWidth, tile);
         }
         return null;
     }
 
-    static int MainWidthFor(Size area, int gap, int band, bool below) => below
-        ? Math.Min(area.Width, (int)Math.Floor((area.Height - gap - band) * Aspect))
-        : Math.Min(area.Width - gap - band, (int)Math.Floor(area.Height * Aspect));
+    static int MainWidthFor(Size area, int band, bool below, TileRules rules) => below
+        ? Math.Min(area.Width, (int)Math.Floor((area.Height - rules.Gap - band - rules.Header) * rules.Aspect))
+        : Math.Min(area.Width - rules.Gap - band, (int)Math.Floor((area.Height - rules.Header) * rules.Aspect));
 
     static Size BandSize(Size area, int band, bool below) => below ? new Size(area.Width, band) : new Size(band, area.Height);
 
-    static IReadOnlyList<Rectangle> PlaceEmphasis(int count, int emphasized, Split split, Rectangle area, int gap)
+    static IReadOnlyList<Rectangle> PlaceEmphasis(int count, int emphasized, Split split, Rectangle area, TileRules rules)
     {
         var bandSize = BandSize(area.Size, split.Band, split.Below);
-        var main = FitTile(split.MainWidth, split.Below ? area.Height - gap - split.Band : area.Height);
-        var side = PlaceGrid(count - 1, BestColumns(count - 1, bandSize, gap).Columns, split.SideTile, new Rectangle(Point.Empty, bandSize), gap);
-        var origin = split.Below ? BelowOrigin(main, side, area, gap) : BesideOrigin(main, side, area, gap);
+        var main = FitTile(split.MainWidth, split.Below ? area.Height - rules.Gap - split.Band : area.Height, rules);
+        var side = PlaceGrid(count - 1, BestColumns(count - 1, bandSize, rules).Columns, split.SideTile, new Rectangle(Point.Empty, bandSize), rules.Gap);
+        var origin = split.Below ? BelowOrigin(main, side, area, rules.Gap) : BesideOrigin(main, side, area, rules.Gap);
         var rects = new Rectangle[count];
         rects[emphasized] = new Rectangle(origin.Main, main);
         int next = 0;

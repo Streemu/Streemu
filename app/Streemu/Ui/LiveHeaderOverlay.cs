@@ -47,6 +47,7 @@ internal sealed class LiveHeaderOverlay : Form
         bool changed = caption != _caption || full != _full;
         _caption = caption; _full = full;
         var bounds = full ? caption.Area : LiveCaptionPainter.PillBounds(caption.Area, Dp);
+        if (bounds.IsEmpty) { if (Visible) Hide(); return; } // vídeo estreito demais até para o ponto vermelho
         if (Bounds != bounds) Bounds = bounds;
         if (changed) { ShapeAsPill(!full); Invalidate(); }
         PlayerWindowOrder.Follow(this, player, ref _owner);
@@ -73,9 +74,11 @@ internal sealed class LiveHeaderOverlay : Form
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.Clear(Theme.SurfaceInput);
+        // Só a pílula: o recorte por região não tem serrilhado suave, então o fundo aparece nas bordas dela sobre o vídeo (contorno branco no claro).
+        // Com o fundo da própria cor da pílula, a borda some.
+        e.Graphics.Clear(_full ? Theme.SurfaceInput : Theme.Error);
         if (_caption == null) return;
-        if (_full) LiveCaptionPainter.Draw(e.Graphics, ClientRectangle, _caption with { Area = ClientRectangle }, Font, Dp);
+        if (_full) LiveCaptionPainter.Draw(e.Graphics, ClientRectangle, _caption with { Area = ClientRectangle }, Font, Dp, onStage: false);
         else LiveCaptionPainter.DrawPill(e.Graphics, ClientRectangle, Font, Dp);
     }
 }

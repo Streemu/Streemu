@@ -109,12 +109,12 @@ public sealed class StageCanvas : Control
     {
         e.Graphics.Clear(Theme.VideoMargin);
         if (_message.Length > 0 && _captions.Count == 0 && _loading.Count == 0)
-            TextRenderer.DrawText(e.Graphics, _message, Font, ClientRectangle, Theme.TextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
+            TextRenderer.DrawText(e.Graphics, _message, Font, ClientRectangle, Theme.StageTextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
         for (int i = 0; i < _captions.Count; i++)
         {
             var r = RectangleToClient(_captions[i].Area);
             if (i == _drop) { e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias; using var path = Theme.RoundedPath(r, UiScale.Dp(this, 4)); using var back = new SolidBrush(Theme.DropTarget); e.Graphics.FillPath(back, path); }
-            LiveCaptionPainter.Draw(e.Graphics, r, _captions[i], Font, n => UiScale.Dp(this, n));
+            LiveCaptionPainter.Draw(e.Graphics, r, _captions[i], Font, n => UiScale.Dp(this, n), onStage: true);
         }
         foreach (var l in _loading) DrawLoading(e.Graphics, RectangleToClient(l.Area), l);
     }
@@ -136,18 +136,25 @@ public sealed class StageCanvas : Control
         if (ring > 0)
         {
             if (art) UiBrand.DrawMark(g, Rectangle.Inflate(ringBox, -ring / 5, -ring / 5));
-            if (!l.TimedOut)
+            int w = Math.Max(2, UiScale.Dp(this, 4));
+            var arc = Rectangle.Inflate(ringBox, -w, -w);
+            // vídeo baixo deixa o anel menor que a espessura: DrawArc com tamanho zero lança exceção, e exceção no desenho vira o X vermelho do WinForms
+            // no palco inteiro, que não desenha mais nada (bateria de estresse, 2026-11-20)
+            if (!l.TimedOut && arc.Width > 0 && arc.Height > 0)
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                int w = Math.Max(2, UiScale.Dp(this, 4));
-                var arc = Rectangle.Inflate(ringBox, -w, -w);
                 using (var track = new Pen(Theme.Border, w)) g.DrawEllipse(track, arc);
                 float angle = (float)(_clock.ElapsedMilliseconds % 1000) * 0.36f;
                 using var head = new Pen(Theme.Accent, w) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
                 g.DrawArc(head, arc, angle - 90, 100);
             }
         }
-        var textBox = new Rectangle(r.X + (r.Width - textWidth) / 2, top + (ring > 0 ? ring + gap : 0), textWidth, textSize.Height + gap);
-        TextRenderer.DrawText(g, l.Text, Font, textBox, l.TimedOut ? Theme.Text : Theme.TextMuted, flags);
+        // A frase não passa do lugar do vídeo: numa peça pequena ela descia por cima da faixa do nome da peça de baixo (bateria de estresse, 2026-11-20).
+        int textTop = top + (ring > 0 ? ring + gap : 0);
+        var textBox = new Rectangle(r.X + (r.Width - textWidth) / 2, textTop, textWidth, Math.Max(0, Math.Min(textSize.Height + gap, r.Bottom - textTop)));
+        var state = g.Save();
+        g.SetClip(r);
+        TextRenderer.DrawText(g, l.Text, Font, textBox, l.TimedOut ? Theme.StageText : Theme.StageTextMuted, flags | TextFormatFlags.EndEllipsis);
+        g.Restore(state);
     }
 }

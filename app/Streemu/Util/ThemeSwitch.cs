@@ -23,13 +23,24 @@ public static class ThemeSwitch
         var before = Theme.Current;
         Theme.Use(light);
         var pairs = new ColorPairs(ThemePalette.Pairs(before, Theme.Current, includeWhite: true), ThemePalette.Pairs(before, Theme.Current, includeWhite: false));
-        // a janela principal entra de qualquer jeito: na abertura do app ela ainda não está em OpenForms
-        foreach (Form form in Application.OpenForms.Cast<Form>().Append(main).Distinct().ToList())
+        foreach (Form form in OpenFormsAndHidden(main))
         {
             Recolor(form, pairs);
             if (form.IsHandleCreated) Theme.ApplyCaption(form.Handle);
             form.Invalidate(true);
         }
+    }
+
+    /// <summary>
+    /// As janelas do app que já existem, inclusive as que nunca apareceram. O <see cref="Application.OpenForms"/> só tem quem já foi mostrado: as barras de
+    /// controle das lives nascem escondidas e ficavam com as cores do tema antigo (relato de 2026-11-19: 3 lives, escuro → claro, artefatos brancos).
+    /// A janela principal entra de qualquer jeito: na abertura do app ela ainda não está em OpenForms.
+    /// </summary>
+    static List<Form> OpenFormsAndHidden(Form main)
+    {
+        var forms = Application.OpenForms.Cast<Form>().Append(main).ToList();
+        Native.EnumThreadWindows(Native.GetCurrentThreadId(), (hwnd, _) => { if (Control.FromHandle(hwnd) is Form form) forms.Add(form); return true; }, IntPtr.Zero);
+        return forms.Distinct().ToList();
     }
 
     /// <summary>Branco só vale como fundo (SurfaceInput do claro): como texto é o branco sobre botão colorido e não pode virar a cor de um campo.</summary>
@@ -44,10 +55,16 @@ public static class ThemeSwitch
         control.ResumeLayout(false);
     }
 
+    /// <summary>
+    /// Cor herdada do pai (sem valor próprio) já chega trocada, porque o pai é trocado antes: trocar de novo a converteria duas vezes. No claro o
+    /// fundo dos campos é branco, que também é o texto do neutro no escuro, e os painéis da barra de controles das lives viravam cinza (2026-11-20).
+    /// </summary>
+    static bool Inherits(Control control, Func<Control, Color> color) => control.Parent is { } parent && color(control) == color(parent);
+
     static void Swap(Control control, ColorPairs pairs)
     {
-        if (pairs.Back.TryGetValue(control.BackColor.ToArgb(), out var back)) control.BackColor = back;
-        if (pairs.Fore.TryGetValue(control.ForeColor.ToArgb(), out var fore)) control.ForeColor = fore;
+        if (!Inherits(control, c => c.BackColor) && pairs.Back.TryGetValue(control.BackColor.ToArgb(), out var back)) control.BackColor = back;
+        if (!Inherits(control, c => c.ForeColor) && pairs.Fore.TryGetValue(control.ForeColor.ToArgb(), out var fore)) control.ForeColor = fore;
         if (control is Button button) SwapButton(button, pairs);
         if (control is LinkLabel link) SwapLink(link, pairs);
     }

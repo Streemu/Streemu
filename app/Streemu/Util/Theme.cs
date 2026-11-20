@@ -55,6 +55,12 @@ public static class Theme
     public static Color WarnBorder => _current.WarnBorder;
     public static Color Backdrop => _current.Backdrop;
     public static readonly Color VideoMargin = Color.Black;
+    /// <summary>
+    /// Texto desenhado sobre o <see cref="VideoMargin"/> (faixa de nome com 2+ lives, aviso e carregamento do palco): o palco é preto nos dois temas, então o
+    /// texto é o do escuro também no claro (no claro, o texto escuro da paleta ficava com contraste 1,6 sobre o preto; relato de 2026-11-19).
+    /// </summary>
+    public static Color StageText => ThemePalette.Dark.Text;
+    public static Color StageTextMuted => ThemePalette.Dark.TextMuted;
     public static readonly Color SuccessSurface = ColorTranslator.FromHtml("#15963D");
     /// <summary>Lilás claro do nome Streemu e dos títulos de seção da lateral (mockups 1–24).</summary>
     public static Color AccentSoft => _current.AccentSoft;

@@ -167,9 +167,10 @@ public sealed partial class MainForm : IStageHost
     public event Action<int, Point, bool>? CaptionDragged;
     public void HighlightCaption(int index) => _stageCanvas.HighlightCaption(index);
 
-    public void ShowCaptions(IReadOnlyList<StageCaption> captions)
+    public void ShowCaptions(IReadOnlyList<StageCaption> captions, int videosShown)
     {
         _stageCanvas.Message = "Nenhuma stream à vista. Quem está ao vivo aparece na barra à esquerda.";
+        _stageCanvas.VideosShown = videosShown;
         _stageCanvas.SetCaptions(captions);
     }
 

@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "e96e06f5acd1edf98cdf1ee97035b7161d29b690",
-    "notas":  "- Corrige o som da live saindo em rajadas: entra em WAV de 10 ms\n- [sem atualização] Taxa enviada pelo relay sem contar em dobro",
+    "privado":  "1259c77557dd826dda4edf889fa9e2e5a20eafb9",
+    "notas":  "- Corrige a imagem espremida quando a live gira e o texto atrás do player",
     "obrigatoria":  false
 }

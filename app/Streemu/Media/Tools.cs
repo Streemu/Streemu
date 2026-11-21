@@ -136,12 +136,14 @@ public static class Tools
     }
 
     /// <summary>
-    /// O que o ffplay em "-loglevel level+info" escreve e não interessa ao log: tudo marcado "[info]" (a descrição da entrada, que traz a URL do
-    /// SRT com a senha; ~15 linhas do Vulkan/libplacebo a cada abertura; a linha de estado, ~30 por segundo) e o código de limpar a linha do
-    /// terminal. Avisos e erros continuam indo. O Viewer lê o tamanho do vídeo da linha "Stream #0:0 ... Video:" antes de ela ser descartada.
+    /// O que o ffplay em "-loglevel level+verbose" escreve e não interessa ao log: tudo marcado "[info]" ou "[verbose]" (a descrição da entrada, que
+    /// traz a URL do SRT com a senha; ~15 linhas do Vulkan/libplacebo a cada abertura; ~20 dos filtros e do decodificador; a linha de estado, ~30 por
+    /// segundo) e o código de limpar a linha do terminal. Avisos e erros continuam indo. O Viewer lê o tamanho do vídeo das linhas "Stream #0:0 ...
+    /// Video:" e "ffplay_buffer ... w: h:" antes de elas serem descartadas.
     /// </summary>
     internal static bool IsFfplayChatter(string l) =>
-        l.Contains("[info] ", StringComparison.Ordinal) || l.Contains(" aq=", StringComparison.Ordinal) || l.StartsWith('\u001b')
+        l.Contains("[info] ", StringComparison.Ordinal) || l.Contains("[verbose] ", StringComparison.Ordinal)
+        || l.Contains(" aq=", StringComparison.Ordinal) || l.StartsWith('\u001b')
         // "[warning]" que o Vulkan do ffplay só escreve fora do "-loglevel warning": 5 por abertura, extensões do Linux que o Windows não tem
         || l.Contains("not found, excluding.", StringComparison.Ordinal);
 

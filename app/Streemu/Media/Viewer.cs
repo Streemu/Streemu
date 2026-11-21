@@ -189,18 +189,29 @@ public sealed class Viewer
         return (new Size(w, h), aspect);
     }
 
+    /// <summary>
+    /// Lê o tamanho na linha "[verbose]" que o ffplay escreve ao (re)montar os filtros do vídeo, na abertura e quando o tamanho muda no meio, ex.:
+    /// <c>[ffplay_buffer @ 0x..] [verbose] w:1888 h:848 pixfmt:yuv420p tb:1/90000 fr:60/1 sar:1/1 ...</c>. Nulo se a linha não é essa.
+    /// </summary>
+    internal static (Size Size, double Aspect)? ParseFilterInputLine(string line)
+    {
+        if (!line.Contains("ffplay_buffer ") && !line.Contains("ffplay_buffer @")) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(line, @"\bw:(\d{2,5}) h:(\d{2,5})\b.*?\bsar:(\d+)/(\d+)");
+        if (!m.Success) return null;
+        int w = int.Parse(m.Groups[1].Value), h = int.Parse(m.Groups[2].Value);
+        double sar = int.Parse(m.Groups[3].Value) is var n and > 0 && int.Parse(m.Groups[4].Value) is var d and > 0 ? (double)n / d : 1;
+        double aspect = w * sar / h;
+        if (aspect < 1.0 / 3 || aspect > 5) return null;
+        return (new Size(w, h), aspect);
+    }
+
     PlayerFailure? OnStderr(string line)
     {
         Sync.Observe(line);
         if (line.Contains(" aq=")) return null; // linha de estado do ffplay (~30 por segundo): não é erro nem o tamanho
-        if (ParseVideoLine(line) is { } video)
-        {
-            if (VideoSize != video.Size || VideoAspect is not { } a || Math.Abs(a - video.Aspect) > 0.001)
-                Log.Info($"Player: o vídeo chega em {video.Size.Width}x{video.Size.Height} (proporção {video.Aspect:0.00}:1); a janela do player segue essa proporção.");
-            VideoSize = video.Size;
-            VideoAspect = video.Aspect;
-            return null;
-        }
+        // "[verbose]" só serve para o tamanho: nunca é erro ("failed to ..." de filtro opcional contaria como "outros")
+        if (line.Contains("[verbose] ")) { if (ParseFilterInputLine(line) is { } resized) TakeVideoSize(resized); return null; }
+        if (ParseVideoLine(line) is { } video) { TakeVideoSize(video); return null; }
         var kind = Classify(line);
         if (kind == null) return null;
         lock (_errors) _errors[kind] = _errors.GetValueOrDefault(kind) + 1;
@@ -213,6 +224,19 @@ public sealed class Viewer
         return null;
     }
 
+    /// <summary>
+    /// Guarda o tamanho e a proporção que o palco usa para a janela do ffplay (<see cref="VideoAspect"/>). Também no meio da live: o celular que gira
+    /// passa de 848x1888 para 1888x848, e com a janela presa na proporção antiga o ffplay na placa esticava a imagem (2026-11-21).
+    /// </summary>
+    void TakeVideoSize((Size Size, double Aspect) video)
+    {
+        if (VideoSize == video.Size && VideoAspect is { } a && Math.Abs(a - video.Aspect) <= 0.001) return;
+        string verbo = VideoSize == null ? "chega em" : "mudou para";
+        Log.Info($"Player: o vídeo {verbo} {video.Size.Width}x{video.Size.Height} (proporção {video.Aspect:0.00}:1); a janela do player segue essa proporção.");
+        VideoSize = video.Size;
+        VideoAspect = video.Aspect;
+    }
+
     void Launch(bool hardware)
     {
         _direct3DActive = false;
@@ -223,7 +247,9 @@ public sealed class Viewer
             // "info" e SEM -nostats: só assim o ffplay escreve a linha "Stream #0:0 ... Video: ... 3440x1440 [SAR 1:1 ...]", de onde sai a
             // proporção do vídeo (VideoAspect). Com -nostats ele não escreve essa linha. O "level+" marca cada linha com o nível: as "[info]"
             // (essa descrição, ~15 linhas do Vulkan por abertura e a linha de estado, ~30/s) não vão para o log (Tools.IsFfplayChatter).
-            "-hide_banner", "-loglevel", "level+info",
+            // "verbose" porque a troca de tamanho NO MEIO (celular que gira) só aparece nesse nível ("ffplay_buffer ... w: h:"); medido 2026-11-21:
+            // ~20 linhas a mais, só na abertura e na troca, nenhuma por quadro.
+            "-hide_banner", "-loglevel", "level+verbose",
             "-window_title", _title,
             "-fflags", "nobuffer", "-flags", "low_delay", "-framedrop",
             // probesize 64 KB não cabia um quadro-chave de 1440p a 13,5 Mbps: o ffplay desistia de achar o vídeo

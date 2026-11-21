@@ -25,8 +25,11 @@ public interface IStageHost
     /// <summary>Pixels de 96 DPI convertidos para os reais desta janela (espaço entre vídeos, altura da legenda).</summary>
     int Dp(int at96);
     void StreamsChanged(int count);
-    /// <summary>Legendas no alto de cada vídeo (áreas em pixels de tela).</summary>
-    void ShowCaptions(IReadOnlyList<StageCaption> captions);
+    /// <summary>
+    /// Legendas no alto de cada vídeo (áreas em pixels de tela) e quantos vídeos estão à vista. Com um só não há legenda (o cabeçalho vai por cima
+    /// do vídeo), então a contagem é o que diz ao fundo que não deve mostrar "Nenhuma stream à vista".
+    /// </summary>
+    void ShowCaptions(IReadOnlyList<StageCaption> captions, int videosShown);
     /// <summary>Os vídeos que ainda esperam o primeiro quadro (áreas em pixels de tela): o palco desenha o carregamento no lugar deles.</summary>
     void ShowLoading(IReadOnlyList<StageLoading> loading);
     void ToggleSidebar();
@@ -267,7 +270,7 @@ public sealed class PlayerStage : IDisposable
         // Esc no vídeo sai da tela cheia (StageEscape) só com o palco em tela cheia e à vista; nos outros casos o gancho nem existe.
         bool escapeActive = _host.Fullscreen && _host.StageShown;
         _escape.Update(escapeActive, escapeActive ? managed.Select(v => v.Window.Handle).Where(h => h != IntPtr.Zero).ToArray() : []);
-        if (managed.Count == 0) _host.ShowLoading(Array.Empty<StageLoading>());
+        if (managed.Count == 0) { _host.ShowLoading(Array.Empty<StageLoading>()); _host.ShowCaptions(Array.Empty<StageCaption>(), 0); }
         if (managed.Count == 0 || _host.VideoArea is not { } area) return;
         bool shown = _host.StageShown;
         int n = managed.Count;
@@ -290,7 +293,7 @@ public sealed class PlayerStage : IDisposable
         _targets = targets;
         _cells = cells.ToList();
         EmphasisShown = Emphasizes(_cells, _emphasized == null ? -1 : managed.IndexOf(_emphasized));
-        _host.ShowCaptions(shown ? captions : Array.Empty<StageCaption>());
+        _host.ShowCaptions(shown ? captions : Array.Empty<StageCaption>(), shown ? n : 0);
         _host.ShowLoading(loading);
         Placed?.Invoke();
     }

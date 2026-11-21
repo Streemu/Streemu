@@ -17,6 +17,10 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Cinema mais leve para quem transmite um filme 4K:** com placa AMD, o filme que vai para quem não tem o arquivo é preparado na placa de vídeo, e o seu filme não engasga mais.
 - **Som da live mais contínuo:** o som da sua live sai num ritmo constante, sem pausas curtas a cada 2 segundos. Quem assiste pelo celular deixa de ouvir estalos.
 
+### Correções
+- **Live de celular que gira:** quando quem transmite pelo celular vira o aparelho, a janela da live acompanha, e a imagem não fica mais espremida.
+- **Texto atrás de uma live em pé:** o aviso "Nenhuma stream à vista" não aparece mais dos lados de uma live estreita.
+
 ## 0.5.1 — 2026-11-20
 Correções de tela em janela pequena e no tema claro, e um instalador que explica o que deu errado.
 

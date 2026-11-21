@@ -58,6 +58,18 @@ public sealed class StageCanvas : Control
         set { if (value == _message) return; _message = value; Invalidate(); }
     }
 
+    /// <summary>
+    /// Quantos vídeos estão no palco. Com um só não há legenda nem carregamento depois do primeiro quadro, e o "Nenhuma stream à vista" aparecia nos
+    /// lados de um vídeo em pé (live do celular, 2026-11-21): a mensagem só é desenhada com zero.
+    /// </summary>
+    [System.ComponentModel.Browsable(false), System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public int VideosShown
+    {
+        get => _videosShown;
+        set { if (value == _videosShown) return; _videosShown = value; Invalidate(); }
+    }
+    int _videosShown;
+
     /// <summary>As legendas ficam no alto de cada vídeo (áreas em pixels de TELA).</summary>
     public void SetCaptions(IReadOnlyList<StageCaption> captions)
     {
@@ -108,7 +120,7 @@ public sealed class StageCanvas : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.Clear(Theme.VideoMargin);
-        if (_message.Length > 0 && _captions.Count == 0 && _loading.Count == 0)
+        if (_message.Length > 0 && _videosShown == 0 && _captions.Count == 0 && _loading.Count == 0)
             TextRenderer.DrawText(e.Graphics, _message, Font, ClientRectangle, Theme.StageTextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
         for (int i = 0; i < _captions.Count; i++)
         {

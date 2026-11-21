@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "506acd5ec1754bb6bf954206dcdf2917173aa00a",
-    "notas":  "- Corrige o som da tela de pausa saindo em blocos de meio segundo",
-    "obrigatoria":  false
+    "privado":  "33773ec283e65d43a3021e96d1cc035e4af1b2a7",
+    "notas":  "- Tira nomes de pessoas do grupo dos testes do nome da conta\n- Desktop: o nome passa a ser da conta e igual em todos os aparelhos [obrigatória]\n- Identifica pessoas pelo id da conta, não pelo nome (spec 027, seção 7)",
+    "obrigatoria":  true
 }

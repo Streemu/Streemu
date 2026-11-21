@@ -5,7 +5,7 @@ using static Streemu.Ui.AjusteBlocos;
 namespace Streemu.Ui;
 
 /// <summary>
-/// A página Perfil de Configurações (repaginada em 2026-11-18): um cartão com o avatar grande, o apelido e os botões da imagem, e um cartão do
+/// A página Perfil de Configurações (repaginada em 2026-11-18): um cartão com o avatar grande, o nome da conta e os botões da imagem, e um cartão do
 /// Discord com interruptores. Só monta o visual com os controles que o MainForm já tem (e seus eventos); não guarda estado.
 /// Uso: <c>var cartoes = PerfilLayout.Montar(apelido, avatar, escolher, remover, usarAvatarDiscord, participarSemNavegador);</c>
 /// </summary>
@@ -24,7 +24,7 @@ public static class PerfilLayout
         avatar.Margin = new Padding(0, 4, 24, 0);
         apelido.Font = UiTypography.Create(UiTypography.Heading);
         var campo = new CampoArredondado(apelido) { Margin = new Padding(0, 6, 0, 4) };
-        var coluna = Coluna(Legenda("Apelido"), campo, Nota("É assim que seus amigos veem você. Sem imagem, aparece a inicial do apelido.", alinhadaAoInterruptor: false), Botoes(escolher, remover));
+        var coluna = Coluna(Legenda("Nome da conta"), campo, Nota("É como seus amigos veem você em todos os aparelhos. Sem imagem, aparece a inicial do nome.", alinhadaAoInterruptor: false), Botoes(escolher, remover));
         return Cartao(Linha(avatar, coluna)); // pela Coluna: a linha do avatar começa na mesma borda dos títulos dos outros cartões
     }
 

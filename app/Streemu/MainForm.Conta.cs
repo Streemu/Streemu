@@ -84,7 +84,9 @@ public sealed partial class MainForm
         if (Automated && !TestConta) return;
         if (TestConta) CarregarContaDeTeste();
         _conta = new Conta(serverUrl, _state, SalvarConta);
-        _conta.Changed += () => Ui(AtualizarContaUi);
+        _conta.Changed += () => Ui(() => { AtualizarContaUi(); AplicarNomeDaConta(); }); // MainForm.Nome.cs: o nome é da conta
+        _conta.ApelidoAtual = () => _apelidoAntigo ?? ""; // só vai ao servidor enquanto a conta não tem nome (migração)
+        _conta.NomeAdotadoNaMigracao += nome => Ui(() => AvisarNomeAdotado(nome));
         var c = _conta;
         RelayConfig.Token = async () => c.TemConta ? await c.AcessoAsync() : null; // relay, ffmpeg e mpv só atendem quem tem conta
         _contaTimer.Tick += (_, _) => _ = VerificarContaAsync();
@@ -124,6 +126,7 @@ public sealed partial class MainForm
             if (s == null) return;
             _state.ContaId = s.ContaId; _state.DispositivoId = s.DispositivoId; _state.ContaSegredoProtegido = s.ContaSegredoProtegido;
             _state.ContaMetodo = s.ContaMetodo; _state.ContaGoogleVinculado = s.ContaGoogleVinculado; _state.Grupos = s.Grupos;
+            _state.ContaNome = s.ContaNome; _state.EscolhaDeNomeMostrada = s.EscolhaDeNomeMostrada;
         }
         catch (Exception e) { Log.Info("Conta de teste: não li o arquivo (" + e.GetType().Name + ")."); }
     }
@@ -179,7 +182,7 @@ public sealed partial class MainForm
         {
             var s = await conta.GarantirAsync();
             if (IsDisposed) return;
-            if (s == EstadoSessao.Ok) { MostrarEntrada(false); TrocarParaSalaDeConta(); AtualizarContaUi(); if (_convitePendente != null) _ = ProcessarConvitePendenteAsync(); return; }
+            if (s == EstadoSessao.Ok) { MostrarEntrada(false); TrocarParaSalaDeConta(); AtualizarContaUi(); AplicarNomeDaConta(); ConferirEscolhaDeNome(); if (_convitePendente != null) _ = ProcessarConvitePendenteAsync(); return; }
             if (s == EstadoSessao.SemRede) { AtualizarContaUi(); _contaRetry.Stop(); _contaRetry.Start(); return; } // mantém o que está e pergunta de novo em instantes
             aviso ??= _contaExcluindo ? "Sua conta foi excluída." : Conta.FraseSessaoEncerrada; // Encerrada: a conta local já foi apagada
         }
@@ -379,7 +382,7 @@ public sealed partial class MainForm
         _entrada.Ocupado(true);
         try
         {
-            var r = await conta.ConcluirEntradaAsync(codigo, Nick);
+            var r = await conta.ConcluirEntradaAsync(codigo, _apelidoAntigo ?? "");
             TeleLogin("codigo", r.Ok, r.Erro); // só o tipo do erro, nunca o código
             if (!r.Ok) { _entrada.MostrarErro(r.Texto ?? "O servidor não aceitou o código. Tente de novo."); return; }
             _entrada.Passo(1);

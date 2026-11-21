@@ -26,6 +26,9 @@ public sealed class StreamTela : Form
     /// <summary>O meu apelido na lista "Na sessão" do player.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public string MeuNome { get; init; } = "Você";
+    /// <summary>O id da minha conta: é por ele que acho "Você" na lista do anfitrião (o nome pode repetir).</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public string MeuId { get; init; } = "";
     readonly Func<long?> _relogio;
     readonly Font _bodyFont = new(UiTypography.Family, 9.5f);
     readonly Font _captionFont = new(UiTypography.Family, 8.5f);
@@ -496,7 +499,7 @@ public sealed class StreamTela : Form
     public string FilmeAtual => _filme;
     public IReadOnlyList<string> FilaNomes => _filaNomes;
     /// <summary>Os nomes da lista "Na sessão" que o player de quem assiste mostra (teste); sem a lista do anfitrião, só ele e eu.</summary>
-    public IReadOnlyList<string> PessoasVistas => _pessoasHost is { Count: > 0 } l ? l.Select(p => p.Nome).Append(MeuNome).Distinct().ToList() : [_anfitriao, MeuNome];
+    public IReadOnlyList<string> PessoasVistas => _pessoasHost is { Count: > 0 } l ? l.Where(p => !p.Sou(MeuId, MeuNome)).Select(p => p.Nome).Append(MeuNome).ToList() : [_anfitriao, MeuNome];
 
     /// <summary>
     /// Fila: o anfitrião passou para o próximo arquivo (filme_trocar, vem ANTES da época nova). A janela, o mpv e a ligação são os mesmos: só o título, a duração, o id do
@@ -543,7 +546,7 @@ public sealed class StreamTela : Form
         var lista = new List<MpvUi.Pessoa>();
         foreach (var x in a)
             if (x is JsonObject o && o["nome"]?.GetValue<string>() is { Length: > 0 } nome)
-                lista.Add(new MpvUi.Pessoa(nome, o["papel"]?.GetValue<string>(), o["estado"]?.GetValue<string>(), o["tom"]?.GetValue<string>() ?? ""));
+                lista.Add(new MpvUi.Pessoa(nome, o["papel"]?.GetValue<string>(), o["estado"]?.GetValue<string>(), o["tom"]?.GetValue<string>() ?? "", Id: o["id"]?.GetValue<string>() ?? ""));
         _pessoasHost = lista;
     }
 
@@ -643,8 +646,8 @@ public sealed class StreamTela : Form
             var pessoas = new List<MpvUi.Pessoa>();
             if (_pessoasHost is { Count: > 0 })
             {
-                foreach (var x in _pessoasHost) pessoas.Add(x.Nome == MeuNome ? new(MeuNome, "Você", eu, meuTom) : x);
-                if (!pessoas.Any(x => x.Nome == MeuNome)) pessoas.Add(new(MeuNome, "Você", eu, meuTom));
+                foreach (var x in _pessoasHost) pessoas.Add(x.Sou(MeuId, MeuNome) ? new(MeuNome, "Você", eu, meuTom, Id: MeuId) : x);
+                if (!pessoas.Any(x => x.Sou(MeuId, MeuNome))) pessoas.Add(new(MeuNome, "Você", eu, meuTom, Id: MeuId));
             }
             else { pessoas.Add(new(_anfitriao, "Anfitrião", "Transmitindo", "ok")); pessoas.Add(new(MeuNome, "Você", eu, meuTom)); }
             string linha = _filaNomes.Length > 1 && _filaAtual >= 0 ? $"Episódio {_filaAtual + 1} de {_filaNomes.Length} · Com {_anfitriao}" : $"Com {_anfitriao}";

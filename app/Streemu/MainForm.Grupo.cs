@@ -148,7 +148,6 @@ public sealed partial class MainForm
         // sala vazia. Abrir a sala antes fazia a pessoa aparecer um instante com outro id (PR #232).
         _room = new SalaUnida("", Nick);
         LigarSala(_room);
-        _nick.TextChanged += (_, _) => _room?.SetNick(Nick);
         IniciarConta(url); // MainForm.Conta.cs: com conta guardada abre direto a sala; sem conta mostra a tela de entrada
     }
 
@@ -262,6 +261,7 @@ public sealed partial class MainForm
 
     void OnRoomChanged()
     {
+        AdotarNomeDaSala(); // MainForm.Nome.cs: troca de nome feita em outro aparelho
         RefreshMembers();
         AvisosDaSala(); // MainForm.Avisos.cs: "fulano começou uma live"
         OnRoomMembersForAvatars();
@@ -899,6 +899,7 @@ public sealed partial class MainForm
         ["ligacoes"] = new JsonArray(_links.Values.Select(l => (JsonNode)new JsonObject
         {
             ["amigo"] = l.PeerNick,
+            ["ligacao"] = l.SessionId, // o id da ligação (não identifica a pessoa): o SemQuemEstavaComQuem acha a ligação por ele, não pelo apelido
             ["papel"] = l.IAmSender ? "transmito" : "assisto",
             ["estado"] = l.Tunnel.State.ToString(),
             ["caminho"] = CaminhoDaLigacao(l), // MainForm.Sincronia.cs: o mesmo valor do evento ligacao_estado
@@ -933,7 +934,7 @@ public sealed partial class MainForm
     {
         int seconds = int.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_SECONDS"), out var s) ? s : 25;
         bool noStream = Environment.GetEnvironmentVariable("STREEMU_TEST_NOSTREAM") == "1";
-        _nick.Text = "teste-" + TestRole;
+        DefinirNomeDeTeste("teste-" + TestRole);
         if (TestConta && TesteSemLogin)
         {
             // conta obrigatória e sem conta: a entrada tem que ocupar o início e travar transmitir, assistir e conectar

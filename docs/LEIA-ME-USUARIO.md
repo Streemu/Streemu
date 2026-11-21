@@ -54,8 +54,8 @@ PESSOAS OFFLINE E APELIDOS
 - Apelido: clique na foto da pessoa > "Dar apelido..." (depois vira "Mudar apelido..." e "Tirar apelido"). Até 24
   caracteres. SÓ VOCÊ vê o apelido: ele aparece na barra, nos cartões de live, no player, nos avisos e no menu da
   bandeja, e o menu da foto mostra "apelido (nome real)". Ele não vai para o grupo nem para o diagnóstico.
-  O apelido precisa de 2 letras ou mais e não pode repetir o nome de alguém do grupo, o seu nome ou o apelido de
-  outro amigo (o Streemu avisa e não salva).
+  O apelido precisa de 2 letras ou mais e não pode repetir o seu nome ou o apelido de outro amigo (o Streemu
+  avisa e não salva). Dois amigos com o mesmo nome podem ter apelidos diferentes para você os separar.
 
 SEUS GRUPOS (Grupos, na barra lateral)
 - Você pode estar em vários grupos ao mesmo tempo. A barra lateral e o Início mostram as pessoas de todos juntas
@@ -71,7 +71,9 @@ SEUS GRUPOS (Grupos, na barra lateral)
 O GRUPO
 - Na barra lateral aparece quem está com o Streemu aberto. Quem está transmitindo aparece
   no Início como AO VIVO, com o jogo e o botão "Assistir".
-- Coloque seu apelido em Configurações > Perfil: é como os amigos e o Discord te veem.
+- Seu nome fica em Configurações > Perfil ("Nome da conta"). É como os amigos te veem, igual em todos os seus
+  aparelhos: troque, saia do campo (ou aperte Enter) e a mudança vale em todos eles. O nome do Discord não
+  vira mais o seu nome; o Discord só continua mostrando seu avatar.
 - Avatar (no mesmo lugar): "Meu avatar..." escolhe uma imagem do PC (GIF anima com o mouse em cima), ou deixe
   marcado "Usar meu avatar do Discord". Os amigos veem na lista e na barra do player.
 - Fechar a janela NÃO fecha o app: ele fica na bandeja (perto do relógio) para os amigos te

@@ -116,7 +116,7 @@ public sealed class RosterPopup : Form
         if (_hoverRow >= 0 && !PointerProbe.IsOver(_list, _list.ClientRectangle)) SetHoverRow(-1);
     }
 
-    bool IsAnimating(int index) => index >= 0 && index < _entries.Count && (index == _hoverRow || _entries[index].Nick == _pinned);
+    bool IsAnimating(int index) => index >= 0 && index < _entries.Count && (index == _hoverRow || _entries[index].Key == _pinned);
 
     /// <summary>O GIF da linha sob o mouse anima; ao sair volta ao primeiro quadro (repinta a linha que saiu e a que entrou).</summary>
     void SetHoverRow(int row)
@@ -131,7 +131,7 @@ public sealed class RosterPopup : Form
     void TogglePin(int row)
     {
         if (row < 0 || row >= _entries.Count || _entries[row].Avatar is not { Animated: true }) return;
-        _pinned = _pinned == _entries[row].Nick ? null : _entries[row].Nick;
+        _pinned = _pinned == _entries[row].Key ? null : _entries[row].Key;
         _list.Invalidate(_list.GetItemRectangle(row));
     }
 

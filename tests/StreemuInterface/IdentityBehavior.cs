@@ -1,5 +1,9 @@
 using System.Reflection;
+using System.Text.Json.Nodes;
+using Streemu.Filme;
+using Streemu.Net;
 using Streemu.Ui;
+using Streemu.Ui.Avatars;
 using Streemu.Util;
 
 /// <summary>
@@ -18,7 +22,7 @@ static class IdentityBehavior
         foreach (var size in new[] { new Size(290, 700), new Size(80, 700), new Size(290, 480), new Size(80, 480) })
         {
             using var side = new SidePanel { Size = size, FilmeVisivel = filme };
-            side.SetProfile("Rafa", null);
+            side.SetProfile("Leo", null);
             side.CreateControl();
             // Transmitir não anda: com e sem live, com e sem vídeos no palco, com e sem amigos (e com a lista rolada).
             int? transmitTop = null;
@@ -69,7 +73,7 @@ static class IdentityBehavior
         using (var low = new SidePanel())
         {
             low.Size = new Size(low.LogicalToDeviceUnits(232), low.LogicalToDeviceUnits(410));
-            low.SetProfile("Rafa", null);
+            low.SetProfile("Leo", null);
             low.SetData(friends, 2, SideView.Home, "Sala de teste");
             Check(Rows(low).Count(r => r.Kind == "Friend") >= 1, "Na altura mínima a lateral não mostra nenhum amigo");
         }
@@ -124,7 +128,103 @@ static class IdentityBehavior
 
         Sources();
         SameIconAsExe();
-        Console.WriteLine($"OK: identidade — Transmitir na mesma posição (com/sem live, palco, amigos, Cinema) e em grupo à parte, perfil no rodapé, lista sem vazar no rodapé, marca aberta/trilho, ícone de 16 a 64 px e bandeja no tamanho do sistema, cores/fontes/glifos centralizados. Ícone pequeno do sistema {SystemInformation.SmallIconSize.Width} px.");
+        PessoasPorId();
+        Console.WriteLine($"OK: identidade — Transmitir na mesma posição (com/sem live, palco, amigos, Cinema) e em grupo à parte, perfil no rodapé, lista sem vazar no rodapé, marca aberta/trilho, ícone de 16 a 64 px e bandeja no tamanho do sistema, cores/fontes/glifos centralizados, dois amigos de mesmo nome (faixa do player, foto do Cinema, sessão do filme e lista Na sessão) cada um pelo seu id. Ícone pequeno do sistema {SystemInformation.SmallIconSize.Width} px.");
+    }
+
+    /// <summary>
+    /// Spec 027, seção 7: dois amigos com o MESMO nome no grupo. Cada um tem de continuar sendo ele: a faixa do player, a foto do cartão do Cinema,
+    /// a sessão do filme e a lista "Na sessão" se separam pelo id da conta, e o nome é só o texto. Sem janela mostrada nem rede.
+    /// </summary>
+    static void PessoasPorId()
+    {
+        // faixa do player: duas linhas "Bia", cada uma com o id e a foto da sua conta; fixar uma não anima a outra
+        using var fotoA = new AvatarImage([new Bitmap(2, 2)], []);
+        using var fotoB = new AvatarImage([new Bitmap(2, 2)], []);
+        var sala = new SalaFalsa("c-eu", new Member("c-eu", "Eu", "", null), new Member("c-ana", "Ana", "", new LiveInfo("s1", "Jogo", "720p", 0, 0)),
+            new Member("c-bia1", "Bia", "", null), new Member("c-bia2", "Bia", "", null));
+        var fotos = new Dictionary<string, AvatarImage> { ["c-bia1"] = fotoA, ["c-bia2"] = fotoB };
+        var faixa = RosterEntry.FromWatchers(sala, "c-ana", new HashSet<string> { "c-bia1", "c-bia2" }, id => fotos.GetValueOrDefault(id));
+        var bias = faixa.Where(e => e.Nick == "Bia").ToList();
+        Check(faixa.Count == 4 && bias.Count == 2, $"A faixa perdeu um dos dois amigos de mesmo nome: {faixa.Count} linhas");
+        Check(bias.Select(e => e.Id).OrderBy(i => i).SequenceEqual(["c-bia1", "c-bia2"]), "As linhas da faixa não trazem o id da conta");
+        Check(ReferenceEquals(bias.Single(e => e.Id == "c-bia1").Avatar, fotoA) && ReferenceEquals(bias.Single(e => e.Id == "c-bia2").Avatar, fotoB), "A foto da faixa foi para a pessoa errada");
+        using (var strip = new RosterStrip())
+        {
+            strip.SetEntries(faixa);
+            var lista = faixa.ToList();
+            int primeiro = lista.FindIndex(e => e.Id == "c-bia1"), segundo = lista.FindIndex(e => e.Id == "c-bia2");
+            typeof(RosterStrip).GetField("_pinned", Hidden)!.SetValue(strip, lista[primeiro].Key);
+            var anima = typeof(RosterStrip).GetMethod("IsAnimating", Hidden)!;
+            Check((bool)anima.Invoke(strip, [primeiro])! && !(bool)anima.Invoke(strip, [segundo])!, "Fixar um amigo animou o outro de mesmo nome");
+        }
+
+        // cartão do Cinema: o anfitrião e os dois "Bia" (ids em "quem_ids") são três pessoas e a foto sai pelo id de cada uma
+        var anuncio = new JsonObject
+        {
+            ["de"] = "c-ana", ["filme"] = "f1", ["nome"] = "Filme", ["anfitriao"] = "Ana",
+            ["quem"] = new JsonArray("Bia", "Bia"), ["quem_ids"] = new JsonArray("c-bia1", "c-bia2"),
+        };
+        var pedidos = new List<string>();
+        var cartaoTipo = typeof(CinemaView).Assembly.GetType("Streemu.Ui.CinemaSessionCard")!;
+        Func<string?, string, AvatarImage?> fotoDe = (id, _) => { pedidos.Add(id ?? "?"); return id != null ? fotos.GetValueOrDefault(id) : null; };
+        Func<JsonObject, Image?> capaDe = _ => null;
+        using var cartao = (Control)Activator.CreateInstance(cartaoTipo, [fotoDe, capaDe])!;
+        cartaoTipo.GetMethod("SetAnnouncement")!.Invoke(cartao, [anuncio]);
+        var quem = (System.Collections.IEnumerable)cartaoTipo.GetMethod("Watching", Hidden)!.Invoke(cartao, null)!;
+        var ids = quem.Cast<object>().Select(t => (string?)t.GetType().GetField("Item1")!.GetValue(t)).ToList();
+        Check(ids.SequenceEqual(["c-ana", "c-bia1", "c-bia2"]), "O cartão do Cinema juntou os dois amigos de mesmo nome: " + string.Join(",", ids));
+        cartao.Size = new Size(640, 420); cartao.CreateControl();
+        using (var quadro = Render(cartao)) { }
+        Check(pedidos.Contains("c-bia1") && pedidos.Contains("c-bia2") && !pedidos.Contains("?"), "O cartão não pediu a foto de cada um pelo id: " + string.Join(",", pedidos));
+        // anfitrião de versão antiga (sem "quem_ids"): volta ao nome, como era, sem perder a pessoa
+        anuncio.Remove("quem_ids");
+        cartaoTipo.GetMethod("SetAnnouncement")!.Invoke(cartao, [anuncio]);
+        var antigo = (System.Collections.IEnumerable)cartaoTipo.GetMethod("Watching", Hidden)!.Invoke(cartao, null)!;
+        Check(antigo.Cast<object>().Count() == 2, "Anúncio sem ids deixou de mostrar quem assiste");
+
+        // sessão do filme (anfitrião): as mensagens chegam com o id da ligação (o MainForm carimba); mesmo nome, duas pessoas
+        var s = new Sessao(true, "f1", "Filme", "Ana", "Ana", null!, () => 0, () => 0, _ => { }, "c-ana");
+        s.Receber(new JsonObject { ["type"] = "filme_pronto", ["filme"] = "f1", ["nome"] = "Bia", ["id"] = "c-bia1", ["pronto"] = true });
+        s.Receber(new JsonObject { ["type"] = "filme_pronto", ["filme"] = "f1", ["nome"] = "Bia", ["id"] = "c-bia2", ["baixando"] = new JsonObject { ["pct"] = 40, ["eta_s"] = -1.0 } });
+        Check(s.Amigos.Count == 2 && s.Amigos["c-bia1"] == "pronto" && s.Amigos["c-bia2"].StartsWith("baixando"), "A sessão misturou os dois amigos de mesmo nome");
+        Check(s.NomeDe("c-bia1") == "Bia" && s.NomeDe("c-bia2") == "Bia", "O nome na tela não é o que a pessoa mandou");
+        s.NomeNaSala = id => id == "c-bia2" ? "Beatriz" : null; // trocar de nome muda o texto, não a pessoa
+        Check(s.NomeDe("c-bia2") == "Beatriz" && s.Amigos.ContainsKey("c-bia2"), "A troca de nome mudou quem a pessoa é");
+        s.AmigoSaiu("c-bia1");
+        Check(s.Amigos.Count == 1 && s.Amigos.ContainsKey("c-bia2"), "Quem saiu levou o outro de mesmo nome junto");
+        // app antigo (sem id em lugar nenhum): vale o nome, como antes
+        s.Receber(new JsonObject { ["type"] = "filme_pronto", ["filme"] = "f1", ["nome"] = "Leo", ["pronto"] = true });
+        Check(s.Amigos.ContainsKey("Leo") && s.NomeDe("Leo") == "Leo", "Mensagem sem id deixou de funcionar");
+
+        // lista "Na sessão": "Você" é achado pelo meu id, não pelo nome
+        var pessoas = new[] { new MpvUi.Pessoa("Bia", null, "Pronto", "ok", Id: "c-bia1"), new MpvUi.Pessoa("Bia", null, "Baixando", "espera", Id: "c-bia2") };
+        Check(pessoas.Count(p => p.Sou("c-bia2", "Bia")) == 1 && pessoas[1].Sou("c-bia2", "Bia") && !pessoas[0].Sou("c-bia2", "Bia"), "A lista Na sessão não separou eu do outro de mesmo nome");
+        Check(new MpvUi.Pessoa("Bia", null, null).Sou("c-bia2", "Bia"), "Anfitrião antigo (sem id na lista) deixou de achar a pessoa pelo nome");
+    }
+
+    /// <summary>ISala mínima só com a lista de membros (o que a faixa do player lê).</summary>
+    sealed class SalaFalsa(string meuId, params Member[] membros) : ISala
+    {
+        public string MyId => meuId;
+        public bool Connected => true;
+        public string Status => "";
+        public IReadOnlyList<Member> Members => membros;
+        public IEnumerable<Member> Friends => membros.Where(m => m.Id != meuId);
+        public IReadOnlyList<Ausente> Ausentes => [];
+        public bool IsPresent(string id) => membros.Any(m => m.Id == id);
+        public Member? Find(string id) => membros.FirstOrDefault(m => m.Id == id);
+        public Member? FindByStream(string streamId) => null;
+        public void SetNick(string nick) { }
+        public void SetLive(LiveInfo? live) { }
+        public Task SendTo(string id, JsonObject msg) => Task.CompletedTask;
+        public Task SendTelemetryNow(IEnumerable<string> ids) => Task.CompletedTask;
+        public event Action? Changed { add { } remove { } }
+        public event Action<string, string, JsonObject>? Message { add { } remove { } }
+        public event Action<string, JsonObject?>? Undeliverable { add { } remove { } }
+        public event Action? TelemetryNow { add { } remove { } }
+        public event Action<string>? Encerrada { add { } remove { } }
+        public void Dispose() { }
     }
 
     /// <summary>

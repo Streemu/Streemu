@@ -4,8 +4,11 @@ using Streemu.Ui.Avatars;
 namespace Streemu.Ui;
 
 /// <summary>Uma pessoa na faixa de participantes do player.</summary>
-public sealed record RosterEntry(string Nick, bool Live, bool IsMe, AvatarImage? Avatar = null)
+public sealed record RosterEntry(string Nick, bool Live, bool IsMe, AvatarImage? Avatar = null, string Id = "")
 {
+    /// <summary>Quem a linha é: o id da conta (o nome só aparece na tela e pode repetir). Sem id (dados de teste), o nome.</summary>
+    public string Key => Id.Length > 0 ? Id : Nick;
+
     /// <summary>Máximo de pessoas que a faixa mostra (o grupo é pequeno; passar disso é erro de dados, não de uso).</summary>
     public const int MaxEntries = 99;
 
@@ -22,5 +25,5 @@ public sealed record RosterEntry(string Nick, bool Live, bool IsMe, AvatarImage?
                                                                       Func<string, AvatarImage?> avatarOf, Func<Member, string>? nomeNaTela = null) =>
         room == null ? Array.Empty<RosterEntry>()
                      : Ordered(room.Members.Where(m => m.Id == streamerId || m.Id == room.MyId || watcherIds.Contains(m.Id))
-                                           .Select(m => new RosterEntry(nomeNaTela?.Invoke(m) ?? m.Nick, m.Id == streamerId, m.Id == room.MyId, avatarOf(m.Id))));
+                                           .Select(m => new RosterEntry(nomeNaTela?.Invoke(m) ?? m.Nick, m.Id == streamerId, m.Id == room.MyId, avatarOf(m.Id), m.Id)));
 }

@@ -183,7 +183,7 @@ public sealed partial class FilmeTela
             var rel = velha.Relatorio();
             rel["filme"] = velha.Filme; rel["como"] = _como; rel["fila"] = true; rel["motivo_fim"] = motivo;
             rel["minutos"] = Math.Round((DateTime.Now - _inicioSessao).TotalMinutes, 1);
-            rel["amigos"] = string.Join(",", velha.Amigos.Select(kv => $"{kv.Key}={kv.Value}"));
+            rel["amigos"] = string.Join(",", velha.Amigos.Select(kv => $"{velha.NomeDe(kv.Key)}={kv.Value}"));
             Telemetria?.Invoke("filme_fim", rel);
             velha.Soltar();
             _trocandoPara = id;
@@ -214,7 +214,7 @@ public sealed partial class FilmeTela
         }
 
         // 4) a troca, num trecho só e sem esperar nada: Sessão, anúncio da sala e transmissão passam juntas para o arquivo novo
-        var nova = new Sessao(true, id, nome, velha.NomeAnfitriao, _lig.MeuNome, mpv, () => Net.Tunnel.NowUs, _lig.IdaVolta, _lig.Enviar);
+        var nova = new Sessao(true, id, nome, velha.NomeAnfitriao, _lig.MeuNome, mpv, () => Net.Tunnel.NowUs, _lig.IdaVolta, _lig.Enviar, MeuId) { NomeNaSala = _lig.NomeDe };
         nova.HerdarDe(velha);
         Sessao = UltimaSessao = nova;
         ArquivoAnfitriao = _caminhoArquivo = caminho;
@@ -294,7 +294,7 @@ public sealed partial class FilmeTela
             if (!ReferenceEquals(Sessao, velha) || _disposing || IsDisposed) return;
             var tun = _lig.TunelAnfitriao();
             Func<long?> relogio = () => _lig.OffsetAnfitriaoUs() is long o ? Net.Tunnel.NowUs + o : null;
-            var nova = new Sessao(false, para!, nome, velha.NomeAnfitriao, _lig.MeuNome, mpv, relogio, _lig.IdaVolta, _lig.Enviar);
+            var nova = new Sessao(false, para!, nome, velha.NomeAnfitriao, _lig.MeuNome, mpv, relogio, _lig.IdaVolta, _lig.Enviar, MeuId) { NomeNaSala = _lig.NomeDe };
             Sessao = UltimaSessao = nova;
             _caminhoArquivo = caminho;
             _inicioSessao = DateTime.Now;
@@ -302,7 +302,7 @@ public sealed partial class FilmeTela
             LigarSessao(nova);
             Log.Info($"[filme] fila: sigo o anfitrião para \"{nome}\" ({para}); a ligação é a mesma.");
             // o anfitrião responde com as permissões e o estado atual (o "primeiro" é o que dispara isso)
-            _lig.Enviar(new JsonObject { ["type"] = "filme_pronto", ["filme"] = para, ["pronto"] = true, ["nome"] = _lig.MeuNome, ["primeiro"] = true });
+            _lig.Enviar(new JsonObject { ["type"] = "filme_pronto", ["filme"] = para, ["pronto"] = true, ["nome"] = _lig.MeuNome, ["id"] = MeuId, ["primeiro"] = true });
             _trocandoPara = null;
             foreach (var r in _retidas.ToList()) Receber(r);
             _retidas.Clear();
@@ -322,7 +322,7 @@ public sealed partial class FilmeTela
     void Difundir(bool forcar = false)
     {
         if (Sessao is not { Anfitriao: true } s) return;
-        var pessoas = new JsonArray(PessoasDaSessao(s).Select(p => (JsonNode?)new JsonObject { ["nome"] = p.Nome, ["papel"] = p.Papel, ["estado"] = p.Estado, ["tom"] = p.Tom, ["junto"] = p.Junto }).ToArray());
+        var pessoas = new JsonArray(PessoasDaSessao(s).Select(p => (JsonNode?)new JsonObject { ["nome"] = p.Nome, ["id"] = p.Id.Length > 0 ? p.Id : null, ["papel"] = p.Papel, ["estado"] = p.Estado, ["tom"] = p.Tom, ["junto"] = p.Junto }).ToArray());
         var fila = new JsonArray(_fila.Nomes.Select(n => (JsonNode?)n).ToArray());
         string sigP = pessoas.ToJsonString(), sigF = fila.ToJsonString() + _fila.Atual;
         if (!forcar && sigP == _sigPessoas && sigF == _sigFila) return;
@@ -345,7 +345,7 @@ public sealed partial class FilmeTela
                     var lista = new List<MpvUi.Pessoa>();
                     foreach (var x in a)
                         if (x is JsonObject o && o["nome"]?.GetValue<string>() is { Length: > 0 } nome)
-                            lista.Add(new MpvUi.Pessoa(nome, o["papel"]?.GetValue<string>(), o["estado"]?.GetValue<string>(), o["tom"]?.GetValue<string>() ?? "", o["junto"]?.GetValue<bool>() ?? false));
+                            lista.Add(new MpvUi.Pessoa(nome, o["papel"]?.GetValue<string>(), o["estado"]?.GetValue<string>(), o["tom"]?.GetValue<string>() ?? "", o["junto"]?.GetValue<bool>() ?? false, o["id"]?.GetValue<string>() ?? ""));
                     _pessoasDoAnfitriao = lista;
                 }
                 return true;

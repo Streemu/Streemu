@@ -512,6 +512,154 @@ Caso("relay-texto-do-servidor", () =>
     return Task.CompletedTask;
 });
 
+// ---- nome da conta (spec 027)
+
+Caso("nome-vem-do-retirar-e-fica-no-estado", async () =>
+{
+    var (c, s, f) = Novo();
+    f.Rota = (m, p, b) => p switch
+    {
+        "/conta/login/iniciar" => (200, new JsonObject { ["pedido"] = new string('a', 32) }),
+        "/conta/login/retirar" => (200, Sessao("sa1.a.b", Agora() + 3600).Also(j => j["nome"] = "Ana")),
+        _ => (404, new JsonObject()),
+    };
+    await c.IniciarEntradaAsync();
+    Exige((await c.ConcluirEntradaAsync("123456", "")).Ok, "concluir");
+    Exige(c.Nome == "Ana" && c.NomeConhecido && s.ContaNome == "Ana", "o nome do retirar tem que ir para o estado");
+});
+
+Caso("nome-do-renovar-servidor-antigo-nao-muda-nada", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    s.ContaNome = "Ana"; // o que já estava guardado
+    f.Rota = (m, p, b) => p == "/conta/renovar" ? (200, Sessao("sa1.r.x", Agora() + 3600)) : (404, new JsonObject()); // sem o campo "nome"
+    int avisos = 0; c.NomeAdotadoNaMigracao += _ => avisos++;
+    Exige(await c.GarantirAsync() == EstadoSessao.Ok, "renovar");
+    Exige(c.Nome == "Ana" && !c.NomeConhecido && avisos == 0, "servidor antigo não manda o campo: o nome guardado fica e nada é 'conhecido'");
+});
+
+Caso("nome-do-renovar-adotado-na-migracao-avisa-uma-vez", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    Exige(c.Nome == null && !c.NomeConhecido, "o login sem campo deixa a conta sem nome");
+    string? nome = null; int avisos = 0; c.NomeAdotadoNaMigracao += n => { nome = n; avisos++; };
+    string? mandado = null;
+    c.ApelidoAtual = () => "Fulano";
+    f.Rota = (m, p, b) => { if (p == "/conta/renovar") { mandado = b!["apelido"]!.GetValue<string>(); return (200, Sessao("sa1.r.x", Agora() + 3600).Also(j => j["nome"] = "Fulano")); } return (404, new JsonObject()); };
+    Exige(await c.GarantirAsync() == EstadoSessao.Ok, "renovar 1");
+    Exige(mandado == "Fulano", "conta sem nome manda o apelido salvo (migração)");
+    Exige(c.Nome == "Fulano" && c.NomeConhecido && s.ContaNome == "Fulano" && avisos == 1 && nome == "Fulano", "o servidor adotou o apelido: guarda e avisa");
+    Exige(await c.GarantirAsync() == EstadoSessao.Ok, "renovar 2");
+    Exige(mandado == "", "com nome, o apelido não vai mais (vai vazio)");
+    Exige(avisos == 1, "o aviso é uma vez só");
+});
+
+Caso("nome-do-renovar-nulo-conta-sem-nome-e-conhecida", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    f.Rota = (m, p, b) => p == "/conta/renovar" ? (200, Sessao("sa1.r.x", Agora() + 3600).Also(j => j["nome"] = null)) : (404, new JsonObject());
+    int avisos = 0; c.NomeAdotadoNaMigracao += _ => avisos++;
+    Exige(await c.GarantirAsync() == EstadoSessao.Ok, "renovar");
+    Exige(c.Nome == null && c.NomeConhecido && avisos == 0, "nome nulo com o campo presente = conta sem nome (a tela pede 'Escolha seu nome')");
+});
+
+Caso("nome-trocado-em-outro-aparelho-chega-no-renovar", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    s.ContaNome = "Ana";
+    f.Rota = (m, p, b) => p == "/conta/renovar" ? (200, Sessao("sa1.r.x", Agora() + 3600).Also(j => j["nome"] = "Ana Maria")) : (404, new JsonObject());
+    int avisos = 0; c.NomeAdotadoNaMigracao += _ => avisos++;
+    await c.GarantirAsync();
+    Exige(c.Nome == "Ana Maria" && avisos == 0, "troca de nome feita no celular: guarda, sem o aviso da migração");
+});
+
+Caso("mudar-nome-200-guarda-e-vai-com-token", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    int mudou = 0; c.Changed += () => mudou++;
+    f.Rota = (m, p, b) => p == "/conta/nome" ? (200, new JsonObject { ["nome"] = "Bia" }) : (404, new JsonObject());
+    var r = await c.MudarNomeAsync("  Bia  ");
+    Exige(r.Ok && c.Nome == "Bia" && s.ContaNome == "Bia" && c.NomeConhecido && mudou == 1, "200 guarda o nome do servidor e avisa a tela");
+    var p = f.Pedidos.Last(x => x.Path == "/conta/nome");
+    Exige(p.Cabecalhos["authorization"] == "Bearer sa1.carga.assinatura" && p.Corpo!["nome"]!.GetValue<string>() == "Bia", "vai com o token e o nome aparado");
+});
+
+Caso("mudar-nome-400-429-e-vazio-nao-mudam-nada-e-tem-texto", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    s.ContaNome = "Ana";
+    f.Rota = (m, p, b) => p == "/conta/nome" ? (400, new JsonObject { ["erro"] = "nome_invalido", ["texto"] = "Esse nome não vale. Use até 24 letras." }) : (404, new JsonObject());
+    var r = await c.MudarNomeAsync("x*y");
+    Exige(!r.Ok && r.Erro == "nome_invalido" && r.Texto == "Esse nome não vale. Use até 24 letras." && c.Nome == "Ana", "400: motivo do servidor e nome intacto");
+    f.Rota = (m, p, b) => p == "/conta/nome" ? (429, new JsonObject { ["erro"] = "muitas_trocas", ["texto"] = "Você já trocou o nome muitas vezes hoje. Tente amanhã." }) : (404, new JsonObject());
+    r = await c.MudarNomeAsync("Bia");
+    Exige(!r.Ok && r.Erro == "muitas_trocas" && !string.IsNullOrEmpty(r.Texto) && c.Nome == "Ana", "429: motivo do servidor e nome intacto");
+    int antes = f.Pedidos.Count;
+    r = await c.MudarNomeAsync("   ");
+    Exige(!r.Ok && r.Erro == "nome_invalido" && !string.IsNullOrEmpty(r.Texto) && f.Pedidos.Count == antes, "vazio nem vai ao servidor");
+});
+
+Caso("mudar-nome-401-renova-e-repete-uma-vez", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    int tentativas = 0;
+    f.Rota = (m, p, b) =>
+    {
+        if (p == "/conta/renovar") return (200, Sessao("sa1.renovado.ok", Agora() + 3600));
+        if (p == "/conta/nome") return ++tentativas == 1 ? (401, new JsonObject { ["erro"] = "token_recusado" }) : (200, new JsonObject { ["nome"] = "Bia" });
+        return (404, new JsonObject());
+    };
+    Exige((await c.MudarNomeAsync("Bia")).Ok && tentativas == 2 && c.Nome == "Bia", "o 401 renova o token e tenta uma vez mais");
+    Exige(f.Pedidos.Last(x => x.Path == "/conta/nome").Cabecalhos["authorization"] == "Bearer sa1.renovado.ok", "a segunda tentativa usa o token novo");
+    // 401 que continua: para na segunda tentativa, com o texto do servidor, e não apaga a conta
+    f.Rota = (m, p, b) => p == "/conta/renovar" ? (200, Sessao("sa1.r2.x", Agora() + 3600)) : p == "/conta/nome" ? (401, new JsonObject { ["erro"] = "token_recusado", ["texto"] = "Sua sessão não vale mais. Entre de novo." }) : (404, new JsonObject());
+    var r = await c.MudarNomeAsync("Caio");
+    Exige(!r.Ok && r.Erro == "token_recusado" && r.Texto == "Sua sessão não vale mais. Entre de novo." && c.Nome == "Bia" && c.TemConta, "401 duas vezes: erro com texto, nome e conta intactos");
+});
+
+Caso("mudar-nome-conta-invalida-apaga-e-sem-rede-nao-muda-nada", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    s.ContaNome = "Ana";
+    f.Rota = (m, p, b) => (-1, null!);
+    var r = await c.MudarNomeAsync("Bia");
+    Exige(!r.Ok && r.Erro == "sem_rede" && r.Texto!.Contains("internet") && c.Nome == "Ana" && c.TemConta, "sem rede: texto de sem rede, nome e conta intactos");
+    f.Rota = (m, p, b) => p == "/conta/nome" ? (403, new JsonObject { ["erro"] = "conta_invalida" }) : (404, new JsonObject());
+    r = await c.MudarNomeAsync("Bia");
+    Exige(!r.Ok && r.Erro == "conta_invalida" && r.Texto == Conta.FraseSessaoEncerrada && !c.TemConta && c.Nome == null && s.ContaNome == null, "conta_invalida apaga a conta local e o nome");
+});
+
+Caso("sair-apaga-o-nome-e-sem-conta-nao-troca", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    s.ContaNome = "Ana"; s.EscolhaDeNomeMostrada = true;
+    f.Rota = (m, p, b) => (200, new JsonObject { ["ok"] = true });
+    await c.SairAsync();
+    Exige(c.Nome == null && !c.NomeConhecido && !s.EscolhaDeNomeMostrada, "sair zera o nome");
+    int antes = f.Pedidos.Count;
+    var r = await c.MudarNomeAsync("Bia");
+    Exige(!r.Ok && f.Pedidos.Count == antes, "sem conta não chama o servidor");
+});
+
+Caso("nome-da-sala-so-vale-com-conta-ja-com-nome-e-depois-da-troca-recente", async () =>
+{
+    var hora = DateTimeOffset.UtcNow;
+    var (c, s, f) = Novo(() => hora);
+    f.Rota = (m, p, b) => p == "/conta/login/iniciar" ? (200, new JsonObject { ["pedido"] = new string('a', 32) }) : p == "/conta/login/retirar" ? (200, Sessao("sa1.a.b", Agora() + 3600)) : (404, new JsonObject());
+    await c.IniciarEntradaAsync(); await c.ConcluirEntradaAsync("123456", "");
+    Exige(!c.AdotarNomeDaSala("Qualquer") && c.Nome == null, "conta sem nome: a sala não dá nome (é o apelido do ola)");
+    s.ContaNome = "Ana"; hora += TimeSpan.FromMinutes(1);
+    int mudou = 0; c.Changed += () => mudou++;
+    Exige(c.AdotarNomeDaSala("Ana Maria") && c.Nome == "Ana Maria" && mudou == 1, "conta com nome: a sala difundiu outro nome (troca em outro aparelho)");
+    hora += TimeSpan.FromSeconds(20);
+    Exige(!c.AdotarNomeDaSala("Ana Maria") && !c.AdotarNomeDaSala("  ") && mudou == 1, "igual ou vazio não muda");
+    f.Rota = (m, p, b) => p == "/conta/nome" ? (200, new JsonObject { ["nome"] = "Bia" }) : (404, new JsonObject());
+    await c.MudarNomeAsync("Bia");
+    Exige(!c.AdotarNomeDaSala("Ana Maria") && c.Nome == "Bia", "logo depois de uma troca minha, a sala ainda pode difundir o nome antigo: não vale");
+    hora += TimeSpan.FromSeconds(20);
+    Exige(c.AdotarNomeDaSala("Caio") && c.Nome == "Caio", "passado o tempo, vale");
+});
+
 Console.WriteLine($"casos: {falhas} falha(s) em {total}");
 return falhas == 0 ? 0 : 1;
 
@@ -534,3 +682,5 @@ sealed class Falso : HttpMessageHandler
         return r;
     }
 }
+
+static class Ext { public static JsonObject Also(this JsonObject j, Action<JsonObject> a) { a(j); return j; } }

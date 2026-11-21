@@ -73,7 +73,7 @@ public sealed class RosterStrip : Control
     /// <summary>GIF só anima com o mouse em cima ou fixado por clique: o relógio só roda se há um assim entre os que cabem.</summary>
     void UpdateClock() => _clock.Enabled = Visible && Enumerable.Range(0, _shown).Any(i => _entries[i].Avatar is { Animated: true } && IsAnimating(i));
 
-    bool IsAnimating(int index) => index == _hover || _entries[index].Nick == _pinned;
+    bool IsAnimating(int index) => index == _hover || _entries[index].Key == _pinned;
 
     /// <summary>Solta o hover se o mouse já não está na faixa (o evento "saiu" não vem quando a barra some com o mouse em cima).</summary>
     void DropStaleHover()
@@ -186,7 +186,7 @@ public sealed class RosterStrip : Control
         int hit = HitTest(e.Location);
         if (hit == int.MaxValue) { OverflowClicked?.Invoke(); return; }
         if (!IsAnimatedAvatar(hit)) return;
-        _pinned = _pinned == _entries[hit].Nick ? null : _entries[hit].Nick;
+        _pinned = _pinned == _entries[hit].Key ? null : _entries[hit].Key;
         UpdateClock();
         Invalidate();
     }

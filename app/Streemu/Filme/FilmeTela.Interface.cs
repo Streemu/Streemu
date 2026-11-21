@@ -35,7 +35,7 @@ public sealed partial class FilmeTela
             if (_lig.OffsetAnfitriaoUs() == null) return ("Acertando o relógio com o anfitrião...", "espera");
             return (s.PodeControlar ? "Todos podem controlar" : $"Só {s.NomeAnfitriao} controla", "");
         }
-        var faltam = s.Amigos.Where(kv => kv.Value != "pronto").Select(kv => kv.Key).ToList();
+        var faltam = s.Amigos.Where(kv => kv.Value != "pronto").Select(kv => s.NomeDe(kv.Key)).ToList();
         if (!s.Comecou && faltam.Count > 0) return ($"Esperando {MpvUi.Juntar(faltam)}", "espera");
         if (s.Amigos.Count == 0) return ("Ninguém entrou ainda", "");
         return (s.TodosControlam ? "Todos podem controlar" : "Só você controla", "");
@@ -45,23 +45,23 @@ public sealed partial class FilmeTela
     {
         if (s.Anfitriao)
         {
-            var lista = new List<MpvUi.Pessoa> { new(_lig.MeuNome, "Anfitrião", "Pronto", "ok", Junto: true) };
-            foreach (var (nome, valor) in s.Amigos)
+            var lista = new List<MpvUi.Pessoa> { new(_lig.MeuNome, "Anfitrião", "Pronto", "ok", Junto: true, Id: MeuId) };
+            foreach (var (id, valor) in s.Amigos)
             {
                 var (texto, tom) = MpvUi.EstadoAmigo(valor);
-                lista.Add(new(nome, null, texto, tom));
+                lista.Add(new(s.NomeDe(id), null, texto, tom, Id: id));
             }
             // quem assiste pela transmissão não tem o arquivo e não entra nos Amigos; caso de 2026-11-18 (JoJo de um amigo): dois amigos assistiam assim e a lista só mostrava o anfitrião
-            foreach (var nome in s.FluxoNomes?.Invoke() ?? [])
-                if (!s.Amigos.ContainsKey(nome) && nome != _lig.MeuNome) lista.Add(new(nome, "Sem baixar", "Assistindo", "ok"));
+            foreach (var id in s.FluxoIds?.Invoke() ?? [])
+                if (!s.Amigos.ContainsKey(id) && id != MeuId) lista.Add(new(s.NomeDe(id), "Sem baixar", "Assistindo", "ok", Id: id));
             return lista;
         }
         var (eu, meuTom) = _conferindo != null ? ("Conferindo", "espera") : s.Tocando ? ("Assistindo", "ok") : ("Pronto", "ok");
         // a lista inteira, como o anfitrião a vê (filme_pessoas); eu me marco como "Você" com o estado daqui. Sem ela (anfitrião em versão antiga), só ele e eu
         if (_pessoasDoAnfitriao is { Count: > 0 } doAnfitriao)
         {
-            var lista = doAnfitriao.Select(p => p.Nome == _lig.MeuNome ? new MpvUi.Pessoa(_lig.MeuNome, "Você", eu, meuTom) : p).ToList();
-            if (!lista.Any(p => p.Nome == _lig.MeuNome)) lista.Add(new(_lig.MeuNome, "Você", eu, meuTom));
+            var lista = doAnfitriao.Select(p => p.Sou(MeuId, _lig.MeuNome) ? new MpvUi.Pessoa(_lig.MeuNome, "Você", eu, meuTom, Id: MeuId) : p).ToList();
+            if (!lista.Any(p => p.Sou(MeuId, _lig.MeuNome))) lista.Add(new(_lig.MeuNome, "Você", eu, meuTom, Id: MeuId));
             return lista;
         }
         return [new(s.NomeAnfitriao, "Anfitrião", "Pronto", "ok"), new(_lig.MeuNome, "Você", eu, meuTom)];

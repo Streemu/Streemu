@@ -99,16 +99,8 @@ public sealed partial class MainForm
         f.AcceptButton = ok;
         f.Shown += (_, _) => { box.Focus(); box.SelectAll(); };
         if (f.ShowDialog(this) != DialogResult.OK) return;
-        var outros = OutrosNomesReais(amigo.Id);
-        if (Apelidos.Problema(amigo.Id, box.Text, outros, Nick) is { } problema) { Notify(problema); return; }
+        if (Apelidos.Problema(amigo.Id, box.Text, Nick) is { } problema) { Notify(problema); return; }
         Apelidos.Definir(amigo.Id, box.Text);
-    }
-
-    /// <summary>Os nomes reais de todo mundo do grupo (online, offline e quem já vi), menos o deste amigo: um apelido não pode repetir nenhum.</summary>
-    List<string> OutrosNomesReais(string id)
-    {
-        GuardarNomesReais();
-        lock (_nomesReaisGate) return _nomesReais.Where(p => p.Key != id).Select(p => p.Value).ToList();
     }
 
     /// <summary>Os amigos com o nome que a tela mostra (o apelido local), para telas que só recebem a lista da sala (Transmitir, convidados da privada).</summary>

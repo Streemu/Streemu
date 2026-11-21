@@ -10,6 +10,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 ## Não lançado
 
 ### Novo
+- **Seu nome é da conta:** em Configurações > Perfil, "Nome da conta" é como seus amigos veem você em todos os aparelhos. Troque num e vale em todos. O nome do Discord não troca mais o seu nome.
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias

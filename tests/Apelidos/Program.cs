@@ -113,15 +113,16 @@ Caso("problema-recusa-o-que-confunde-o-log", () =>
 {
     var a = new ApelidosLocais();
     a.Definir("c-2", "Dudu");
-    var outros = new[] { "Eduardo", "Caio" };
-    Exige(a.Problema("c-1", "Bru", outros, "Ana") == null, "um apelido comum devia passar");
-    Exige(a.Problema("c-1", "  ", outros, "Ana") == null, "vazio tira o apelido e devia passar");
-    Exige(a.Problema("c-1", "R", outros, "Ana") != null, "1 letra devia ser recusada");
-    Exige(a.Problema("c-1", "eduardo", outros, "Ana") != null, "nome real de outro membro devia ser recusado (sem diferença de maiúscula)");
-    Exige(a.Problema("c-1", "Ana", outros, "Ana") != null, "o meu próprio nome devia ser recusado");
-    Exige(a.Problema("c-1", "dudu", outros, "Ana") != null, "apelido de outro amigo devia ser recusado");
-    Exige(a.Problema("c-2", "Dudu", outros, "Ana") == null, "o mesmo amigo pode repetir o próprio apelido");
-    Exige(a.Problema("c-1", "Live", outros, "Ana") != null, "palavra do log devia ser recusada");
+    Exige(a.Problema("c-1", "Bru", "Ana") == null, "um apelido comum devia passar");
+    Exige(a.Problema("c-1", "  ", "Ana") == null, "vazio tira o apelido e devia passar");
+    Exige(a.Problema("c-1", "R", "Ana") != null, "1 letra devia ser recusada");
+    Exige(a.Problema("c-1", "Ana", "Ana") != null, "o meu próprio nome devia ser recusado");
+    Exige(a.Problema("c-1", "dudu", "Ana") != null, "apelido de outro amigo devia ser recusado");
+    Exige(a.Problema("c-2", "Dudu", "Ana") == null, "o mesmo amigo pode repetir o próprio apelido");
+    Exige(a.Problema("c-1", "Live", "Ana") != null, "palavra do log devia ser recusada");
+    // spec 027: o nome da conta pode repetir; o apelido local não é recusado por ser igual ao nome real de outra pessoa (separar dois "Bia")
+    Exige(a.Problema("c-1", "Eduardo", "Ana") == null, "igual ao nome real de outra pessoa devia passar (nomes repetem)");
+    Exige(a.Problema("c-1", "Bia", "Ana") == null, "apelido igual ao nome real de dois amigos devia passar");
 });
 
 Caso("log-nunca-grava-o-apelido", () =>

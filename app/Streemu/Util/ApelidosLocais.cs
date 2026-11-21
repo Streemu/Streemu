@@ -42,10 +42,11 @@ public sealed class ApelidosLocais
 
     /// <summary>
     /// Por que este apelido não pode ser usado (a frase para a pessoa), ou nulo se pode. Vazio pode (tira o apelido). O filtro do log troca o apelido pelo
-    /// nome real em TODA linha: um apelido igual ao nome real de outra pessoa do grupo, ao apelido de outro amigo, ao seu nome ou a uma palavra do log faria
-    /// o log atribuir a um amigo o que outro fez (ex.: chamar o Bruno de "Davi" e as linhas do Davi saírem como do Bruno).
+    /// nome real em TODA linha: um apelido igual ao apelido de outro amigo, ao seu nome ou a uma palavra do log faria o log atribuir a um amigo o que outro fez.
+    /// Desde a spec 027 o nome da conta pode repetir, então um apelido igual ao nome real de OUTRA pessoa não é mais recusado: é justamente o jeito de separar
+    /// dois "Bia" (o apelido de um deles pode ser "Bia da faculdade", ou até o mesmo texto do nome do outro). O custo é só no log, que pode ficar ambíguo.
     /// </summary>
-    public string? Problema(string id, string? apelido, IEnumerable<string> nomesReaisDosOutros, string meuNome)
+    public string? Problema(string id, string? apelido, string meuNome)
     {
         string limpo = (apelido ?? "").Trim();
         if (limpo.Length == 0) return null;
@@ -53,7 +54,6 @@ public sealed class ApelidosLocais
         if (limpo.Length < 2) return "O apelido precisa de pelo menos 2 letras.";
         bool Igual(string? x) => string.Equals(x?.Trim(), limpo, StringComparison.CurrentCultureIgnoreCase);
         if (Igual(meuNome)) return "Esse é o seu nome no grupo. Escolha outro apelido.";
-        if (nomesReaisDosOutros.Any(Igual)) return "Já tem alguém no grupo com esse nome. Escolha outro apelido para não confundir.";
         if (_mapa.Any(p => p.Key != id && Igual(p.Value))) return "Você já usa esse apelido para outro amigo. Escolha outro.";
         if (PalavrasDoLog.Any(Igual)) return "Essa palavra o Streemu usa nos avisos. Escolha outro apelido.";
         return null;

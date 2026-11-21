@@ -34,9 +34,9 @@ public sealed class CinemaView : UserControl
     public event Action<JsonObject>? SessionPicked;
     public event Action? CreatePicked, BackPicked, ResumePicked;
 
-    /// <summary>A foto de um amigo pelo apelido (nulo = a inicial colorida, como no resto do app).</summary>
+    /// <summary>A foto de um amigo pelo id da conta (nulo = a inicial colorida, como no resto do app). O nome só entra quando o anúncio, de app antigo, não traz o id.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public Func<string, AvatarImage?> AvatarOf { get; set; } = _ => null;
+    public Func<string?, string, AvatarImage?> AvatarOf { get; set; } = (_, _) => null;
 
     /// <summary>A capa de uma sessão pelo anúncio (spec 017; nulo = o degradê). A imagem é de quem a guarda: o cartão só desenha.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -90,7 +90,7 @@ public sealed class CinemaView : UserControl
     public void SetSessions(IReadOnlyList<JsonObject> announcements, bool detail, bool occupied, string? offline)
     {
         var summaries = announcements.Select(a => new Summary((string?)a["de"], (string?)a["filme"], (string?)a["nome"], (string?)a["anfitriao"],
-            (string?)a["estado"], (int?)a["pessoas"], a["quem"]?.ToJsonString(), (string?)a["capa"])).ToArray();
+            (string?)a["estado"], (int?)a["pessoas"], a["quem"]?.ToJsonString() + a["quem_ids"]?.ToJsonString(), (string?)a["capa"])).ToArray();
         if (_hasData && _lastDetail == detail && _lastOccupied == occupied && _lastOffline == offline && _lastSessions.SequenceEqual(summaries)) return;
         _hasData = true; _lastSessions = summaries; _lastDetail = detail; _lastOccupied = occupied; _lastOffline = offline;
         _showDetail = detail;
@@ -108,7 +108,7 @@ public sealed class CinemaView : UserControl
             keep.Add(key);
             if (!_cards.TryGetValue(key, out var card))
             {
-                card = new CinemaSessionCard(nick => AvatarOf(nick), a => CoverOf(a)); _cards.Add(key, card); _scroll.Controls.Add(card);
+                card = new CinemaSessionCard((id, nick) => AvatarOf(id, nick), a => CoverOf(a)); _cards.Add(key, card); _scroll.Controls.Add(card);
                 card.Picked += announcement => SessionPicked?.Invoke(announcement);
             }
             card.SetAnnouncement(a); card.Visible = !detail;

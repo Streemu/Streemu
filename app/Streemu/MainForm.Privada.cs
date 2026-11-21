@@ -105,29 +105,28 @@ public sealed partial class MainForm
 
     // ------------------------------------------------------------------ telemetria (D5: só dados técnicos)
 
-    /// <summary>Ligação (sessão) → apelido da outra ponta, das que fazem parte de uma privada; para esconder quem estava com quem no que sobe.</summary>
-    readonly Dictionary<string, string> _ligacoesPrivadas = new();
+    /// <summary>As ligações (sessões) que fazem parte de uma privada; para esconder quem estava com quem no que sobe.</summary>
+    readonly HashSet<string> _ligacoesPrivadas = new();
 
-    bool LigacaoPrivada(PeerLink link) => _ligacoesPrivadas.ContainsKey(link.SessionId);
+    bool LigacaoPrivada(PeerLink link) => _ligacoesPrivadas.Contains(link.SessionId);
 
     void MarcarSePrivada(PeerLink link)
     {
-        if (link.IAmSender ? Privada.Ligada : _convites.ContainsKey(link.PeerId)) _ligacoesPrivadas[link.SessionId] = link.PeerNick;
+        if (link.IAmSender ? Privada.Ligada : _convites.ContainsKey(link.PeerId)) _ligacoesPrivadas.Add(link.SessionId);
     }
 
     string NomeParaTelemetria(PeerLink link) => LigacaoPrivada(link) ? "convidado" : link.PeerNick;
 
     /// <summary>
-    /// Relatório que sobe para o servidor: as ligações de uma privada perdem o apelido da outra ponta.
+    /// Relatório que sobe para o servidor: as ligações de uma privada perdem o apelido da outra ponta (achadas pelo id da ligação, não pelo apelido: dois amigos podem ter o mesmo).
     /// O "Copiar relatório" do próprio usuário não passa por aqui.
     /// </summary>
     string SemQuemEstavaComQuem(string relatorioJson)
     {
         if (_ligacoesPrivadas.Count == 0 || JsonNode.Parse(relatorioJson) is not JsonObject relatorio) return relatorioJson;
         if (relatorio["sala"]?["ligacoes"] is not JsonArray ligacoes) return relatorioJson;
-        var apelidos = _ligacoesPrivadas.Values.ToHashSet();
         foreach (var item in ligacoes)
-            if (item is JsonObject l && l["amigo"]?.GetValue<string>() is { } amigo && apelidos.Contains(amigo)) l["amigo"] = "convidado";
+            if (item is JsonObject l && l["ligacao"]?.GetValue<string>() is { } sid && _ligacoesPrivadas.Contains(sid)) l["amigo"] = "convidado";
         return relatorio.ToJsonString();
     }
 }

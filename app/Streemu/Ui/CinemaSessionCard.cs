@@ -13,13 +13,13 @@ sealed class CinemaSessionCard : Control
 {
     const int Pad = 18, DetailsHeight = 168, AvatarSize = 30, HostAvatar = 28;
     readonly Button _enter = new() { Text = "Entrar" };
-    readonly Func<string, AvatarImage?> _avatarOf;
+    readonly Func<string?, string, AvatarImage?> _avatarOf;
     readonly Func<JsonObject, Image?> _coverOf;
     Font _title = null!, _body = null!, _initials = null!;
     JsonObject _announcement = new();
     public event Action<JsonObject>? Picked;
 
-    public CinemaSessionCard(Func<string, AvatarImage?> avatarOf, Func<JsonObject, Image?> coverOf)
+    public CinemaSessionCard(Func<string?, string, AvatarImage?> avatarOf, Func<JsonObject, Image?> coverOf)
     {
         _avatarOf = avatarOf;
         _coverOf = coverOf;
@@ -47,13 +47,25 @@ sealed class CinemaSessionCard : Control
     string Name() => (string?)_announcement["nome"] ?? "Filme";
     string Host() => (string?)_announcement["anfitriao"] ?? "Um amigo";
 
-    /// <summary>Quem aparece embaixo: o anfitrião e quem já entrou (campo "quem" do anúncio; anfitrião antigo não manda, e aí só ele aparece).</summary>
-    List<string> Watching()
+    /// <summary>
+    /// Quem aparece embaixo: o anfitrião (id no campo "de") e quem já entrou (campos "quem", os nomes, e "quem_ids", as contas na mesma ordem;
+    /// anfitrião antigo não manda "quem_ids" e aí vale o nome; sem "quem", só o anfitrião). Quem tem id não se repete pelo nome: dois amigos podem ter o mesmo.
+    /// </summary>
+    List<(string? Id, string Nick)> Watching()
     {
-        var names = new List<string> { Host() };
+        var people = new List<(string? Id, string Nick)> { ((string?)_announcement["de"], Host()) };
         if (_announcement["quem"] is JsonArray who)
-            foreach (var n in who) if ((string?)n is { Length: > 0 } nick && !names.Contains(nick)) names.Add(nick);
-        return names;
+        {
+            var ids = _announcement["quem_ids"] as JsonArray;
+            for (int i = 0; i < who.Count; i++)
+            {
+                if ((string?)who[i] is not { Length: > 0 } nick) continue;
+                string? id = ids != null && i < ids.Count ? (string?)ids[i] : null;
+                if (id is { Length: > 0 } ? people.Any(p => p.Id == id) : people.Any(p => p.Id == null && p.Nick == nick)) continue;
+                people.Add((id is { Length: > 0 } ? id : null, nick));
+            }
+        }
+        return people;
     }
 
     protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutButton(); }
@@ -89,7 +101,7 @@ sealed class CinemaSessionCard : Control
     void DrawHostRow(Graphics g, int x, int y)
     {
         int size = UiScale.Dp(this, HostAvatar), row = UiScale.Dp(this, 34);
-        AvatarBadge.Draw(g, new Rectangle(x, y + (row - size) / 2, size, size), _avatarOf(Host()), Host(), 0);
+        AvatarBadge.Draw(g, new Rectangle(x, y + (row - size) / 2, size, size), _avatarOf((string?)_announcement["de"], Host()), Host(), 0);
         var status = CinemaStatus.Of((string?)_announcement["estado"]);
         int statusWidth = Math.Min(status.Width(g, this, _body), Width / 2);
         int nameX = x + size + UiScale.Dp(this, 12);
@@ -102,20 +114,20 @@ sealed class CinemaSessionCard : Control
     void DrawWatching(Graphics g, int x, int cy)
     {
         int size = UiScale.Dp(this, AvatarSize), gap = UiScale.Dp(this, 8), limit = _enter.Left - gap;
-        var names = Watching();
-        for (int i = 0; i < names.Count; i++)
+        var people = Watching();
+        for (int i = 0; i < people.Count; i++)
         {
             int left = x + i * (size + gap);
-            bool last = left + 2 * size + gap > limit && i < names.Count - 1;
+            bool last = left + 2 * size + gap > limit && i < people.Count - 1;
             var area = new Rectangle(left, cy - size / 2, size, size);
             if (left + size > limit) return;
             if (last)
             {
                 using (var brush = new SolidBrush(Theme.Neutral)) g.FillEllipse(brush, area);
-                TextRenderer.DrawText(g, $"+{names.Count - i}", _initials, area, Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, $"+{people.Count - i}", _initials, area, Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 return;
             }
-            AvatarBadge.Draw(g, area, _avatarOf(names[i]), names[i], 0);
+            AvatarBadge.Draw(g, area, _avatarOf(people[i].Id, people[i].Nick), people[i].Nick, 0);
         }
     }
 

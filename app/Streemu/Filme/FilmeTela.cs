@@ -13,12 +13,16 @@ namespace Streemu.Filme;
 /// <param name="Enviar">Anfitrião: para todos que entraram; quem assiste: para o anfitrião.</param>
 /// <param name="OffsetAnfitriaoUs">Hora do anfitrião menos a minha (relógio comum, 7.2); nulo enquanto não mediu.</param>
 /// <param name="IdaVolta">Maior ida e volta entre os que estão juntos (folga da hora marcada).</param>
+/// <param name="Avatar">A foto de uma pessoa: o id da conta (nulo no anúncio de app antigo, que só leva o nome) e o nome (só para o caso sem id).</param>
+/// <param name="MeuId">O id da minha conta; vai junto do nome nas mensagens da sessão.</param>
+/// <param name="NomeDe">O nome atual de uma pessoa pelo id da conta (texto de tela; nulo = o último nome que ela mandou).</param>
 /// <param name="Capa">A capa de um filme pelo id e o hash do anúncio (spec 017); nulo = o degradê.</param>
 public sealed record FilmeLigacao(string MeuNome, Func<string?> SemRede, Func<JsonObject?> Anuncio, Action<JsonObject?> Anunciar,
     Func<JsonObject, Task<string?>> Entrar, Action Sair, Action<JsonObject> Enviar, Func<long?> OffsetAnfitriaoUs, Func<double> IdaVolta,
     Func<Net.RelayConfig.Settings?> Grupo, Func<Net.Tunnel?> TunelAnfitriao,
     Func<IReadOnlyList<JsonObject>>? Anuncios = null, Func<bool>? OutraParticipacao = null, Action? Retomar = null,
-    Func<string, Ui.Avatars.AvatarImage?>? Avatar = null, Func<string, string?, Image?>? Capa = null);
+    Func<string?, string, Ui.Avatars.AvatarImage?>? Avatar = null, Func<string, string?, Image?>? Capa = null,
+    Func<string>? MeuId = null, Func<string, string?>? NomeDe = null);
 
 /// <summary>
 /// A tela do filme (spec 010, 11.1 e 11.2), dentro da janela principal, no lugar do Início: palco preto com o mpv dentro (--wid), a
@@ -29,6 +33,7 @@ public sealed record FilmeLigacao(string MeuNome, Func<string?> SemRede, Func<Js
 public sealed partial class FilmeTela : UserControl
 {
     readonly FilmeLigacao _lig;
+    string MeuId => _lig.MeuId?.Invoke() ?? "";
     readonly bool _teste;
     readonly Panel _tela = new() { Dock = DockStyle.Fill, BackColor = Theme.VideoMargin };
     // a entrada numa sessão (11.1, mockup "Cinema Formas de entrada"): assistir sem baixar, baixar e assistir, ou o próprio arquivo (FilmeTela.Entrada.cs)
@@ -313,7 +318,7 @@ public sealed partial class FilmeTela : UserControl
     {
         JsonObject Msg(JsonObject extra)
         {
-            var m = new JsonObject { ["type"] = "filme_pronto", ["filme"] = filme, ["pronto"] = false, ["nome"] = _lig.MeuNome };
+            var m = new JsonObject { ["type"] = "filme_pronto", ["filme"] = filme, ["pronto"] = false, ["nome"] = _lig.MeuNome, ["id"] = MeuId };
             foreach (var kv in extra) m[kv.Key] = kv.Value?.DeepClone();
             return m;
         }
@@ -355,7 +360,7 @@ public sealed partial class FilmeTela : UserControl
         _progressoEnviado = DateTime.Now;
         _lig.Enviar(new JsonObject
         {
-            ["type"] = "filme_pronto", ["filme"] = filme, ["pronto"] = false, ["nome"] = _lig.MeuNome,
+            ["type"] = "filme_pronto", ["filme"] = filme, ["pronto"] = false, ["nome"] = _lig.MeuNome, ["id"] = MeuId,
             ["baixando"] = new JsonObject { ["pct"] = p.Pct, ["eta_s"] = Math.Round(p.EtaS) },
         });
     }
@@ -396,7 +401,7 @@ public sealed partial class FilmeTela : UserControl
         try { mpv = await Mpv.OpenAsync(exe, caminho, _tela.Handle, _teste ? 0 : 100); }
         catch (Exception e) { if (!anfitriao) _lig.Sair(); Avisar($"O player não abriu: {e.Message}."); return; }
         Func<long?> relogio = anfitriao ? () => Net.Tunnel.NowUs : () => _lig.OffsetAnfitriaoUs() is long o ? Net.Tunnel.NowUs + o : null;
-        var s = new Sessao(anfitriao, id, nome, nomeAnfitriao, _lig.MeuNome, mpv, relogio, _lig.IdaVolta, _lig.Enviar);
+        var s = new Sessao(anfitriao, id, nome, nomeAnfitriao, _lig.MeuNome, mpv, relogio, _lig.IdaVolta, _lig.Enviar, MeuId) { NomeNaSala = _lig.NomeDe };
         Sessao = UltimaSessao = s;
         _catalogo = false;
         LigarSessao(s); // FilmeTela.Fila.cs
@@ -438,7 +443,7 @@ public sealed partial class FilmeTela : UserControl
             // disco a ~77 MB/s ao mesmo tempo que o mpv e o envio pela transmissão, sem ninguém baixando
         }
         // baixado agora: já conferido no download; com o próprio arquivo: confere em segundo plano (4.1) antes de ficar "pronto"
-        else if (jaLigado) _lig.Enviar(new JsonObject { ["type"] = "filme_pronto", ["filme"] = id, ["pronto"] = true, ["nome"] = _lig.MeuNome, ["primeiro"] = true });
+        else if (jaLigado) _lig.Enviar(new JsonObject { ["type"] = "filme_pronto", ["filme"] = id, ["pronto"] = true, ["nome"] = _lig.MeuNome, ["id"] = MeuId, ["primeiro"] = true });
         else _ = ConferirAsync(caminho, id);
         _aviso = null;
     }
@@ -464,7 +469,7 @@ public sealed partial class FilmeTela : UserControl
     }
 
     /// <summary>Anfitrião: alguém saiu do filme.</summary>
-    public void AmigoSaiu(string nome) => Sessao?.AmigoSaiu(nome);
+    public void AmigoSaiu(string id) => Sessao?.AmigoSaiu(id);
 
     void Encerrar()
     {
@@ -477,7 +482,7 @@ public sealed partial class FilmeTela : UserControl
         rel["filme"] = s.Filme;
         rel["como"] = _como;
         rel["minutos"] = Math.Round((DateTime.Now - _inicioSessao).TotalMinutes, 1);
-        if (s.Anfitriao) rel["amigos"] = string.Join(",", s.Amigos.Select(kv => $"{kv.Key}={kv.Value}"));
+        if (s.Anfitriao) rel["amigos"] = string.Join(",", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}={kv.Value}"));
         Telemetria?.Invoke("filme_fim", rel);
         Player = null;
         Sessao = null;
@@ -534,7 +539,7 @@ public sealed partial class FilmeTela : UserControl
                 : "Escolha um filme para ser o anfitrião. Quem quiser assistir junto precisa ter o mesmo arquivo.");
         }
         else if (s.Anfitriao)
-            linha = $"Você é o anfitrião de \"{s.Nome}\" · " + (s.Amigos.Count == 0 ? "ninguém entrou ainda" : string.Join(" · ", s.Amigos.Select(kv => $"{kv.Key}: {kv.Value}")))
+            linha = $"Você é o anfitrião de \"{s.Nome}\" · " + (s.Amigos.Count == 0 ? "ninguém entrou ainda" : string.Join(" · ", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}: {kv.Value}")))
                 + (s.Aguardando ? " · começa quando todos estiverem prontos" : "");
         else linha = $"\"{s.Nome}\" com {s.NomeAnfitriao}" + (_lig.OffsetAnfitriaoUs() == null ? " · acertando o relógio..." : "");
         Texto(_status, linha);
@@ -545,7 +550,7 @@ public sealed partial class FilmeTela : UserControl
         string eu = _conferindo != null ? "conferindo o arquivo" : s is { Tocando: true } ? "assistindo" : "pronto";
         string sala = s switch
         {
-            { Anfitriao: true } => "Na sala\n\nVocê (anfitrião): pronto\n" + string.Join("\n", s.Amigos.Select(kv => $"{kv.Key}: {kv.Value}"))
+            { Anfitriao: true } => "Na sala\n\nVocê (anfitrião): pronto\n" + string.Join("\n", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}: {kv.Value}"))
                 + (s.Amigos.Count == 0 ? "\nNinguém entrou ainda. Os amigos veem o filme na barra lateral." : "")
                 + (s.Aguardando ? "\n\nComeça sozinho quando todos estiverem prontos." : ""),
             { } => $"Na sala\n\n{s.NomeAnfitriao} (anfitrião)\nVocê: {eu}" + (s.Tocando ? "" : $"\n\nEsperando {s.NomeAnfitriao} dar o play."),

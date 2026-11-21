@@ -39,7 +39,6 @@ public sealed partial class MainForm
         ShowMyAvatar();
         _chooseAvatar.Click += (_, _) => ChooseAvatarFile();
         _removeAvatar.Click += (_, _) => _myAvatar.Clear();
-        _nick.TextChanged += (_, _) => _myAvatarBadge.Invalidate(); // sem imagem, a prévia mostra a inicial do apelido
         ApplyTestAvatar();
         var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
         row.Controls.AddRange(new Control[] { _myAvatarBadge, _chooseAvatar, _removeAvatar });
@@ -76,7 +75,6 @@ public sealed partial class MainForm
     {
         if (_discord is not { Connected: true } discord) return;
         RememberDiscordAccount(discord);
-        if (!_nickManual && FitNick(discord.DiscordUser) is string name && _nick.Text != name) SetNickQuietly(name);
         if (_useDiscordAvatar.Checked) _ = _discordAvatar!.SetAccountAsync(discord.DiscordUserId, discord.DiscordAvatarCode);
     }
 
@@ -87,44 +85,6 @@ public sealed partial class MainForm
         _state.DiscordId = d.DiscordUserId;
         _state.DiscordAvatar = d.DiscordAvatarCode;
         _state.Save();
-    }
-
-    // ------------------------------------------------------------------ apelido
-    // Apelido digitado vale em toda abertura; sem ele, vale o nome do Discord (o da última sessão até o Discord conectar).
-    // Antes o app abria com o nome do usuário do Windows e o nome do Discord nunca chegava ao apelido.
-
-    bool _nickManual, _settingNick;
-
-    /// <summary>Chamado no fim do construtor (MainForm.cs), depois de o Discord ser criado.</summary>
-    void InitNick()
-    {
-        // estado antigo (sem NickManual): um apelido salvo diferente do nome do Windows foi digitado pela pessoa
-        _nickManual = (_state.NickManual ?? _state.Nick != Environment.UserName) && !string.IsNullOrWhiteSpace(_state.Nick);
-        SetNickQuietly(_nickManual ? _state.Nick!.Trim() : AutoNick());
-        _nick.TextChanged += (_, _) => { if (!_settingNick) _nickManual = _nick.Text.Trim().Length > 0; };
-        _nick.Leave += (_, _) =>
-        {
-            if (!_nickManual) SetNickQuietly(AutoNick()); // apagou o apelido: volta ao nome do Discord
-            SaveNick();
-        };
-    }
-
-    void SaveNick()
-    {
-        if (Automated) return;
-        _state.Nick = _nick.Text.Trim();
-        _state.NickManual = _nickManual;
-        _state.Save();
-    }
-
-    string AutoNick() => FitNick(_discord is { Connected: true } d ? d.DiscordUser : null) ?? FitNick(_state.DiscordNome) ?? FitNick(Environment.UserName) ?? "";
-
-    static string? FitNick(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().Length <= 24 ? s.Trim() : s.Trim()[..24];
-
-    void SetNickQuietly(string text)
-    {
-        _settingNick = true;
-        try { _nick.Text = text; } finally { _settingNick = false; }
     }
 
     void ChooseAvatarFile()

@@ -26,8 +26,8 @@ public sealed partial class MainForm
     bool _streamLigando;
     int _streamGeracao;
     bool? _streamTodosAntes;
-    /// <summary>Quem assistiu pela transmissão neste filme (para os "amigos" do filme_fim do anfitrião; quem assiste assim não entra na Sessao).</summary>
-    readonly HashSet<string> _streamVistos = new();
+    /// <summary>Quem assistiu pela transmissão neste filme, id da conta → nome (para os "amigos" do filme_fim do anfitrião; quem assiste assim não entra na Sessao).</summary>
+    readonly Dictionary<string, string> _streamVistos = new();
     long _streamBytesAntes;
 
     /// <summary>
@@ -37,7 +37,7 @@ public sealed partial class MainForm
     void ComplementarFimFilme(JsonObject campos)
     {
         if (_streamVistos.Count == 0 && _filmeStream == null) return;
-        string pelaTransmissao = string.Join(",", _streamVistos.Select(n => $"{n}=transmissão"));
+        string pelaTransmissao = string.Join(",", _streamVistos.Values.Select(n => $"{n}=transmissão"));
         string antes = campos["amigos"]?.GetValue<string>() ?? "";
         if (pelaTransmissao.Length > 0) campos["amigos"] = antes.Length == 0 ? pelaTransmissao : antes + "," + pelaTransmissao;
         if (_filmeStream is { } e)
@@ -131,7 +131,7 @@ public sealed partial class MainForm
         _streamSids.Clear();
         _streamTodosAntes = null;
         _streamAvisouLento = false;
-        if (_streamSessao is { } s) { s.Mudou -= SessaoMudouParaStream; s.FluxoNomes = null; }
+        if (_streamSessao is { } s) { s.Mudou -= SessaoMudouParaStream; s.FluxoIds = null; }
         _streamSessao = null;
         if (e != null) { Log.Info($"[filme] transmissão do filme desligada (época {e.Epoca})."); Task.Run(e.Dispose); }
         if (_filmeMeu != null) AnunciarSala(_filmeMeu);
@@ -162,11 +162,11 @@ public sealed partial class MainForm
         if (_filmeStream is not { } e || _filmeForm?.Sessao is not { Anfitriao: true } s) return;
         if (!ReferenceEquals(_streamSessao, s))
         {
-            if (_streamSessao is { } velha) { velha.Mudou -= SessaoMudouParaStream; velha.FluxoNomes = null; }
+            if (_streamSessao is { } velha) { velha.Mudou -= SessaoMudouParaStream; velha.FluxoIds = null; }
             _streamSessao = s;
             s.Mudou += SessaoMudouParaStream;
             // quem assiste pela transmissão conta para a hora marcada e para a espera do pulo (D4), pelo apelido da ligação
-            s.FluxoNomes = () => _streamSids.Select(sid => _filmeLinks.TryGetValue(sid, out var l) ? l.PeerNick : null).OfType<string>().ToList();
+            s.FluxoIds = () => _streamSids.Select(sid => _filmeLinks.TryGetValue(sid, out var l) ? l.PeerId : null).OfType<string>().Distinct().ToList();
         }
         if (_streamTodosAntes != s.TodosControlam)
         {
@@ -261,9 +261,9 @@ public sealed partial class MainForm
         {
             case "filme_stream_quero" when link.IAmSender && _filmeStream is { } e:
                 // caso de 11/11: dois players abertos para a mesma pessoa; aqui aparece como o mesmo amigo pedindo por duas ligações
-                int outras = _streamSids.Count(sid => sid != link.SessionId && _filmeLinks.TryGetValue(sid, out var l) && l.PeerNick == link.PeerNick);
+                int outras = _streamSids.Count(sid => sid != link.SessionId && _filmeLinks.TryGetValue(sid, out var l) && l.PeerId == link.PeerId);
                 if (outras > 0) Log.Info($"[filme] [aviso] {link.PeerNick} pediu o filme pela transmissão por outra ligação e já recebe por {outras}: são dois players abertos para ele.");
-                e.Adicionar(link); _streamSids.Add(link.SessionId); _streamVistos.Add(link.PeerNick);
+                e.Adicionar(link); _streamSids.Add(link.SessionId); _streamVistos[link.PeerId] = link.PeerNick;
                 _filmeForm?.PessoasMudaram(); // "Na sessão" de todos passa a ter esta pessoa (FilmeTela.Fila.cs)
                 // o perfil foi escolhido para quem já assistia: com mais gente, a cópia direta pode não caber no upload (só desce de qualidade, nunca sobe no meio do filme)
                 var cabe = Fonte.Escolher(e.Info, _streamSids.Count, UploadSupostoMbps, nucleos: Environment.ProcessorCount);
@@ -287,8 +287,8 @@ public sealed partial class MainForm
                 e.Recarregar(link.PeerNick);
                 break;
             case "filme_stream_carregado" when link.IAmSender:
-                // D4: quem assiste pela transmissão já está no ponto do pulo; vira o filme_carregado da Sessao com o apelido da ligação (o mesmo do FluxoNomes)
-                _filmeForm?.Receber(new JsonObject { ["type"] = "filme_carregado", ["filme"] = m["filme"]?.DeepClone(), ["seq"] = m["seq"]?.DeepClone(), ["nome"] = link.PeerNick });
+                // D4: quem assiste pela transmissão já está no ponto do pulo; vira o filme_carregado da Sessao com o id da ligação (o mesmo do FluxoIds)
+                _filmeForm?.Receber(new JsonObject { ["type"] = "filme_carregado", ["filme"] = m["filme"]?.DeepClone(), ["seq"] = m["seq"]?.DeepClone(), ["nome"] = link.PeerNick, ["id"] = link.PeerId });
                 break;
             case "filme_estado" when !link.IAmSender && link.SessionId == _streamSid: _streamTela?.Estado(m); break;
             case "filme_permissoes" when !link.IAmSender && link.SessionId == _streamSid: _streamTela?.Permissoes(m); break;
@@ -390,7 +390,7 @@ public sealed partial class MainForm
             string perfil = info["perfil"]?.GetValue<string>() ?? "";
             // a hora do anfitrião (o relógio comum da ligação, 7.2): a janela segue a linha do tempo da Sessao dele
             var tela = new StreamTela(info["titulo"]?.GetValue<string>() ?? (string?)anuncio["nome"] ?? "Filme", EnvioStream.UrlDoEspectador(link), info["duracao"]?.GetValue<double>() ?? 0, perfil,
-                () => link.Tunnel.PeerClockOffsetUs is long o ? Tunnel.NowUs + o : null, link.PeerNick) { MeuNome = Nick };
+                () => link.Tunnel.PeerClockOffsetUs is long o ? Tunnel.NowUs + o : null, link.PeerNick) { MeuNome = Nick, MeuId = _room?.MyId ?? "" };
             tela.Comando += (cmd, pos) =>
             {
                 Log.Info($"[filme] pedi {cmd}{(pos is double p ? $" {p:0.#} s" : "")} ao anfitrião pela transmissão.");

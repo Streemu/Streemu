@@ -59,7 +59,7 @@ public sealed partial class MainForm : Form
         InitTheme(); // MainForm.Tema.cs
         WireEvents();
         InitGroup();
-        InitNick(); // MainForm.Avatar.cs: apelido digitado ou nome do Discord
+        InitNick(); // MainForm.Nome.cs: o campo "Nome da conta" do Perfil
     }
 
     // ------------------------------------------------------------------ layout
@@ -174,7 +174,6 @@ public sealed partial class MainForm : Form
             _closing.Cancel();
             PararAmostrasDoEspectador();
             _sender.Stop(); _statsTimer.Stop();
-            SaveNick();
             Thread.Sleep(200);
         };
 
@@ -199,7 +198,8 @@ public sealed partial class MainForm : Form
         try { BeginInvoke(a); } catch { }
     }
 
-    string Nick => string.IsNullOrWhiteSpace(_nick.Text) ? "amigo" : _nick.Text.Trim();
+    /// <summary>O nome que aparece para mim e que a sala usa: o da conta (spec 027); até o servidor dar um, o apelido salvo de antes; senão "amigo". MainForm.Nome.cs.</summary>
+    string Nick => _conta?.Nome is { Length: > 0 } nome ? nome : _nomeDeTeste ?? _apelidoAntigo ?? "amigo";
 
     void RefreshSources()
     {

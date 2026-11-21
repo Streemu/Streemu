@@ -18,13 +18,13 @@ public sealed class Sessao : IDisposable
     const int FolgaMs = 150;
 
     /// <summary>Ninguém mais com o arquivo aberto nem assistindo pela transmissão: não há com quem sincronizar, então tocar e pausar valem na hora, sem hora marcada.</summary>
-    bool Sozinho => Anfitriao && _comArquivo.Count == 0 && (FluxoNomes?.Invoke().Any() != true);
+    bool Sozinho => Anfitriao && _comArquivo.Count == 0 && (FluxoIds?.Invoke().Any() != true);
 
     /// <summary>
-    /// Quem assiste pela transmissão (spec 011; o MainForm preenche no anfitrião). Eles seguem a mesma linha do tempo pelo buffer do mpv: contam para a hora marcada
+    /// Quem assiste pela transmissão, pelo id da conta (spec 011; o MainForm preenche no anfitrião). Eles seguem a mesma linha do tempo pelo buffer do mpv: contam para a hora marcada
     /// (todos começam juntos) e para a espera do pulo (D4), mas não entram nos <see cref="Amigos"/> (não têm arquivo para ficar "pronto").
     /// </summary>
-    public Func<IEnumerable<string>>? FluxoNomes { get; set; }
+    public Func<IEnumerable<string>>? FluxoIds { get; set; }
 
     /// <summary>O estado atual (filme_estado), para quem começa a assistir pela transmissão com o filme já rolando.</summary>
     public JsonObject EstadoAtual() => Estado();
@@ -38,13 +38,31 @@ public sealed class Sessao : IDisposable
     readonly Func<double> _idaVolta;
     readonly Action<JsonObject> _enviar;
     readonly string _meuNome;
+    readonly string _meuId;
+    /// <summary>Id → nome de quem já falou nesta sessão: só para o texto de tela (o nome pode mudar e repetir; quem manda é o id).</summary>
+    readonly Dictionary<string, string> _nomes = new();
+    /// <summary>O nome atual da pessoa na sala do grupo (o MainForm preenche); sem ele vale o último nome que ela mandou.</summary>
+    public Func<string, string?>? NomeNaSala { get; set; }
+    public string NomeDe(string id) => NomeNaSala?.Invoke(id) ?? (_nomes.TryGetValue(id, out var n) ? n : id);
+
+    /// <summary>
+    /// Quem mandou a mensagem: o id que o MainForm carimba a partir da ligação (campo "id"; o app antigo não manda nada e a ligação já diz quem é).
+    /// Sem id (mensagem sem ligação, teste), cai no nome, como era.
+    /// </summary>
+    string Quem(JsonObject m, string padrao = "amigo")
+    {
+        string nome = m["nome"]?.GetValue<string>() ?? padrao;
+        string id = m["id"]?.GetValue<string>() is { Length: > 0 } i ? i : nome;
+        _nomes[id] = nome;
+        return id;
+    }
 
     public bool Tocando { get; private set; }
     double _pos;
     long _t;
     int _seq;
     public bool TodosControlam { get; private set; }
-    /// <summary>Para o anfitrião: quem entrou e o estado de cada um (4.3), pelo apelido.</summary>
+    /// <summary>Para o anfitrião: quem entrou e o estado de cada um (4.3), pelo id da conta.</summary>
     public Dictionary<string, string> Amigos { get; } = new();
     /// <summary>4.3: o primeiro ▶ do anfitrião espera todos ficarem prontos (padrão); "começar agora" fura a espera.</summary>
     public bool EsperarTodos { get; set; } = true;
@@ -64,7 +82,7 @@ public sealed class Sessao : IDisposable
     static readonly int TesteLentoMs = int.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_FILME_LENTO"), out var l) ? l : 0;
 
     public bool TodosProntos => Amigos.Values.All(v => v == "pronto");
-    string Lista() => string.Join(",", Amigos.Select(kv => $"{kv.Key}={kv.Value}"));
+    string Lista() => string.Join(",", Amigos.Select(kv => $"{NomeDe(kv.Key)}={kv.Value}"));
 
     int _gen;
     double _vel = 1;
@@ -77,9 +95,9 @@ public sealed class Sessao : IDisposable
     public event Action<string>? Aviso;
 
     /// <param name="relogio">Hora do anfitrião em µs (nulo enquanto quem assiste ainda não tem o relógio comum, 7.2).</param>
-    public Sessao(bool anfitriao, string filme, string nome, string nomeAnfitriao, string meuNome, Mpv mpv, Func<long?> relogio, Func<double> idaVolta, Action<JsonObject> enviar)
+    public Sessao(bool anfitriao, string filme, string nome, string nomeAnfitriao, string meuNome, Mpv mpv, Func<long?> relogio, Func<double> idaVolta, Action<JsonObject> enviar, string meuId = "")
     {
-        Anfitriao = anfitriao; Filme = filme; Nome = nome; NomeAnfitriao = nomeAnfitriao; _meuNome = meuNome;
+        Anfitriao = anfitriao; Filme = filme; Nome = nome; NomeAnfitriao = nomeAnfitriao; _meuNome = meuNome; _meuId = meuId;
         _mpv = mpv; _relogio = relogio; _idaVolta = idaVolta; _enviar = enviar;
     }
 
@@ -141,7 +159,7 @@ public sealed class Sessao : IDisposable
         if (!Anfitriao)
         {
             if (!TodosControlam) { Aviso?.Invoke($"Só {NomeAnfitriao} controla o filme."); return; }
-            _enviar(new JsonObject { ["type"] = "filme_pedido", ["filme"] = Filme, ["acao"] = acao, ["pos"] = pos, ["nome"] = _meuNome });
+            _enviar(new JsonObject { ["type"] = "filme_pedido", ["filme"] = Filme, ["acao"] = acao, ["pos"] = pos, ["nome"] = _meuNome, ["id"] = _meuId.Length > 0 ? _meuId : null });
             return;
         }
         long now = _relogio() ?? Net.Tunnel.NowUs;
@@ -172,15 +190,16 @@ public sealed class Sessao : IDisposable
         {
             if (_seq != seq) return; // outro comando passou na frente
             faltam = Amigos.Where(kv => kv.Value == "pronto" && !_carregados.Contains(kv.Key)).Select(kv => kv.Key)
-                .Concat((FluxoNomes?.Invoke() ?? Enumerable.Empty<string>()).Where(n => !_carregados.Contains(n))).ToList();
+                .Concat((FluxoIds?.Invoke() ?? Enumerable.Empty<string>()).Where(n => !_carregados.Contains(n))).ToList();
             if (faltam.Count == 0 && _meuCarregado == seq) break;
             await Task.Delay(20);
         }
         if (_seq != seq) return;
         UltimaEsperaPuloMs = sw.ElapsedMilliseconds;
-        UltimoAtraso = faltam.Count > 0 ? string.Join(",", faltam) : null;
-        if (faltam.Count > 0) Aviso?.Invoke($"Segui sem esperar {string.Join(", ", faltam)}: demorou mais de 5 s para carregar.");
-        Log.Info($"[filme] pulo: todos carregaram em {UltimaEsperaPuloMs} ms" + (faltam.Count > 0 ? $" (segui sem {string.Join(", ", faltam)})." : "."));
+        var nomesFaltam = faltam.Select(NomeDe).ToList();
+        UltimoAtraso = faltam.Count > 0 ? string.Join(",", nomesFaltam) : null;
+        if (faltam.Count > 0) Aviso?.Invoke($"Segui sem esperar {string.Join(", ", nomesFaltam)}: demorou mais de 5 s para carregar.");
+        Log.Info($"[filme] pulo: todos carregaram em {UltimaEsperaPuloMs} ms" + (faltam.Count > 0 ? $" (segui sem {string.Join(", ", nomesFaltam)})." : "."));
         Comando("tocar", pos);
     }
 
@@ -204,7 +223,9 @@ public sealed class Sessao : IDisposable
     {
         TodosControlam = velha.TodosControlam;
         EsperarTodos = velha.EsperarTodos;
-        FluxoNomes = velha.FluxoNomes;
+        FluxoIds = velha.FluxoIds;
+        NomeNaSala = velha.NomeNaSala;
+        foreach (var kv in velha._nomes) _nomes[kv.Key] = kv.Value;
         foreach (var kv in velha.Amigos) Amigos[kv.Key] = kv.Value;
         foreach (var n in velha._comArquivo) _comArquivo.Add(n);
     }
@@ -222,7 +243,7 @@ public sealed class Sessao : IDisposable
         ["type"] = "filme_estado", ["filme"] = Filme, ["seq"] = _seq, ["tocando"] = Tocando, ["pos"] = _pos, ["t"] = _t, ["todos"] = TodosControlam, ["pulo"] = _pulo,
     };
 
-    public void AmigoSaiu(string nome) { _comArquivo.Remove(nome); if (Amigos.Remove(nome)) { Mudou?.Invoke(); TalvezComecar(); } }
+    public void AmigoSaiu(string id) { _comArquivo.Remove(id); if (Amigos.Remove(id)) { Mudou?.Invoke(); TalvezComecar(); } }
 
     public void MudarPermissao(bool todos)
     {
@@ -246,7 +267,7 @@ public sealed class Sessao : IDisposable
                 Definir(m["tocando"]?.GetValue<bool>() ?? false, m["pos"]?.GetValue<double>() ?? 0, m["t"]?.GetValue<long>() ?? 0, m["pulo"]?.GetValue<bool>() ?? false);
                 break;
             case "filme_carregado" when Anfitriao:
-                if ((m["seq"]?.GetValue<int>() ?? -1) == _seq) _carregados.Add(m["nome"]?.GetValue<string>() ?? "");
+                if ((m["seq"]?.GetValue<int>() ?? -1) == _seq) _carregados.Add(Quem(m, ""));
                 break;
             case "filme_permissoes" when !Anfitriao:
                 TodosControlam = m["todos"]?.GetValue<bool>() ?? false;
@@ -256,24 +277,24 @@ public sealed class Sessao : IDisposable
             {
                 // 4.3: cada um é "baixando" (com % e tempo; a vazão que ele mede já mostra o upload dividido entre quem baixa),
                 // "conferindo" (tem o arquivo e o app confere contra o manifesto, 4.1) ou "pronto"
-                string nome = m["nome"]?.GetValue<string>() ?? "amigo";
+                string id = Quem(m);
                 bool temArquivo = true;
                 if (m["baixando"] is JsonObject b)
                 {
                     double eta = b["eta_s"]?.GetValue<double>() ?? -1;
-                    Amigos[nome] = $"baixando {b["pct"]?.GetValue<int>() ?? 0}%" + (eta >= 0 ? $" ({Progresso.Faltam(eta)})" : "");
+                    Amigos[id] = $"baixando {b["pct"]?.GetValue<int>() ?? 0}%" + (eta >= 0 ? $" ({Progresso.Faltam(eta)})" : "");
                     temArquivo = false;
                 }
-                else if (m["conferindo"] is JsonObject c) Amigos[nome] = $"conferindo {c["pct"]?.GetValue<int>() ?? 0}%";
-                else if (m["defeito"] is JsonNode d) Amigos[nome] = $"arquivo com {d} pedaço(s) com defeito";
+                else if (m["conferindo"] is JsonObject c) Amigos[id] = $"conferindo {c["pct"]?.GetValue<int>() ?? 0}%";
+                else if (m["defeito"] is JsonNode d) Amigos[id] = $"arquivo com {d} pedaço(s) com defeito";
                 else
                 {
                     temArquivo = m["pronto"]?.GetValue<bool>() ?? false;
-                    Amigos[nome] = temArquivo ? "pronto" : "outro arquivo";
+                    Amigos[id] = temArquivo ? "pronto" : "outro arquivo";
                 }
                 // quem abriu o arquivo recebe as permissões (seção 10) e, com o filme rolando, o estado atual para entrar no ponto certo
                 // ("primeiro" = acabou de abrir o arquivo: quem fechou o app e voltou recebe de novo)
-                if (temArquivo && (_comArquivo.Add(nome) | (m["primeiro"]?.GetValue<bool>() ?? false)))
+                if (temArquivo && (_comArquivo.Add(id) | (m["primeiro"]?.GetValue<bool>() ?? false)))
                 {
                     _enviar(new JsonObject { ["type"] = "filme_permissoes", ["filme"] = Filme, ["todos"] = TodosControlam });
                     if (_seq > 0) _enviar(Estado());
@@ -284,7 +305,7 @@ public sealed class Sessao : IDisposable
             }
             case "filme_pedido" when Anfitriao:
                 string acao = m["acao"]?.GetValue<string>() ?? "";
-                string quem = m["nome"]?.GetValue<string>() ?? "amigo";
+                string quem = NomeDe(Quem(m));
                 if (!TodosControlam)
                 {
                     Aviso?.Invoke($"{quem} pediu para {(acao == "pausar" ? "pausar" : acao == "tocar" ? "continuar" : "pular")}.");
@@ -326,7 +347,7 @@ public sealed class Sessao : IDisposable
                     if (TesteLentoMs > 0) await Task.Delay(TesteLentoMs); // teste: alguém que demora para carregar
                     if (gen != _gen) return;
                     if (Anfitriao) _meuCarregado = pulo;
-                    else _enviar(new JsonObject { ["type"] = "filme_carregado", ["filme"] = Filme, ["seq"] = pulo, ["nome"] = _meuNome });
+                    else _enviar(new JsonObject { ["type"] = "filme_carregado", ["filme"] = Filme, ["seq"] = pulo, ["nome"] = _meuNome, ["id"] = _meuId.Length > 0 ? _meuId : null });
                 }
                 return;
             }

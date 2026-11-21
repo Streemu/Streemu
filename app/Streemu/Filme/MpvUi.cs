@@ -68,7 +68,11 @@ public static class MpvUi
 
     /// <summary>Uma linha de "Na sessão": nome, papel embaixo dele ("Anfitrião", "Você"), estado colorido à direita ou, com <paramref name="Junto"/>, depois do papel.</summary>
     /// <param name="Tom">"ok" (verde), "espera" (amarelo), "erro" (vermelho) ou "" (texto normal).</param>
-    public sealed record Pessoa(string Nome, string? Papel, string? Estado, string Tom = "", bool Junto = false);
+    public sealed record Pessoa(string Nome, string? Papel, string? Estado, string Tom = "", bool Junto = false, string Id = "")
+    {
+        /// <summary>Sou eu? Pelo id da conta; só sem id (anfitrião de versão antiga) vale o nome.</summary>
+        public bool Sou(string meuId, string meuNome) => Id.Length > 0 && meuId.Length > 0 ? Id == meuId : Nome == meuNome;
+    }
 
     /// <summary>O que o player mostra. <paramref name="Dur"/> nulo = o script lê a duração do mpv (arquivo local).</summary>
     /// <param name="Linha">Embaixo do título: o papel ("Com Lucas", "Você é o anfitrião").</param>

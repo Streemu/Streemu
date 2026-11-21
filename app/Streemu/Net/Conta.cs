@@ -91,6 +91,15 @@ public sealed partial class Conta : IDisposable
     public bool TemConta => !string.IsNullOrEmpty(_estado.DispositivoId) && !string.IsNullOrEmpty(_estado.ContaSegredoProtegido);
     public string? ContaId => _estado.ContaId;
     public string? Metodo => _estado.ContaMetodo;
+    /// <summary>O nome da conta, igual em todos os aparelhos (spec 027). Nulo = a conta ainda não tem nome (ou o servidor é antigo e não manda o campo).</summary>
+    public string? Nome => _estado.ContaNome;
+    /// <summary>O servidor já respondeu com o campo <c>nome</c> nesta execução. Sem isso, <c>Nome == null</c> não quer dizer "conta sem nome": servidor antigo nunca manda o campo.</summary>
+    public bool NomeConhecido => _nomeConhecido;
+    volatile bool _nomeConhecido;
+    /// <summary>Quando o nome foi dado pelo servidor ou por uma troca minha. A sala pode demorar a difundir o nome novo: até lá o nome dela não vale como novidade.</summary>
+    public DateTimeOffset NomeDesde { get; private set; } = DateTimeOffset.MinValue;
+    /// <summary>O renovar trouxe um nome para uma conta que não tinha (o servidor adotou o apelido na migração): a tela avisa uma vez. Argumento = o nome.</summary>
+    public event Action<string>? NomeAdotadoNaMigracao;
     /// <summary>Esta conta já ligou um Google (neste PC). O servidor não guarda isso: a tela só usa para esconder o botão de vincular.</summary>
     public bool GoogleVinculado => _estado.ContaGoogleVinculado;
     public IReadOnlyList<GrupoSalvo> Grupos => _estado.Grupos;
@@ -156,6 +165,7 @@ public sealed partial class Conta : IDisposable
         _estado.DispositivoId = disp;
         _estado.ContaMetodo = r.Json["metodo"]?.GetValue<string>();
         GuardarSessao(r.Json);
+        LerNome(r.Json);
         _salvar();
         Changed?.Invoke();
         return new(true);
@@ -189,7 +199,8 @@ public sealed partial class Conta : IDisposable
         {
             var segredo = Cofre.Abrir(_estado.ContaSegredoProtegido);
             if (segredo == null || string.IsNullOrEmpty(_estado.DispositivoId)) { Apagar(); return EstadoSessao.Encerrada; }
-            var corpo = new JsonObject { ["dispositivo"] = _estado.DispositivoId, ["segredo"] = segredo, ["apelido"] = ApelidoAtual?.Invoke() ?? "" };
+            // o apelido só vai enquanto a conta não tem nome: o servidor o adota na migração (spec 027, seção 5). Com nome, ele vale mais que qualquer apelido local.
+            var corpo = new JsonObject { ["dispositivo"] = _estado.DispositivoId, ["segredo"] = segredo, ["apelido"] = _estado.ContaNome == null ? ApelidoAtual?.Invoke() ?? "" : "" };
             var r = await ChamarAsync(HttpMethod.Post, "/conta/renovar", corpo, null);
             if (r.SemRede)
             {
@@ -203,8 +214,10 @@ public sealed partial class Conta : IDisposable
                 _espera = TimeSpan.FromSeconds(5); _proximaTentativa = DateTimeOffset.MinValue;
                 _estado.ContaId = r.Json["conta"]?.GetValue<string>() ?? _estado.ContaId;
                 GuardarSessao(r.Json);
+                var (antes, depois) = LerNome(r.Json);
                 _salvar();
                 Changed?.Invoke();
+                if (antes == null && depois != null) NomeAdotadoNaMigracao?.Invoke(depois);
                 return EstadoSessao.Ok;
             }
             if (r.Json?["erro"]?.GetValue<string>() == "conta_invalida") { Apagar(); return EstadoSessao.Encerrada; }
@@ -216,7 +229,7 @@ public sealed partial class Conta : IDisposable
         finally { _renovando.Release(); }
     }
 
-    /// <summary>Quem dá o apelido de agora (a sala usa na migração e para o servidor guardar). Opcional.</summary>
+    /// <summary>Quem dá o apelido salvo de antes da spec 027 (o servidor o adota como nome se a conta ainda não tem). Só é lido enquanto a conta não tem nome. Opcional.</summary>
     public Func<string>? ApelidoAtual { get; set; }
 
     /// <summary>Sai deste PC: apaga o que é local mesmo se o servidor não responder. <c>Ok</c> falso com texto = a sessão pode continuar valendo no servidor.</summary>
@@ -230,6 +243,49 @@ public sealed partial class Conta : IDisposable
         Apagar();
         if (r == null || r.Status == HttpStatusCode.OK) return new(true);
         return new(false, "servidor_fora", "Saí deste PC, mas o servidor não respondeu: a sessão pode continuar valendo lá até vencer. Para encerrar de vez, entre de novo e saia com internet.");
+    }
+
+    // ------------------------------------------------------------------ nome da conta (spec 027)
+
+    /// <summary>Troca o nome da conta (<c>POST /conta/nome</c>): vale em todos os aparelhos e grupos. Só muda o que o app guarda quando o servidor responde 200;
+    /// sem rede, ou com erro, nada muda e <see cref="ResultadoConta.Texto"/> diz o motivo em português. 401 renova o token e tenta uma vez mais.</summary>
+    public async Task<ResultadoConta> MudarNomeAsync(string nome)
+    {
+        var limpo = (nome ?? "").Trim();
+        if (limpo.Length == 0) return new(false, "nome_invalido", "Escreva um nome para a conta.");
+        var corpo = new JsonObject { ["nome"] = limpo };
+        ChamadaResultado? r = null;
+        bool tinhaConta = TemConta;
+        for (int tentativa = 0; tentativa < 2; tentativa++)
+        {
+            var token = await AcessoAsync(forcar: tentativa == 1);
+            if (token == null) return new(false, "sem_sessao", TemConta ? TextoSemRede : tinhaConta ? FraseSessaoEncerrada : "Entre na sua conta primeiro.");
+            r = await ChamarAsync(HttpMethod.Post, "/conta/nome", corpo, token);
+            if (r.SemRede) return new(false, "sem_rede", TextoSemRede);
+            if (r.Status != HttpStatusCode.Unauthorized) break;
+        }
+        if (r!.Status == HttpStatusCode.OK && r.Json?["nome"]?.GetValue<string>() is { Length: > 0 } novo)
+        {
+            _estado.ContaNome = novo; _nomeConhecido = true; NomeDesde = _agora();
+            _salvar();
+            Changed?.Invoke();
+            return new(true);
+        }
+        var erro = r.Json?["erro"]?.GetValue<string>();
+        if (erro == "conta_invalida") { Apagar(); return new(false, erro, FraseSessaoEncerrada); }
+        return new(false, erro ?? "erro", TextoDe(r, "O servidor não aceitou o nome. Tente de novo em instantes."));
+    }
+
+    /// <summary>A sala difundiu outro nome para a minha conta (troca feita em outro aparelho). Só vale se a conta já tem nome (senão o apelido da sala é o do <c>ola</c>,
+    /// não o da conta) e se a troca minha não é recente (a sala pode ainda difundir o nome antigo). Devolve verdadeiro se mudou.</summary>
+    public bool AdotarNomeDaSala(string nome)
+    {
+        var limpo = (nome ?? "").Trim();
+        if (limpo.Length == 0 || _estado.ContaNome == null || limpo == _estado.ContaNome || _agora() - NomeDesde < TimeSpan.FromSeconds(15)) return false;
+        _estado.ContaNome = limpo; NomeDesde = _agora();
+        _salvar();
+        Changed?.Invoke();
+        return true;
     }
 
     // ------------------------------------------------------------------ ações da conta (etapa 6)
@@ -312,10 +368,23 @@ public sealed partial class Conta : IDisposable
                 .Select(g => new GrupoSalvo { Id = g["id"]!.GetValue<string>(), Nome = g["nome"]?.GetValue<string>() ?? "" }).ToList();
     }
 
+    /// <summary>Lê o <c>nome</c> do retirar/renovar. Servidor antigo não manda o campo: nada muda. Devolve (antes, depois).</summary>
+    (string? Antes, string? Depois) LerNome(JsonObject j)
+    {
+        string? antes = _estado.ContaNome;
+        if (!j.ContainsKey("nome")) return (antes, antes);
+        string? n = j["nome"] is JsonValue v && v.TryGetValue<string>(out var t) && !string.IsNullOrWhiteSpace(t) ? t.Trim() : null;
+        _nomeConhecido = true;
+        _estado.ContaNome = n;
+        if (n != antes) NomeDesde = _agora();
+        return (antes, n);
+    }
+
     void Apagar()
     {
         lock (_gate) { _acesso = null; _acessoExpira = 0; _bilhete = null; _verificador = null; _pedido = null; }
         _estado.ContaId = null; _estado.DispositivoId = null; _estado.ContaSegredoProtegido = null; _estado.ContaMetodo = null; _estado.ContaGoogleVinculado = false; _estado.Grupos = new();
+        _estado.ContaNome = null; _estado.EscolhaDeNomeMostrada = false; _nomeConhecido = false;
         _salvar();
         Changed?.Invoke();
     }

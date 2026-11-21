@@ -16,9 +16,14 @@ public sealed class GrupoSalvo
 /// </summary>
 public sealed class AppState
 {
+    /// <summary>OBSOLETO (spec 027): o nome agora é da conta (<see cref="ContaNome"/>). Fica só para ler o estado antigo: o apelido salvo vai uma vez ao servidor, na migração, enquanto a conta não tem nome.</summary>
     public string? Nick { get; set; }
-    /// <summary>Verdadeiro se a pessoa digitou o apelido (vale em toda abertura); falso = usa o nome do Discord. Nulo = estado antigo.</summary>
+    /// <summary>OBSOLETO (spec 027): ninguém mais lê nem grava. Fica só para o estado.json antigo continuar abrindo.</summary>
     public bool? NickManual { get; set; }
+    /// <summary>O nome da conta, como o servidor deu (spec 027). Nulo = a conta ainda não tem nome ou o servidor ainda não respondeu com ele.</summary>
+    public string? ContaNome { get; set; }
+    /// <summary>Já mostrei a caixinha "Escolha seu nome" a esta pessoa (conta sem nome depois do renovar): só aparece uma vez.</summary>
+    public bool EscolhaDeNomeMostrada { get; set; }
     /// <summary>Última conta do Discord vista (nome, id e código do avatar): na abertura o nome e a foto aparecem antes de o Discord conectar.</summary>
     public string? DiscordNome { get; set; }
     public string? DiscordId { get; set; }

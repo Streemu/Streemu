@@ -81,7 +81,7 @@ public partial class MainForm
                 () => LigacaoDoArquivo() is { Connected: true } link ? link.Tunnel : null,
                 () => _filmeAbertos.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value.Msg).ToArray(),
                 () => _streamTela is { IsDisposed: false } || _streamAbrindo,
-                RetomarStreamFilme, AvatarPorNome, CapaDe);
+                RetomarStreamFilme, AvatarDaSessao, CapaDe, () => _room?.MyId ?? "", id => _room?.Find(id)?.Nick);
         var tela = _filmeForm = new FilmeTela(lig, teste: TestDir != null || Environment.GetEnvironmentVariable("STREEMU_TEST_VIEW")?.StartsWith("filme") == true);
         tela.Telemetria += (tipo, campos) =>
         {
@@ -106,9 +106,13 @@ public partial class MainForm
         return tela;
     }
 
-    /// <summary>A foto de quem está numa sessão, pelo apelido (o anúncio do filme leva apelidos, não ids).</summary>
-    Ui.Avatars.AvatarImage? AvatarPorNome(string nick) =>
-        nick == Nick ? MyAvatarImage() : _room?.Members.FirstOrDefault(m => m.Nick == nick) is { } m ? AvatarOfMember(m.Id) : null;
+    /// <summary>
+    /// A foto de quem está numa sessão, pelo id da conta. Só o anúncio de um app antigo não traz o id de quem assiste: aí, e só aí, procura pelo nome
+    /// (o primeiro que bater; é o que ele já fazia).
+    /// </summary>
+    Ui.Avatars.AvatarImage? AvatarDaSessao(string? id, string nick) =>
+        id != null ? AvatarOfMember(id)
+        : nick == Nick ? MyAvatarImage() : _room?.Members.FirstOrDefault(m => m.Nick == nick) is { } m ? AvatarOfMember(m.Id) : null;
 
     void MostrarFilme()
     {
@@ -140,10 +144,12 @@ public partial class MainForm
             m["estado"] = s.Tocando ? "rolando" : s.Comecou ? "pausado" : "aguardo";
             m["pos"] = Math.Round(s.Posicao, 1);
             // quem assiste pela transmissão também está na sessão (caso de 2026-11-18: só aparecia quem tinha o arquivo), sem contar duas vezes
-            var quem = s.Amigos.Keys.Concat(s.FluxoNomes?.Invoke() ?? []).Distinct().ToList();
+            var quem = s.Amigos.Keys.Concat(s.FluxoIds?.Invoke() ?? []).Distinct().ToList();
             m["pessoas"] = quem.Count;
-            // quem já entrou, para as bolinhas do cartão no Cinema de quem ainda não entrou (campo novo: versão antiga ignora)
-            m["quem"] = new JsonArray(quem.Select(k => (JsonNode?)k).ToArray());
+            // quem já entrou, para as bolinhas do cartão no Cinema de quem ainda não entrou (campo novo: versão antiga ignora);
+            // "quem_ids" são as contas na mesma ordem (a foto sai pelo id; versão antiga do anfitrião não manda e a foto sai pelo nome)
+            m["quem"] = new JsonArray(quem.Select(k => (JsonNode?)s.NomeDe(k)).ToArray());
+            m["quem_ids"] = new JsonArray(quem.Select(k => (JsonNode?)k).ToArray());
         }
         return m;
     }
@@ -198,7 +204,7 @@ public partial class MainForm
                 break;
             case "filme_parar" when link != null:
                 FimLigacaoFilme(sid);
-                _filmeForm?.AmigoSaiu(nick);
+                _filmeForm?.AmigoSaiu(from);
                 break;
         }
     }
@@ -270,7 +276,7 @@ public partial class MainForm
                     .Append(baixando ? d!.Atual.Fase : "").Append(';')
                     .Append(baixando ? d!.Atual.Pct.ToString(ci) : "").Append(';')
                     .Append(baixando ? N(d!.Atual.BytesPorSegundo / 1e6, "0.##") : "").Append(';')
-                    .Append(s is { Anfitriao: true } ? string.Join("|", s.Amigos.Select(kv => $"{kv.Key}={kv.Value}")).Replace(";", ",") : "").Append(';')
+                    .Append(s is { Anfitriao: true } ? string.Join("|", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}={kv.Value}")).Replace(";", ",") : "").Append(';')
                     .Append(fluxo.Epoca).Append(';').Append(fluxo.CacheS).Append(';').Append(fluxo.ParadoCache).Append(';')
                     .Append(fluxo.Velocidade).Append(';').Append(fluxo.Espectadores).Append(';').Append(fluxo.Mbps).Append('\n');
                 if (++_filmeCsvLinhas >= 10) GravarSerieFilme();
@@ -296,7 +302,7 @@ public partial class MainForm
             {
                 ["papel"] = s.Anfitriao ? "anfitriao" : "espectador", ["filme"] = s.Filme, ["tocando"] = s.Tocando, ["posicao_s"] = Math.Round(s.Posicao, 1),
                 ["erro_ms"] = double.IsNaN(s.UltimoErroMs) ? null : Math.Round(s.UltimoErroMs, 1), ["velocidade"] = s.Velocidade,
-                ["amigos"] = s.Anfitriao ? string.Join(",", s.Amigos.Select(kv => $"{kv.Key}={kv.Value}")) : null, ["envios"] = _filmeEnvios.Count,
+                ["amigos"] = s.Anfitriao ? string.Join(",", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}={kv.Value}")) : null, ["envios"] = _filmeEnvios.Count,
             };
         if (tela?.UltimoDownload is { } d && tela.Ocupado) return new JsonObject { ["papel"] = "baixando", ["fase"] = d.Atual.Fase, ["pct"] = d.Atual.Pct };
         return _filmeEnvios.Count > 0 ? new JsonObject { ["envios"] = _filmeEnvios.Count } : null;
@@ -464,6 +470,7 @@ public partial class MainForm
             if (!Tipo(m).StartsWith("filme_")) return;
             Ui(() =>
             {
+                m["id"] = link.PeerId; // quem fala é quem está na ligação (a sala a carimbou): o "id" que o outro app mandou não vale, o app antigo não manda nenhum
                 if (Tipo(m) == "filme_fim" && link.SessionId == _streamSid) StreamAnfitriaoFechou(link.PeerId);
                 if (Tipo(m).StartsWith("filme_stream") || (Tipo(m) is "filme_estado" or "filme_permissoes" or "filme_pessoas" or "filme_fila" or "filme_trocar" && link.SessionId == _streamSid)) FilmeStreamControle(link, m);
                 else if (Tipo(m) == "filme_baixar") ServirArquivo(link.Tunnel, m);
@@ -521,7 +528,7 @@ public partial class MainForm
                 if (tocarJa && espera.Amigos.Count >= esperados && !espera.Aguardando) espera.Tocar(10);
                 // o "baixando" de quem baixa (4.3) vai para o relatório: o retrato com mais gente baixando ao mesmo tempo
                 int baixando = espera.Amigos.Count(kv => kv.Value.StartsWith("baixando"));
-                if (baixando > maisBaixando) { maisBaixando = baixando; _filmeVisto = string.Join(",", espera.Amigos.Select(kv => $"{kv.Key}={kv.Value}")); }
+                if (baixando > maisBaixando) { maisBaixando = baixando; _filmeVisto = string.Join(",", espera.Amigos.Select(kv => $"{espera.NomeDe(kv.Key)}={kv.Value}")); }
                 await Task.Delay(100);
             }
             if (form.Sessao is { } s)
@@ -572,7 +579,7 @@ public partial class MainForm
         r["pela_sala"] = true; // o campo fica: relatórios e scripts antigos o leem
         r["relogio_offset_us"] = t?.PeerClockOffsetUs;
         r["relogio_ida_volta_ms"] = t == null ? -1 : Math.Round(t.PeerClockRttMs, 2);
-        if (form.UltimaSessao is { Anfitriao: true } h) r["amigos"] = string.Join(",", h.Amigos.Select(kv => $"{kv.Key}={kv.Value}"));
+        if (form.UltimaSessao is { Anfitriao: true } h) r["amigos"] = string.Join(",", h.Amigos.Select(kv => $"{h.NomeDe(kv.Key)}={kv.Value}"));
         if (_filmeVisto != null) r["amigos_baixando"] = _filmeVisto;
         RelatorioCapa(r); // MainForm.FilmeCapa.cs
         if (form.UltimoDownload is { } d) { r["download"] = d.Relatorio(); r["download"]!["fase"] = d.Atual.Fase; }

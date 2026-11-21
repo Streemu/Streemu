@@ -52,6 +52,22 @@ public static class Tools
     }
 
     /// <summary>
+    /// O leitor de WAV deste ffmpeg aceita <c>-max_size</c>? Com ele o som do pipe entra em pacotes de 10 ms; o leitor de PCM cru (<c>-f f32le</c>)
+    /// só solta pacotes de 4.096 amostras (85 ms) e não tem opção para diminuir, então o som saía da live em rajadas: buracos de ~100 ms a cada
+    /// 2 s no celular que assistia (2026-11-21). Sem a opção, fica o PCM cru: uma opção recusada impediria a live de abrir.
+    /// </summary>
+    public static bool WavAudioInput => WavMaxSize.Value;
+
+    static Lazy<bool> WavMaxSize = new(ProbeWavMaxSize);
+
+    static bool ProbeWavMaxSize()
+    {
+        bool ok = Ask("-hide_banner", "-h", "demuxer=wav") is { } r && r.Output.Contains("max_size");
+        if (!ok) Log.Info("[ffmpeg] o leitor de WAV deste ffmpeg não tem -max_size: o som vai em PCM cru (pacotes de 85 ms)");
+        return ok;
+    }
+
+    /// <summary>
     /// O ffmpeg da pasta foi trocado (spec 004, seção 8): as respostas acima eram do anterior e a próxima live pergunta de novo. Sem isso a primeira
     /// live depois de trocar o 2025-12-14 pelo 2026-11-09 mandaria o -thread_queue_size na entrada e o ffmpeg novo recusaria o comando.
     /// </summary>
@@ -59,6 +75,7 @@ public static class Tools
     {
         InputQueueOk = new(ProbeInputQueue);
         GfxDup = new(ProbeGfxDup);
+        WavMaxSize = new(ProbeWavMaxSize);
     }
 
     /// <summary>Roda o ffmpeg só para perguntar algo (opção aceita, ajuda de um filtro). Nulo se não rodou ou passou de 10 s.</summary>

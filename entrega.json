@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "6e11a1781b253865f9e110e034bfbc4ef4d48db9",
-    "notas":  "- Tira o nome do comentário da conversão na placa (trava do espelho)\n- Acrescenta a novidade do Cinema e corrige o log da placa na cópia direta\n- Converte o filme pela transmissão na placa AMD e lê o decodificador da AMD",
+    "privado":  "e96e06f5acd1edf98cdf1ee97035b7161d29b690",
+    "notas":  "- Corrige o som da live saindo em rajadas: entra em WAV de 10 ms\n- [sem atualização] Taxa enviada pelo relay sem contar em dobro",
     "obrigatoria":  false
 }

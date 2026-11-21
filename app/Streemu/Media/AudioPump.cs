@@ -19,7 +19,7 @@ namespace Streemu.Media;
 public sealed class AudioPump : IDisposable
 {
     public const int SampleRate = 48000, Channels = 2, BytesPerSample = 4, BlockAlign = Channels * BytesPerSample, BytesPerSecond = SampleRate * BlockAlign;
-    /// <summary>O formato que vai pelo pipe ao ffmpeg (<c>-f f32le</c>), qualquer que seja o que o Windows aceitou.</summary>
+    /// <summary>O formato que vai pelo pipe ao ffmpeg (float 32, em WAV ou <c>-f f32le</c>: ver <see cref="BeginPipe"/>), qualquer que seja o que o Windows aceitou.</summary>
     public static WaveFormat PipeFormat => WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, Channels);
     readonly WasapiRecorder _recorder;
     readonly LiveAudioPacer _pacer = new();
@@ -154,7 +154,33 @@ public sealed class AudioPump : IDisposable
     /// <summary>Liga a saída a um novo ffmpeg. Descarta o que estava acumulado e recomeça o relógio (o ffmpeg novo conta o tempo do zero).</summary>
     public void Attach(Stream? sink)
     {
+        if (sink != null) BeginPipe(sink);
         _pacer.Attach(sink);
+    }
+
+    /// <summary>
+    /// Abre o pipe de um ffmpeg novo no formato que o <see cref="StreamSender.AudioInputArgs"/> pediu: em WAV, o cabeçalho vai antes do som.
+    /// Quem liga um <see cref="LiveAudioPacer"/> sem passar por <see cref="Attach"/> chama isto antes.
+    /// Exemplo: <c>AudioPump.BeginPipe(ffmpeg.StandardInput.BaseStream); pacer.Attach(ffmpeg.StandardInput.BaseStream);</c>
+    /// </summary>
+    public static void BeginPipe(Stream sink)
+    {
+        if (!Tools.WavAudioInput) return;
+        // 44 bytes cabem no buffer do pipe: não espera o ffmpeg começar a ler. Ffmpeg que já morreu: o pacer vê a falha na primeira escrita.
+        try { sink.Write(WavHeader()); sink.Flush(); }
+        catch (IOException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>WAV em float 32 (formato 3) com tamanho desconhecido: o ffmpeg lê com -ignore_length até o pipe fechar.</summary>
+    static byte[] WavHeader()
+    {
+        var h = new byte[44];
+        var w = new BinaryWriter(new MemoryStream(h));
+        w.Write("RIFF"u8); w.Write(uint.MaxValue); w.Write("WAVEfmt "u8); w.Write(16);
+        w.Write((short)3); w.Write((short)Channels); w.Write(SampleRate); w.Write(BytesPerSecond); w.Write((short)BlockAlign); w.Write((short)(BytesPerSample * 8));
+        w.Write("data"u8); w.Write(uint.MaxValue);
+        return h;
     }
 
     public void Dispose()

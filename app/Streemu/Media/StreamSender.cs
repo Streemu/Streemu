@@ -1372,8 +1372,16 @@ public sealed class StreamSender : IDisposable
             $"srt://127.0.0.1:{port}?mode=listener&latency={latencyUs}&passphrase={pass}&pbkeylen=16&transtype=live&pkt_size=1316" };
     }
 
-    internal static string[] AudioInputArgs() => Tools.InputQueueArgs.Concat(new[] { "-probesize", "32", "-analyzeduration", "0", "-fflags", "nobuffer",
-        "-f", "f32le", "-ar", AudioPump.SampleRate.ToString(), "-ac", AudioPump.Channels.ToString(), "-i", "pipe:0" }).ToArray();
+    /// <summary>
+    /// O som do <see cref="AudioPump"/> pelo stdin. Em WAV com -max_size 3840 (10 ms) quando o ffmpeg aceita: o PCM cru (-f f32le) entra em pacotes
+    /// de 4.096 amostras (85 ms) e o som saía da live em rajadas, ~100 ms sem som a cada 2 s no celular (2026-11-21; ver <see cref="Tools.WavAudioInput"/>).
+    /// O cabeçalho WAV é escrito pelo <see cref="AudioPump.BeginPipe"/>.
+    /// </summary>
+    internal static string[] AudioInputArgs() => Tools.InputQueueArgs.Concat(new[] { "-probesize", "32", "-analyzeduration", "0", "-fflags", "nobuffer" })
+        .Concat(Tools.WavAudioInput
+            ? new[] { "-f", "wav", "-ignore_length", "1", "-max_size", (AudioPump.BytesPerSecond / 100).ToString() }
+            : new[] { "-f", "f32le", "-ar", AudioPump.SampleRate.ToString(), "-ac", AudioPump.Channels.ToString() })
+        .Concat(new[] { "-i", "pipe:0" }).ToArray();
 
     /// <summary>
     /// Limitador antes do Opus: o jogo passa de 0 dBFS nos golpes (o <see cref="AudioPump"/> agora entrega em float, sem cortar) e o Opus

@@ -63,6 +63,7 @@ static class MediaCheck
             capture = Tools.Start(Tools.Ffmpeg, a, pause ? "teste-pausa" : "teste-captura", true, binaryStdout: true);
             // Depois do mux: um asetpts antes dele é intercalado pelo próprio ffmpeg e não produz desalinhamento dos frontiers TS.
             splitter.Feed(bad ? new SkewStream(capture.StandardOutput.BaseStream, skew) : capture.StandardOutput.BaseStream);
+            AudioPump.BeginPipe(capture.StandardInput.BaseStream);   // o cabeçalho WAV que o AudioPump.Attach escreve no app
             pacer.Attach(capture.StandardInput.BaseStream);
         }
         try

@@ -601,9 +601,10 @@ public sealed class Tunnel : IDisposable
     {
         try
         {
+            // Pelo meu relay, quem conta os bytes é o envio do TurnClient (EnableRelayAsync), com o cabeçalho do TURN: contar aqui também
+            // dobrava o enviado_kbps da telemetria nas ligações pelo relay (protótipo Android, 2026-11-21: 25,6 Mbit/s contados para 12,6 recebidos).
             if (c.Kind == CandKind.ViaMyRelay) Turn?.SendVia(c.Ep, pkt);
-            else _sock.SendTo(pkt, SocketFlags.None, c.Ep);
-            Interlocked.Add(ref _txBytes, pkt.Length);
+            else { _sock.SendTo(pkt, SocketFlags.None, c.Ep); Interlocked.Add(ref _txBytes, pkt.Length); }
             Interlocked.Increment(ref _txPackets);
         }
         catch (ObjectDisposedException) { }

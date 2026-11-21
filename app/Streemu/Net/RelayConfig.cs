@@ -43,7 +43,11 @@ public static class RelayConfig
 
     /// <summary>Ordem: variável de teste (só em teste) → "relayUrl" do grupo.json (serve para apontar outro servidor) → o que foi salvo no app → <see cref="UrlPadrao"/>.
     /// Fora de teste nunca devolve nulo.</summary>
-    public static Settings? Load(AppState state)
+    public static Settings? Load(AppState state) => Load(state.RelayUrl);
+
+    /// <summary>O mesmo que <see cref="Load(AppState)"/>, com o endereço salvo já lido. Existe para quem não tem o <see cref="AppState"/> do Windows
+    /// (o protótipo Android usa este arquivo como está).</summary>
+    public static Settings? Load(string? urlSalva)
     {
         if (ModoTeste)
         {
@@ -62,7 +66,7 @@ public static class RelayConfig
             }
             catch (Exception e) { Log.Info($"{file} inválido: {e.Message}"); }
         }
-        if (!string.IsNullOrWhiteSpace(state.RelayUrl)) return new(state.RelayUrl.Trim(), "configuração salva no app");
+        if (!string.IsNullOrWhiteSpace(urlSalva)) return new(urlSalva.Trim(), "configuração salva no app");
         return new(UrlPadrao, "endereço padrão do Streemu");
     }
 

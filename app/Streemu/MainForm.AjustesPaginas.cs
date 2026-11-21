@@ -40,7 +40,7 @@ public sealed partial class MainForm
             B.Nota("A sala do grupo conecta sozinha. Se os amigos não conseguem chegar até você, libere o app no Firewall do Windows.", alinhadaAoInterruptor: false)));
 
     Control PaginaSistema() => SettingsSection("Sistema",
-        B.Cartao(B.Legenda("Versão"), B.Nota($"Streemu · versão {Program.Version}", alinhadaAoInterruptor: false), B.Botoes(_checkUpdate),
+        B.Cartao(B.Legenda("Versão"), B.Nota($"Streemu · versão {Program.Version}", alinhadaAoInterruptor: false), B.Botoes(_checkUpdate, _verNovidades), // _verNovidades: MainForm.Novidades.cs
             B.Subtitulo("Canal de atualização"), CanalAtualizacaoOpcao(),
             B.Nota("Stable recebe as versões compiladas no repositório público, que qualquer pessoa pode conferir. Nightly recebe as versões de teste primeiro. Por enquanto os dois recebem as mesmas atualizações.", alinhadaAoInterruptor: false)),
         B.Cartao(B.Legenda("Inicialização"), _startWithWindows, B.Nota("O Streemu abre escondido na bandeja quando você entra no Windows.")));

@@ -96,6 +96,11 @@ public sealed class StreamSender : IDisposable
     bool _staleConfirmed;
     DateTime _fastReopenAt = DateTime.MinValue;
     readonly List<string> _diagnoses = new();
+    // telemetria do caminho de mídia (Telemetria/CaminhoMidia.cs): só observa; nada daqui muda a escolha, a prioridade ou a recuperação
+    readonly Telemetria.CaminhoMidia.Tentativas _midia = new(Telemetria.CaminhoMidia.Host);
+    bool _lembrado;
+    // a última linha do ffmpeg principal que não é de progresso: quando ele sai sozinho, é ela que diz em que etapa caiu (só o código sai do PC)
+    volatile string? _ultimoErro;
     /// <summary>Teste: finge que a captura travou N s depois de abrir (-1 = nunca). Padrão: STREEMU_TEST_STUCK_AFTER.</summary>
     internal int TestStuckAfter { get; set; } = int.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_STUCK_AFTER"), out var t) ? t : -1;
     /// <summary>Teste (--capture-test h): fecha o ffmpeg do sensor N s depois de a captura abrir, uma vez, para conferir a batida de 1 s e a reabertura do sensor.</summary>
@@ -234,7 +239,9 @@ public sealed class StreamSender : IDisposable
         }
         else HdrWarning = null;
         Status?.Invoke($"Testando o encoder para {OutSize.W}x{OutSize.H}@{s.Preset.Fps} (fonte {SourceSize.W}x{SourceSize.H})...");
-        Chosen = await Task.Run(() => ChooseAndRemember(s, cap));
+        _midia.NovaLive();
+        _midia.Preparar(Telemetria.GatilhoMidia.Inicio);
+        Chosen = await Task.Run(() => ChooseAndRemember(s, cap, fatal: true));
         Log.Info($"Pipeline escolhido: {Chosen}, fonte {SourceSize.W}x{SourceSize.H} -> saída {OutSize.W}x{OutSize.H}@{s.Preset.Fps}, {s.Preset.Kbps} kbps");
         _session = new FrameStats(s.Preset.Fps);
         _lowCaptureWarned = false;
@@ -291,13 +298,48 @@ public sealed class StreamSender : IDisposable
         catch (Exception e) { Log.Info("[captura] não consegui guardar o método da captura: " + e.Message); }
     }
 
-    Pipeline ChooseAndRemember(Settings s, CaptureSpec cap)
+    Pipeline ChooseAndRemember(Settings s, CaptureSpec cap, bool fatal)
     {
         string memoryKey = MemoryKey(s, cap);
         var remembered = ParsePipeline(_memory?.Recall(memoryKey));
-        var p = ChoosePipeline(s.Encoder, s.Preset, cap, SourceSize, OutSize, remembered);
+        var (src, dst) = (SourceSize, OutSize);
+        var p = ChoosePipeline(s.Encoder, s.Preset, cap, src, dst, remembered, (cand, linha, demorou) => FalhaNoTeste(s, cap, src, dst, cand, linha, demorou, fatal));
+        _lembrado = remembered != null && p == remembered;
         _memory?.Remember(memoryKey, FormatPipeline(p));
         return p;
+    }
+
+    // ------------------------------------------------------------------ telemetria do caminho de mídia (só observa)
+
+    static string CodigoDoCaminho(Path p) => p switch { Path.Gpu => "gpu", Path.AmfMap => "amf_map", Path.AmfVpp => "amf_vpp", _ => "cpu" };
+
+    /// <summary>O caminho para a telemetria: só números e códigos aqui (thread do laço); a placa é resolvida na fila do CaminhoMidia.</summary>
+    static Func<System.Text.Json.Nodes.JsonObject?> CaminhoParaTelemetria(Settings s, CaptureSpec cap, Pipeline p, (int W, int H) src, (int W, int H) dst, bool lembrado)
+    {
+        var mon = cap.Dda ? IntPtr.Zero : s.Source.IsWindow ? Display.MonitorOf(s.Source.Handle) : s.Source.Handle;
+        return Telemetria.ContextoMidia.Envio(cap.Name, cap.Dda ? cap.Adapter : -1, mon, p.Encoder, CodigoDoCaminho(p.Path), src, dst,
+            s.Preset.Fps, s.Preset.Kbps, s.Preset.Name, s.Encoder.ToString().ToLowerInvariant(), lembrado);
+    }
+
+    /// <summary>Um candidato reprovou no teste de 3 quadros (ou nenhum passou: <paramref name="cand"/> nulo). Fatal só no começo da live, que não abre.</summary>
+    void FalhaNoTeste(Settings s, CaptureSpec cap, (int W, int H) src, (int W, int H) dst, Pipeline? cand, string? linha, bool demorou, bool fatal)
+    {
+        if (!Telemetria.CaminhoMidia.Ligado || _midia.PreparadaOuAtual is not { } t) return;
+        if (cand == null) { t.Falhou(Telemetria.EtapaMidia.Encoder, Telemetria.MotivoMidia.NenhumEncoder, fatal: fatal, teste: !fatal); return; }
+        var (etapa, motivo) = Telemetria.CaminhoMidia.ClassificarFfmpeg(linha, demorou, Telemetria.EtapaMidia.Encoder, Telemetria.MotivoMidia.SaiuComErro);
+        t.Falhou(etapa, motivo, teste: true, caminho: CaminhoParaTelemetria(s, cap, cand, src, dst, lembrado: false));
+    }
+
+    /// <summary>Medidas que já existem na hora da falha (nada novo é coletado): quadros do último segundo, reaberturas e pacotes descartados no envio.</summary>
+    Func<System.Text.Json.Nodes.JsonObject?> MedidasDaFalha()
+    {
+        int novos = _lastUnique; long saindo = 0; int reaberturas = _restarts; long descartes = 0;
+        try { saindo = EncodedNow(); descartes = Interlocked.Read(ref _droppedByRemovedPipes) + Outputs().Sum(x => x.Pipe?.DroppedPackets ?? 0); }
+        catch { return () => null; } // sem as medidas, a falha sai mesmo assim
+        return () => new System.Text.Json.Nodes.JsonObject
+        {
+            ["quadros_novos_s"] = novos, ["quadros_saindo_s"] = saindo, ["reaberturas"] = reaberturas, ["pacotes_descartados_envio"] = descartes,
+        };
     }
 
     static async Task<(AudioPump?, string)> CreateAudioAsync(Settings s)
@@ -335,6 +377,7 @@ public sealed class StreamSender : IDisposable
         _lastAudioSync = _audio?.SyncSnapshot() ?? _lastAudioSync;
         _audio?.Dispose();
         _audio = null;
+        _midia.Encerrar();
         Log.Info("Transmissão parada." + (_session is { Intervals: > 0 } ? " Resumo: " + _session.OneLine() + (_restarts > 0 ? $", captura reaberta {_restarts} vez(es)" : "") + "." : ""));
     }
 
@@ -464,7 +507,7 @@ public sealed class StreamSender : IDisposable
         _audio?.Attach(null);
         KillCapture();
         _paused = pause;
-        if (pause) StartPause(); else StartCapture();
+        if (pause) StartPause(); else StartCapture(novaTentativa: false); // a volta da pausa reabre o mesmo caminho: não conta como tentativa
     }
 
     /// <summary>
@@ -613,7 +656,11 @@ public sealed class StreamSender : IDisposable
         Status?.Invoke("Transmitindo. Esperando alguém clicar em Assistir...");
         int captureFailures = 0;
         try { StartCapture(); }
-        catch (Exception e) { Log.Info("Erro ao abrir a captura: " + e.Message); }
+        catch (Exception e)
+        {
+            Log.Info("Erro ao abrir a captura: " + e.Message);
+            _midia.PreparadaOuAtual?.Falhou(Telemetria.EtapaMidia.Captura, Telemetria.MotivoMidia.CapturaNaoAbriu);
+        }
         var modeCheck = new Stopwatch(); modeCheck.Start();
         while (_running)
         {
@@ -650,6 +697,7 @@ public sealed class StreamSender : IDisposable
                     if (captureFailures >= 5)
                     {
                         Log.Info("A captura caiu 5 vezes seguidas logo ao abrir. Parando a transmissão; veja o log acima.");
+                        _midia.Atual?.Falhou(Telemetria.EtapaMidia.Captura, Telemetria.MotivoMidia.CaiuRepetidas, fatal: true, medidas: MedidasDaFalha());
                         Status?.Invoke("Erro: o ffmpeg não consegue capturar (veja o log).");
                         _running = false;
                         break;
@@ -668,6 +716,7 @@ public sealed class StreamSender : IDisposable
         _lastAudioSync = _audio?.SyncSnapshot() ?? _lastAudioSync;
         _audio?.Dispose();
         _audio = null;
+        _midia.Encerrar();
         Stopped?.Invoke();
     }
 
@@ -718,7 +767,11 @@ public sealed class StreamSender : IDisposable
             if (o.Pipe != null) { o.LastPipeSync = o.Pipe.SyncSnapshot(); Interlocked.Add(ref _droppedByRemovedPipes, o.Pipe.DroppedPackets); o.Pipe.Dispose(); o.Pipe = null; }
             quickFailures = started.Elapsed.TotalSeconds < 3 ? quickFailures + 1 : 0;
             // um espectador com problema não derruba os outros: espera mais entre as tentativas dele
-            if (quickFailures == 5) Log.Info($"O envio para {o.Name} falhou 5 vezes seguidas logo ao abrir; tentando a cada 5 s (os outros espectadores seguem normais).");
+            if (quickFailures == 5)
+            {
+                Log.Info($"O envio para {o.Name} falhou 5 vezes seguidas logo ao abrir; tentando a cada 5 s (os outros espectadores seguem normais).");
+                _midia.Atual?.Falhou(Telemetria.EtapaMidia.Envio, Telemetria.MotivoMidia.EnvioNaoAbre, interrompe: false); // o vídeo dos outros não para
+            }
             Thread.Sleep(quickFailures >= 5 ? 5000 : 300);
         }
     }
@@ -740,7 +793,8 @@ public sealed class StreamSender : IDisposable
             OutSize = next.Preset.OutputSize(cap.Width, cap.Height);
             _requestedPreset = next.Preset;
             next = FitBitrateToOutput(next);
-            Chosen = ChooseAndRemember(next, cap);
+            _midia.Preparar(Telemetria.GatilhoMidia.TrocaConfig);
+            Chosen = ChooseAndRemember(next, cap, fatal: false);
             CaptureUsed = cap;
             bool audioChanged = next.Audio != before.Audio || next.Source.ProcessId != before.Source.ProcessId || next.Source.IsWindow != before.Source.IsWindow;
             if (audioChanged)
@@ -775,7 +829,7 @@ public sealed class StreamSender : IDisposable
     void ParseStats(string line)
     {
         var r = _session?.Feed(line);
-        if (r == null) return;
+        if (r == null) { if (!line.Contains("frame=")) _ultimoErro = line; return; }
         long encoded = (long)Math.Round(r.Value.Out);
         _lastEncoded = encoded; _lastEncodedAt = DateTime.Now;
         var br = Regex.Match(line, @"bitrate=\s*([\d.]+)kbits");
@@ -899,6 +953,7 @@ public sealed class StreamSender : IDisposable
                     : "Se a tela está parada isso é normal. Com jogo rodando: limite o FPS do jogo (ex.: 60); jogo em janela comum vai pela captura do Windows, tente tela cheia/sem bordas.";
             Log.Info($"[aviso] A captura está entregando só ~{unique} quadros novos por segundo (o resto é repetido, e o amigo vê isso como \"câmera lenta\"). " + advice);
         }
+        if (encoded > 0 && !_paused && !_wantPause && _midia.Atual is { TemVideo: false } tentativa) tentativa.VideoOk();
         LastStats = $"{unique} quadros novos/s de {encoded}" + (_lastMbps is { } mbps ? $", {mbps:0.0} Mbps médio" : "");
         try { SecondMeasured?.Invoke(unique, encoded, medida); } catch { }
     }
@@ -907,9 +962,10 @@ public sealed class StreamSender : IDisposable
 
     static int SafeExitCode(Process? p) { try { return p?.ExitCode ?? -1; } catch { return -1; } }
 
-    void StartCapture()
+    void StartCapture(bool novaTentativa = true)
     {
         var args = CaptureArgs(Current!, CaptureUsed!, Chosen!, _audio != null);
+        _ultimoErro = null;
         ContinueMediaClock(args);
         var p = Tools.Start(Tools.Ffmpeg, args, "ffmpeg",
             redirectStdin: true, onStderr: ParseStats, binaryStdout: true);
@@ -924,6 +980,9 @@ public sealed class StreamSender : IDisposable
         _splitter.HoldVideo = false;
         _audio?.Attach(p.StandardInput.BaseStream);
         _sensor = CaptureUsed!.CountGraph != null ? FrameSensor.Start(CaptureUsed, OnSensorSecond) : null;
+        if (Telemetria.CaminhoMidia.Ligado && (novaTentativa || _midia.TemPreparada))
+            try { _midia.Comecar(Telemetria.GatilhoMidia.Outro, CaminhoParaTelemetria(Current!, CaptureUsed, Chosen!, SourceSize, OutSize, _lembrado)); }
+            catch { } // o ffmpeg já abriu: a telemetria nunca interrompe a abertura, a volta da pausa ou a troca de qualidade
     }
 
     internal void ContinueMediaClock(List<string> args)
@@ -955,6 +1014,13 @@ public sealed class StreamSender : IDisposable
         _restarts++;
         if (TestStuckAfter >= 0) _testStuckCount++;
         Log.Info($"Reabrindo a captura ({reason}). O amigo vê ~1–2 s parado; o player dele não fecha.");
+        if (Telemetria.CaminhoMidia.FalhaDaReabertura(reason) is { } falha)
+        {
+            var (etapa, motivo) = falha.Motivo == Telemetria.MotivoMidia.ProcessoSaiu
+                ? Telemetria.CaminhoMidia.ClassificarFfmpeg(_ultimoErro, false, falha.Etapa, falha.Motivo) : falha;
+            _midia.Atual?.Falhou(etapa, motivo, medidas: MedidasDaFalha());
+        }
+        _midia.Preparar(Telemetria.GatilhoMidia.Reabertura);
         _audio?.Attach(null);
         KillCapture();
         var s = Current!;
@@ -979,7 +1045,9 @@ public sealed class StreamSender : IDisposable
                 Log.Info($"A fonte mudou ({SourceSize.W}x{SourceSize.H} → {cap.Width}x{cap.Height}, {cap.Name}); testando o encoder de novo.");
                 s = RefitBitrate(s, dst);
                 // o pipeline que já funcionava vai primeiro: sem isso a troca janela ↔ tela cheia retestava todos os encoders (~9 s com a imagem parada; medido em 2026-11-08)
-                Chosen = ChoosePipeline(s.Encoder, s.Preset, cap, src, dst, Chosen);
+                var antes = Chosen;
+                Chosen = ChoosePipeline(s.Encoder, s.Preset, cap, src, dst, Chosen, (cand, linha, demorou) => FalhaNoTeste(s, cap, src, dst, cand, linha, demorou, fatal: false));
+                _lembrado = Chosen == antes;
                 SourceSize = src; OutSize = dst;
             }
             CaptureUsed = cap;
@@ -1345,7 +1413,9 @@ public sealed class StreamSender : IDisposable
         gpus.Count == 0 || gpus.Any(g => g.Contains("AMD", StringComparison.OrdinalIgnoreCase) || g.Contains("Radeon", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Testa encoders/caminhos em ordem e fica com o primeiro que codifica de verdade alguns quadros desta fonte.</summary>
-    internal static Pipeline ChoosePipeline(EncoderChoice choice, Preset preset, CaptureSpec cap, (int W, int H) src, (int W, int H) dst, Pipeline? remembered = null)
+    /// <param name="aoFalhar">Só observa (telemetria): o candidato que reprovou, a última linha do ffmpeg e se demorou demais; nulo no fim, quando nenhum passou.</param>
+    internal static Pipeline ChoosePipeline(EncoderChoice choice, Preset preset, CaptureSpec cap, (int W, int H) src, (int W, int H) dst, Pipeline? remembered = null,
+        Action<Pipeline?, string?, bool>? aoFalhar = null)
     {
         bool scale = src != dst;
         var encoders = choice switch
@@ -1390,11 +1460,14 @@ public sealed class StreamSender : IDisposable
             if (!exited) Tools.KillQuietly(proc);
             proc.WaitForExit(1000);
             if (exited && proc.ExitCode == 0) { Log.Info($"Encoder OK: {p}"); return p; }
-            string why;
-            lock (lines) why = lines.LastOrDefault(l => !string.IsNullOrWhiteSpace(l)) ?? (exited ? $"código {proc.ExitCode}" : "demorou demais (a janela está minimizada?)");
+            string? last;
+            lock (lines) last = lines.LastOrDefault(l => !string.IsNullOrWhiteSpace(l));
+            string why = last ?? (exited ? $"código {proc.ExitCode}" : "demorou demais (a janela está minimizada?)");
             errors.Add($"{p}: {why}");
             Log.Info($"Encoder falhou: {p}: {why}");
+            try { aoFalhar?.Invoke(p, last, !exited); } catch { }
         }
+        try { aoFalhar?.Invoke(null, null, false); } catch { }
         throw new InvalidOperationException("nenhum encoder funcionou com essa fonte. " + string.Join(" | ", errors));
     }
 

@@ -13,5 +13,8 @@
     <Compile Include="../../app/Streemu/Media/Viewer.cs" Link="Viewer.cs" />
     <Compile Include="../../app/Streemu/Media/Tools.cs" Link="Tools.cs" />
     <Compile Include="../../app/Streemu/Media/LiveSync.cs" Link="LiveSync.cs" />
+    <!-- Só o núcleo da telemetria do caminho de mídia (sem o app): o teste confere os eventos de tentativa, falha e recuperação do player. -->
+    <Compile Include="../../app/Streemu/Telemetria/CaminhoMidia.cs" Link="CaminhoMidia.cs" />
+    <Compile Include="../../app/Streemu/Telemetria/CargaRecente.cs" Link="CargaRecente.cs" />
   </ItemGroup>
 </Project>

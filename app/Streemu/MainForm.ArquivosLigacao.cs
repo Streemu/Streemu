@@ -69,9 +69,9 @@ public partial class MainForm
     void TrocarEnvio(PedidoEmCurso p, string id, string caminho)
     {
         p.Envio?.Dispose();
-        // com live saindo deste PC, a transferência fica só com a sobra do upload (a mesma regra do Cinema)
         string nome = TesteArquivoNomeFalso ?? Path.GetFileNameWithoutExtension(caminho); // MainForm.ArquivosTeste.cs (critério 18)
-        p.Envio = new Envio(p.Link!.Tunnel, caminho, id, nome, () => TesteArquivoLiveSaindo || _sender.Running || _links.Count > 0);
+        p.Envio = new Envio(p.Link!.Tunnel, caminho, id, nome,
+            () => TesteArquivoLiveSaindo || _sender.Running || _links.Count > 0, priorizarLigacaoDireta: !TesteArquivoRelay);
         p.EnvioDe = id;
         p.BytesAntes = 0;
         p.ArquivoAtual = Math.Max(0, p.Oferta.Arquivos.ToList().FindIndex(a => a.Identidade == id));

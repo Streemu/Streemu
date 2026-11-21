@@ -38,6 +38,14 @@ public sealed class SerieQuadros
     public void Segundo(long novos, long saindo, int espectadores, string? captura, bool foco, string medida = "sensor", UsoGpu.Amostra? gpu = null)
     {
         string? gravar = null;
+        var carga = CargaRecente.Host; // valores que já estão na linha deste segundo (nulo = sem leitura, não entra)
+        carga.Registrar("gpu_3d_pct", gpu?.Total3d); carga.Registrar("gpu_jogo_3d_pct", gpu?.Jogo3d); carga.Registrar("gpu_encoder_pct", gpu?.Encoder);
+        carga.Registrar("gpu_decoder_pct", gpu?.Decoder); carga.Registrar("gpu_app_3d_pct", gpu?.App3d);
+        carga.Registrar("cpu_app_nucleo_pct", gpu?.AppCpu); carga.Registrar("cpu_jogo_nucleo_pct", gpu?.JogoCpu);
+        var resumo = ResumoLive.Host; // mesmos valores, agregados por minuto para o live_resumo
+        resumo.Marcar(); resumo.Registrar(ResumoLive.QuadrosNovos, novos >= 0 ? (int)novos : null); resumo.Registrar(ResumoLive.Espectadores, espectadores);
+        foreach (var (n, v) in new (string, int?)[] { ("gpu_3d_pct", gpu?.Total3d), ("gpu_jogo_3d_pct", gpu?.Jogo3d), ("gpu_encoder_pct", gpu?.Encoder), ("gpu_decoder_pct", gpu?.Decoder),
+            ("gpu_app_3d_pct", gpu?.App3d), ("cpu_app_nucleo_pct", gpu?.AppCpu), ("cpu_jogo_nucleo_pct", gpu?.JogoCpu) }) resumo.Registrar(n, v);
         lock (_gate)
         {
             if (!_cabecalho)

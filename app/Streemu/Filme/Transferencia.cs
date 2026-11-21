@@ -14,7 +14,7 @@ namespace Streemu.Filme;
 /// O túnel é UDP e o SRT de hoje é de vídeo ao vivo (descarta o que atrasa), por isso um transporte próprio:
 /// quem baixa pede uma janela de pedaços e conta, a cada 20 ms, o que já tem de cada um (confirmação seletiva por mapa de bits);
 /// quem manda reenvia o que falta depois de um tempo sem resposta. A taxa sobe enquanto não há perda e cai quando há (como o TCP),
-/// para só usar a sobra do upload. Cada pacote vai cifrado e autenticado (AES-GCM) com a chave da ligação.
+/// para manter a transferência útil. Cada pacote vai cifrado e autenticado (AES-GCM) com a chave da ligação.
 /// </summary>
 static class Pacote
 {
@@ -66,12 +66,17 @@ static class Pacote
 /// Teste: imita uma rede ruim na chegada dos pacotes do arquivo (o loopback não perde nada e responde em 0,1 ms, e assim o reenvio
 /// e o recuo da taxa nunca rodam). STREEMU_TEST_FILME_PERDA=% descarta ao acaso; STREEMU_TEST_FILME_ATRASO=ms segura cada pacote esse
 /// tempo (vale nos dois sentidos: a ida e volta fica 2x). Só os pacotes do arquivo; o resto do túnel não muda.
+/// STREEMU_TEST_FILME_ATRASO_EXTRA=ms (+ STREEMU_TEST_FILME_ATRASO_EXTRA_DEPOIS=s) imita a fila de OUTRO tráfego (caso do campo, 2026-11-20):
+/// um atraso que não depende da nossa taxa, em ms de ida e volta (metade em cada sentido), que começa depois desses segundos e varia
+/// (a cada 50-200 ms muda o nível, e em ~5% das vezes volta para perto da base, como as amostras de ~15 ms que ainda apareciam no campo).
 /// </summary>
 static class Simulador
 {
     public static readonly double Perda = double.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_FILME_PERDA"), System.Globalization.CultureInfo.InvariantCulture, out var p) ? p / 100 : 0;
     public static readonly int AtrasoMs = int.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_FILME_ATRASO"), out var a) ? a : 0;
-    public static bool Ligado => Perda > 0 || AtrasoMs > 0;
+    public static readonly double ExtraMs = double.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_FILME_ATRASO_EXTRA"), System.Globalization.CultureInfo.InvariantCulture, out var x) && x > 0 ? x : 0;
+    static readonly double ExtraDepoisS = double.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_FILME_ATRASO_EXTRA_DEPOIS"), System.Globalization.CultureInfo.InvariantCulture, out var d) && d > 0 ? d : 0;
+    public static bool Ligado => Perda > 0 || AtrasoMs > 0 || ExtraMs > 0;
     /// <summary>A ida e volta que o túnel não vê (o ping não passa pelo simulador).</summary>
     public static double IdaVoltaMs => 2 * AtrasoMs;
 
@@ -79,8 +84,25 @@ static class Simulador
     public static Action<ReadOnlySpan<byte>> Embrulhar(Action<ReadOnlySpan<byte>> tratar, Func<bool> fim)
     {
         if (!Ligado) return tratar;
-        if (AtrasoMs <= 0) return pkt => { if (Random.Shared.NextDouble() >= Perda) tratar(pkt); };
+        if (AtrasoMs <= 0 && ExtraMs <= 0) return pkt => { if (Random.Shared.NextDouble() >= Perda) tratar(pkt); };
         var fila = new System.Collections.Concurrent.BlockingCollection<(long Ate, byte[] Pkt)>();
+        long inicioExtra = 0, trocaEm = 0, ultimoAte = 0; // o relógio do extra parte do primeiro pacote (o laço do envio nasce bem antes de o download começar)
+        double nivel = 0;
+        // atraso extra deste instante: nível que muda a cada 50-200 ms; a ordem de chegada se mantém (cada pacote sai depois do anterior)
+        long AteComExtra(long agora)
+        {
+            long ate = agora + AtrasoMs * Stopwatch.Frequency / 1000;
+            if (ExtraMs <= 0) return ate;
+            if (inicioExtra == 0) inicioExtra = agora + (long)(ExtraDepoisS * Stopwatch.Frequency);
+            if (agora < inicioExtra) return ate;
+            if (agora >= trocaEm)
+            {
+                trocaEm = agora + (long)(Random.Shared.Next(50, 200) * Stopwatch.Frequency / 1000);
+                nivel = Random.Shared.NextDouble() < 0.05 ? 0 : ExtraMs / 2 * (0.7 + 0.6 * Random.Shared.NextDouble());
+            }
+            ate += (long)(nivel * Stopwatch.Frequency / 1000);
+            return ultimoAte = Math.Max(ultimoAte, ate);
+        }
         new Thread(() =>
         {
             Pacote.timeBeginPeriod(1);
@@ -96,7 +118,7 @@ static class Simulador
             catch (Exception e) when (!fim()) { Log.Info($"[filme] simulador parou: {e.Message}"); }
             finally { Pacote.timeEndPeriod(1); }
         }) { IsBackground = true, Name = "filme-simulador" }.Start();
-        return pkt => { if (Random.Shared.NextDouble() >= Perda) fila.Add((Stopwatch.GetTimestamp() + AtrasoMs * Stopwatch.Frequency / 1000, pkt.ToArray())); };
+        return pkt => { if (Random.Shared.NextDouble() >= Perda) fila.Add((AteComExtra(Stopwatch.GetTimestamp()), pkt.ToArray())); };
     }
 }
 
@@ -104,8 +126,8 @@ static class Simulador
 public sealed class Emissor : IDisposable
 {
     const double TaxaMin = 128 * 1024;
-    /// <summary>Teto para teste (STREEMU_FILME_TETO em bytes/s); sem ele, só a perda limita.</summary>
-    static readonly double TaxaMax = double.TryParse(Environment.GetEnvironmentVariable("STREEMU_FILME_TETO"), out var t) && t > 0 ? t : 1e9;
+    /// <summary>Teto opcional para teste (STREEMU_FILME_TETO em bytes/s).</summary>
+    static readonly double? TetoTeste = double.TryParse(Environment.GetEnvironmentVariable("STREEMU_FILME_TETO"), out var t) && t > 0 ? t : null;
 
     readonly Tunnel _t;
     readonly AesGcm _sela, _abre;
@@ -114,6 +136,7 @@ public sealed class Emissor : IDisposable
     readonly Func<uint, int> _tamanho;
     readonly Action<uint, byte[], int> _ler;
     readonly Func<bool> _recuar;
+    readonly bool _priorizarLigacaoDireta;
     readonly Thread _thread;
     readonly Action<ReadOnlySpan<byte>> _entrada;
     volatile bool _fim;
@@ -129,10 +152,20 @@ public sealed class Emissor : IDisposable
     bool _inicio = true;
     long _jMs = -1, _quedaMs = -100_000, _subidaMs = -100_000, _jBytes;
     uint _jRx, _jMax;
+    uint _salEstado, _seqEstado;
+    int _janelasComPerda;
+    bool _prioridadeDireta;
     long _bytes, _reenvios;
     /// <summary>Menor ida e volta de cada bloco de 10 s do último minuto: a ida e volta sem fila (a base do LEDBAT).</summary>
     readonly double[] _base = Enumerable.Repeat(double.MaxValue, 6).ToArray();
     long _baseBloco = -1;
+    // fila que não é nossa (só sem live saindo): deslocamento somado à Base enquanto a fila continua com a taxa lá embaixo
+    double _baseAjuste;
+    long _filaDesdeMs = -1, _ultimaCheiaMs, _reancoradoMs = -100_000, _realBaixoDesde = -1;
+    double _taxaNaFila;
+    /// <summary>Menor ida e volta de cada janela de avaliação dos últimos 2 s (para a mediana usada ao reancorar).</summary>
+    readonly (long Ms, double Rtt)[] _janelas = new (long, double)[32];
+    int _janelaN;
     // log a cada 5 s (o S3 entre dois PCs sai daqui, pela telemetria)
     long _lMs = -1, _lBytes, _lReenvios;
     uint _lEnviados, _lChegaram;
@@ -147,10 +180,12 @@ public sealed class Emissor : IDisposable
     public long Reenvios => Interlocked.Read(ref _reenvios);
 
     /// <param name="ler">Lê o pedaço inteiro no buffer (tamanho de <paramref name="tamanho"/>).</param>
-    /// <param name="recuar">Há live saindo deste PC: a transferência fica só com a sobra do upload.</param>
-    public Emissor(Tunnel t, Func<uint, int> tamanho, Action<uint, byte[], int> ler, Func<bool> recuar)
+    /// <param name="recuar">Há live saindo deste PC: Cinema e relay cedem parte do upload.</param>
+    /// <param name="priorizarLigacaoDireta">O pedido veio de Enviar arquivo e tem prioridade quando a ligação é direta.</param>
+    public Emissor(Tunnel t, Func<uint, int> tamanho, Action<uint, byte[], int> ler, Func<bool> recuar, bool priorizarLigacaoDireta = false)
     {
         _t = t; _tamanho = tamanho; _ler = ler; _recuar = recuar;
+        _priorizarLigacaoDireta = priorizarLigacaoDireta;
         _sela = new AesGcm(t.ChaveArquivo, 16);
         _abre = new AesGcm(t.ChaveArquivo, 16);
         t.Arquivo = _entrada = Simulador.Embrulhar(Receber, () => _fim);
@@ -162,7 +197,7 @@ public sealed class Emissor : IDisposable
     {
         long chegou = Stopwatch.GetTimestamp();
         Span<byte> claro = stackalloc byte[Pacote.Max];
-        if (!Pacote.Abrir(_abre, pkt, claro, out byte tipo, out _, out int n) || tipo != Pacote.KEstado || n < 17) return;
+        if (!Pacote.Abrir(_abre, pkt, claro, out byte tipo, out uint seq, out int n) || tipo != Pacote.KEstado || n < 17) return;
         uint rx = BinaryPrimitives.ReadUInt32LittleEndian(claro), max = BinaryPrimitives.ReadUInt32LittleEndian(claro[4..]);
         uint eco = BinaryPrimitives.ReadUInt32LittleEndian(claro[8..]);
         long esperaUs = BinaryPrimitives.ReadUInt32LittleEndian(claro[12..]);
@@ -181,6 +216,21 @@ public sealed class Emissor : IDisposable
         long agora = _sw.ElapsedMilliseconds;
         lock (_gate)
         {
+            if (_priorizarLigacaoDireta)
+            {
+                // Estado fora de ordem falsearia a perda (o delta do contador sem sinal viraria bilhões).
+                // Quem baixa pode reabrir o Receptor, com sal e contadores novos.
+                uint sal = BinaryPrimitives.ReadUInt32LittleEndian(pkt[1..]);
+                if (sal == _salEstado && _seqEstado != 0 && (int)(seq - _seqEstado) <= 0) return;
+                if (sal != _salEstado)
+                {
+                    _salEstado = sal;
+                    _jMs = -1;
+                    _janelasComPerda = 0;
+                }
+                _seqEstado = seq;
+                AtualizarPrioridadeDireta();
+            }
             _pedidos = lista;
             Volatile.Write(ref _estadoMs, agora);
             // ida e volta = agora - quando o seq do eco saiu - quanto ele esperou do outro lado até este estado sair
@@ -200,31 +250,130 @@ public sealed class Emissor : IDisposable
         }
     }
 
-    /// <summary>
-    /// Controle de taxa por atraso, como o LEDBAT (feito para download em segundo plano que cede a vez): a fila no caminho é a ida e
-    /// volta medida menos a menor do último minuto. Fila acima do alvo (25 ms; 10 ms com live saindo) = o upload encheu: cai 20%.
-    /// É também o que protege o ping do jogo, porque a fila do roteador sobe antes de ele começar a descartar.
-    /// Perda só conta como congestionamento acima da perda de fundo + 5 pontos: perda ao acaso (wi-fi, operadora) não é fila e só
-    /// pede reenvio; tratar como fila derrubava a taxa para o mínimo (teste com 3% de perda, 2026-11-11).
-    /// Sem fila: dobra até a primeira queda, depois sobe 10% a cada ida e volta. Avalia a cada 100 ms com pelo menos 30 pacotes
-    /// (em taxa baixa, a janela espera juntar pacotes; sem isso a taxa ficava presa no mínimo).
-    /// </summary>
+    void AtualizarPrioridadeDireta()
+    {
+        bool direta = _t.Target is { Kind: CandKind.Direct };
+        if (direta == _prioridadeDireta) return;
+        _prioridadeDireta = direta;
+        // Num caminho novo, a taxa e os sinais de fila/perda do anterior deixam de valer.
+        _taxa = 1 << 20;
+        _melhor = _perdaBase = _baseAjuste = 0;
+        _srtt = -1;
+        _rttJanela = double.MaxValue;
+        Array.Fill(_base, double.MaxValue);
+        Array.Clear(_janelas);
+        _filaDesdeMs = _realBaixoDesde = _jMs = -1;
+        _quedaMs = _subidaMs = _reancoradoMs = -100_000;
+        _janelasComPerda = 0;
+        _inicio = true;
+        if (direta)
+            Log.Info("[arquivo] envio direto com prioridade de banda" + (_recuar() ? " (live saindo)." : "."));
+    }
+
     void AjustarTaxa(long agora, uint rx, uint max)
     {
         long bytes = Interlocked.Read(ref _bytes);
         if (_jMs < 0) { _jMs = agora; _jRx = rx; _jMax = max; _jBytes = bytes; return; }
         long dt = agora - _jMs;
         uint enviados = max - _jMax, chegaram = rx - _jRx;
-        if (dt < 100 || (enviados < 30 && dt < 1000)) return;
+        double esperarSemPacotes = _prioridadeDireta ? Math.Max(1000, 2 * Rtt) : 1000;
+        if (dt < (_prioridadeDireta ? 200 : 100) || (enviados < 30 && dt < esperarSemPacotes)) return;
         long usados = bytes - _jBytes;
         double rttJanela = _rttJanela;
         _jMs = agora; _jRx = rx; _jMax = max; _jBytes = bytes; _rttJanela = double.MaxValue;
         _lEnviados += enviados; _lChegaram += chegaram;
-        bool recuar = _recuar();
+        bool recuar = !_prioridadeDireta && _recuar();
         double perda = enviados == 0 ? 0 : 1 - Math.Min(1, chegaram / (double)enviados);
-        double fila = rttJanela < double.MaxValue && Base < double.MaxValue ? Math.Max(0, rttJanela - Base) : 0;
+        if (_prioridadeDireta)
+        {
+            AjustarTaxaDireta(agora, dt, enviados, chegaram, usados, perda);
+            if (rttJanela < double.MaxValue && Base < double.MaxValue)
+                _lFila = Math.Max(_lFila, rttJanela - Base); // só para o diagnóstico
+        }
+        else
+        {
+            AjustarTaxaComFila(agora, enviados, usados * 1000.0 / dt, perda, recuar, rttJanela);
+        }
+        _taxa = Math.Min(_taxa, TetoTeste ?? (_prioridadeDireta ? double.PositiveInfinity : 1e9));
+        if (_lMs < 0) _lMs = agora;
+        else if (agora - _lMs >= 5000)
+        {
+            long reenvios = Interlocked.Read(ref _reenvios);
+            Log.Info($"[filme] envio: {(bytes - _lBytes) / 1e3 / (agora - _lMs):N1} MB/s, taxa {_taxa / 1e6:N1} MB/s, " +
+                     $"perda {(_lEnviados == 0 ? 0 : 100.0 * (1 - Math.Min(1, _lChegaram / (double)_lEnviados))):N1}% (fundo {_perdaBase * 100:N1}%), " +
+                     $"reenvios {reenvios - _lReenvios}, quedas {_lQuedas}, ida e volta {Rtt:N0} ms (base {(Base < double.MaxValue ? Base : -1):N0}, fila máx {_lFila:N0})" +
+                     (_prioridadeDireta ? ", arquivo direto com prioridade" : recuar ? ", recuando (live saindo)" : "") +
+                     (!_prioridadeDireta && !recuar && _baseAjuste > 0 ? $", referência +{_baseAjuste:N0} ms (fila de outro tráfego)" : "") + ".");
+            _lMs = agora; _lBytes = bytes; _lReenvios = reenvios; _lEnviados = _lChegaram = 0; _lQuedas = 0; _lFila = 0;
+        }
+    }
+
+    void AjustarTaxaDireta(long agora, long dt, uint enviados, uint chegaram, long usados, double perda)
+    {
+        double taxaEnviada = usados * 1000.0 / dt;
+        double intervalo = Math.Max(200, Rtt);
+        // A maior sequência só avança quando algum pacote chega. Se o caminho parou de receber
+        // dados enquanto o emissor continua ocupado, o delta sozinho esconderia essa perda.
+        bool semRetorno = chegaram == 0 && dt >= Math.Max(1000, 2 * Rtt) && taxaEnviada > _taxa * 0.6;
+        // No piso, perda com alguma entrega pode ser da própria rede. Aprender esse fundo
+        // permite voltar a sondar quando reduzir a taxa já não melhora a entrega.
+        if (_taxa <= TaxaMin && chegaram > 0 && enviados >= 30)
+            _perdaBase = Math.Min(0.2, _perdaBase * 0.95 + perda * 0.05);
+        bool perdaAlta = enviados >= 30 && perda > _perdaBase + 0.05;
+        if (semRetorno || perdaAlta)
+        {
+            _janelasComPerda++;
+            // Reordenação e retornos agrupados podem abrir um buraco em uma única amostra.
+            if ((semRetorno || _janelasComPerda >= 2) && agora - _quedaMs >= intervalo)
+            {
+                _taxa = Math.Max(TaxaMin, _taxa * (semRetorno || perda >= 0.2 ? 0.65 : 0.85));
+                _quedaMs = agora;
+                _inicio = false;
+                _janelasComPerda = 0;
+                _lQuedas++;
+            }
+            return;
+        }
+
+        if (enviados < 30) return;
+        _janelasComPerda = 0;
+        if (_taxa > TaxaMin) _perdaBase = Math.Min(0.2, _perdaBase * 0.95 + perda * 0.05);
+        // Só sonda mais se os pacotes estão chegando e há trabalho suficiente para usar a taxa.
+        // A taxa recebida usa os pacotes confirmados; o RTT dá tempo para a sonda aparecer nas confirmações.
+        double taxaRecebida = chegaram * (double)Pacote.Max * 1000 / dt;
+        if (Math.Min(taxaRecebida, taxaEnviada) > _taxa * 0.7 &&
+            agora - _quedaMs >= intervalo && agora - _subidaMs >= intervalo)
+        {
+            _taxa *= _inicio ? 1.5 : 1.1;
+            _subidaMs = agora;
+        }
+    }
+
+    /// <summary>
+    /// Controle de taxa do Cinema e do relay, por atraso como o LEDBAT: a fila no caminho é a ida e
+    /// volta medida menos a menor do último minuto. Fila acima do alvo (25 ms; 10 ms com live saindo) = o upload encheu: cai 20%.
+    /// É também o que protege o ping do jogo, porque a fila do roteador sobe antes de ele começar a descartar.
+    /// Perda só conta como congestionamento acima da perda de fundo + 5 pontos: perda ao acaso (wi-fi, operadora) não é fila e só
+    /// pede reenvio; tratar como fila derrubava a taxa para o mínimo (teste com 3% de perda, 2026-11-11).
+    /// Fila que não é nossa (só sem live saindo; com live a live tem prioridade e nada disso vale): em 2026-11-20, uma transferência direta de 6,4 GB
+    /// com ida e volta base de 15 ms ficou em 0,1 MB/s até ser cancelada. Havia uma fila de 45-75 ms que continuava igual com a taxa
+    /// já no piso (outro tráfego, atraso variável), e como a Base ainda via amostras de ~15 ms de vez em quando, a fila calculada nunca caía
+    /// abaixo do alvo e a subida nunca acontecia (o defeito clássico do LEDBAT: cede a vez para qualquer outro tráfego). Agora, se a fila
+    /// continua acima do alvo há 2 s com a taxa em no máximo 1/4 da que tinha quando ela apareceu (ou no piso), a referência é reancorada
+    /// na ida e volta típica recente (<see cref="_baseAjuste"/>, até 200 ms acima da Base, no máximo uma vez a cada 5 s). Depois disso a
+    /// taxa sobe de novo e só cai se a NOSSA subida levantar a fila acima do alvo em relação à nova referência (ou pela perda). O
+    /// deslocamento zera sozinho quando a fila real fica abaixo do alvo por 1 s (o outro tráfego acabou).
+    /// Sem fila: dobra até a primeira queda, depois sobe 10% a cada ida e volta.
+    /// </summary>
+    void AjustarTaxaComFila(long agora, uint enviados, double medida, double perda, bool recuar, double rttJanela)
+    {
+        if (recuar) { _baseAjuste = 0; _filaDesdeMs = -1; _realBaixoDesde = -1; } // com live a referência é sempre a Base de verdade
+        double filaReal = rttJanela < double.MaxValue && Base < double.MaxValue ? Math.Max(0, rttJanela - Base) : 0;
+        if (rttJanela < double.MaxValue) { _janelas[_janelaN++ % _janelas.Length] = (agora, rttJanela); }
+        double fila = rttJanela < double.MaxValue && Base < double.MaxValue ? Math.Max(0, rttJanela - Base - _baseAjuste) : 0;
         _lFila = Math.Max(_lFila, fila);
         bool cheia = fila > (recuar ? 10 : 25);
+        if (!recuar) AcompanharFilaAlheia(agora, cheia, filaReal, rttJanela);
         bool perdaAlta = enviados >= 30 && perda > _perdaBase + 0.05;
         if (cheia || perdaAlta)
         {
@@ -233,7 +382,6 @@ public sealed class Emissor : IDisposable
         else
         {
             _perdaBase = Math.Min(0.2, _perdaBase * 0.95 + perda * 0.05);
-            double medida = usados * 1000.0 / dt;
             // a melhor taxa SEM live: com live a taxa já está presa ao teto e a medida não diz quanto o upload aguenta (ver o teto abaixo)
             if (!recuar && perda < _perdaBase + 0.01) _melhor = Math.Max(_melhor, medida);
             // só sobe se está usando a taxa (sem nada para mandar, subir só prepara uma rajada) e uma vez por ida e volta
@@ -251,17 +399,49 @@ public sealed class Emissor : IDisposable
             _inicio = false; // sem dobrar: sobe 10% por ida e volta, para a fila avisar antes de a live sentir
             if (_melhor > 0) _taxa = Math.Min(_taxa, Math.Max(256 * 1024, 0.4 * _melhor));
         }
-        _taxa = Math.Min(_taxa, TaxaMax);
-        if (_lMs < 0) _lMs = agora;
-        else if (agora - _lMs >= 5000)
+    }
+
+    /// <summary>
+    /// Detecta a fila que não é nossa e reancora a referência (ver <see cref="AjustarTaxaComFila"/>). Roda a cada avaliação (100 ms ou mais), sem alocar.
+    /// A referência nova é a MEDIANA das menores ida e volta das janelas dos últimos 2 s, e não o mínimo: no campo ainda apareciam amostras
+    /// de ~15 ms no meio da fila, e o mínimo de 2 s as pegaria e devolveria a mesma referência de antes.
+    /// </summary>
+    void AcompanharFilaAlheia(long agora, bool cheia, double filaReal, double rttJanela)
+    {
+        // o deslocamento só zera quando a fila REAL (contra a Base de 1 min) fica abaixo do alvo por 1 s seguido: um mergulho solto não conta
+        if (_baseAjuste > 0 && rttJanela < double.MaxValue)
         {
-            long reenvios = Interlocked.Read(ref _reenvios);
-            Log.Info($"[filme] envio: {(bytes - _lBytes) / 1e3 / (agora - _lMs):N1} MB/s, taxa {_taxa / 1e6:N1} MB/s, " +
-                     $"perda {(_lEnviados == 0 ? 0 : 100.0 * (1 - Math.Min(1, _lChegaram / (double)_lEnviados))):N1}% (fundo {_perdaBase * 100:N1}%), " +
-                     $"reenvios {reenvios - _lReenvios}, quedas {_lQuedas}, ida e volta {Rtt:N0} ms (base {(Base < double.MaxValue ? Base : -1):N0}, fila máx {_lFila:N0})" +
-                     (recuar ? ", recuando (live saindo)" : "") + ".");
-            _lMs = agora; _lBytes = bytes; _lReenvios = reenvios; _lEnviados = _lChegaram = 0; _lQuedas = 0; _lFila = 0;
+            if (filaReal > 25) _realBaixoDesde = -1;
+            else if (_realBaixoDesde < 0) _realBaixoDesde = agora;
+            else if (agora - _realBaixoDesde >= 1000) { Log.Info($"[filme] envio: a fila de outro tráfego passou (referência +{_baseAjuste:N0} ms volta a zero)."); _baseAjuste = 0; _realBaixoDesde = -1; _filaDesdeMs = -1; }
         }
+        if (cheia)
+        {
+            // o episódio de fila nasce na primeira janela cheia e guarda a taxa daquela hora; passados 10 s sem reancorar ele recomeça,
+            // para a taxa guardada não ficar velha (um serrote normal com a taxa estável não pode parecer "caiu para 1/4")
+            if (_filaDesdeMs < 0 || agora - _filaDesdeMs > 10_000) { _filaDesdeMs = agora; _taxaNaFila = _taxa; }
+            _ultimaCheiaMs = agora;
+            bool taxaBaixa = _taxa <= Math.Max(TaxaMin, _taxaNaFila / 4) * 1.001;
+            if (agora - _filaDesdeMs >= 2000 && taxaBaixa && agora - _reancoradoMs >= 5000) Reancorar(agora);
+        }
+        else if (_filaDesdeMs >= 0 && agora - _ultimaCheiaMs > 1000) _filaDesdeMs = -1;
+    }
+
+    void Reancorar(long agora)
+    {
+        Span<double> v = stackalloc double[_janelas.Length];
+        int n = 0;
+        foreach (var (ms, r) in _janelas) if (ms > 0 && agora - ms <= 2000) v[n++] = r;
+        _filaDesdeMs = -1; _reancoradoMs = agora;
+        if (n < 3 || Base >= double.MaxValue) return;
+        v = v[..n]; v.Sort();
+        double mediana = v[n / 2];
+        double novo = Math.Min(200, Math.Max(0, mediana - Base));
+        if (novo <= _baseAjuste) return;
+        _baseAjuste = novo; _realBaixoDesde = -1;
+        // sem voltar ao modo "início" (_inicio já caiu na primeira queda): dobrar a cada ida e volta, com a ida e volta inflada pela fila alheia,
+        // sairia da taxa do piso direto para cima da capacidade; a subida de 10% por ida e volta basta (do piso a 3 MB/s em ~3 s)
+        Log.Info($"[filme] envio: fila de outro tráfego (continua em {mediana - Base:N0} ms com a taxa em {_taxa / 1e6:N2} MB/s); referência +{_baseAjuste:N0} ms.");
     }
 
     /// <summary>

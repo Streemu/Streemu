@@ -50,6 +50,9 @@ public sealed partial class MainForm : Form
         _state = localMode || TestDir != null ? new AppState() : AppState.Load();
         // cada amigo que clica em Assistir pela sala ganha a sua saída de envio (AddOutput, MainForm.Grupo.cs)
         _sender = new StreamSender(localMode || TestDir != null ? null : new PipelineMemory(_state));
+        // caminho de mídia de cada tentativa e falha (Telemetria/CaminhoMidia.cs): vai para a mesma sessão da telemetria, que só existe depois do Load; sem ela, nada é gravado
+        Telemetria.ContextoMidia.Ligar((tipo, dados) => _teleSessao?.Evento(tipo, dados));
+        Telemetria.CaminhoMidia.Lives = () => System.Text.Json.Nodes.JsonNode.Parse(_teleLives); // mesmo contexto de lives do Vigia
 
         BuildLayout();
         Theme.Apply(this);

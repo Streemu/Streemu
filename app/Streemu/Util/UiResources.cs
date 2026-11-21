@@ -78,7 +78,7 @@ public sealed class UiFonts : IDisposable
     public void Dispose() { _owner.FontChanged -= Changed; Release(); }
 }
 
-public enum UiIcon { Home, Cinema, Settings, Broadcast, Stage, Back, Cat, Window, Monitor, ChevronDown, ChevronRight, ChevronLeft, Problem, Update, Bell, MutedBell, Check, Failure, Pending, Lock, Gamepad, SpeakerOff, Eye, Speaker, Warning, Shield, Plus, Clock, Upload, Activity, Folder, People }
+public enum UiIcon { Home, Cinema, Settings, Broadcast, Stage, Back, Cat, Window, Monitor, ChevronDown, ChevronRight, ChevronLeft, Problem, Update, Bell, MutedBell, Check, Failure, Pending, Lock, Gamepad, SpeakerOff, Eye, Speaker, Warning, Shield, Plus, Clock, Upload, Activity, Folder, People, Sparkle }
 
 /// <summary>Ícones vetoriais substituíveis por função, sem emojis ou dependência de uma fonte de símbolos.</summary>
 public static class UiIcons
@@ -127,6 +127,9 @@ public static class UiIcons
             case UiIcon.People: // Grupos: duas pessoas (cabeça e ombros), no mesmo traço dos outros ícones
                 g.DrawEllipse(pen, 4, 4.5f, 7, 7); g.DrawArc(pen, 2, 14, 11, 12, 180, 180);
                 g.DrawEllipse(pen, 14, 5, 6, 6); g.DrawArc(pen, 14.5f, 14.5f, 8, 9, 180, 180); break;
+            case UiIcon.Sparkle: // Novidades: um brilho de quatro pontas e um pequeno, no mesmo traço dos outros ícones
+                g.DrawPolygon(pen, [new PointF(10, 5), new PointF(12, 11), new PointF(18, 13), new PointF(12, 15), new PointF(10, 21), new PointF(8, 15), new PointF(2, 13), new PointF(8, 11)]);
+                g.DrawLine(pen, 19, 2.5f, 19, 7.5f); g.DrawLine(pen, 16.5f, 5, 21.5f, 5); break;
             case UiIcon.Failure: g.DrawLine(pen, 6, 6, 18, 18); g.DrawLine(pen, 18, 6, 6, 18); break;
             case UiIcon.Pending: g.DrawEllipse(pen, 5, 5, 14, 14); break;
             case UiIcon.Bell:

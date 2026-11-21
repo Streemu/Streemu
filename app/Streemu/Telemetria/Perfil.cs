@@ -218,9 +218,7 @@ public static partial class Perfil
             string pnp = o["PNPDeviceID"]?.ToString() ?? "";
             var ven = System.Text.RegularExpressions.Regex.Match(pnp, @"VEN_([0-9A-F]{4})&DEV_([0-9A-F]{4})");
             long? mem = vram.TryGetValue(nome, out var v) ? v : null;
-            string n = nome.ToLowerInvariant();
-            bool integrada = n.Contains("uhd") || n.Contains("iris") || n.Contains("hd graphics") || (n.Contains("radeon") && n.Contains("graphics") && !n.Contains("rx"))
-                             || (mem is long mm && mm < 1L << 30);
+            bool integrada = PareceIntegrada(nome, mem);
             arr.Add(new JsonObject
             {
                 ["nome"] = nome, ["fabricante"] = o["AdapterCompatibility"]?.ToString(), ["driver"] = o["DriverVersion"]?.ToString(),
@@ -231,6 +229,14 @@ public static partial class Perfil
             });
         }
         return arr;
+    }
+
+    /// <summary>Placa integrada pelo nome (e pela VRAM, quando se sabe). A mesma regra no perfil e no caminho de mídia (<see cref="ContextoMidia"/>), para o painel cruzar os dois.</summary>
+    internal static bool PareceIntegrada(string nome, long? vram)
+    {
+        string n = nome.ToLowerInvariant();
+        return n.Contains("uhd") || n.Contains("iris") || n.Contains("hd graphics") || (n.Contains("radeon") && n.Contains("graphics") && !n.Contains("rx"))
+               || (vram is long mm && mm < 1L << 30);
     }
 
     /// <summary>32.0.15.6094 → 560.94 (o número que a NVIDIA mostra; é o que se procura em fórum e changelog).</summary>

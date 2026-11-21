@@ -269,9 +269,10 @@ static class SidebarOverlapBehavior
                 Streemu.Util.UiScale.User = scale;
                 foreach (bool rail in new[] { false, true })
                     foreach (bool live in new[] { false, true })
+                    foreach (bool novidades in new[] { false, true }) // plano 027: com o item Novidades (e o selo NOVO / a bolinha) ligado, nada se cobre e o item cabe
                         for (int step = 0; step <= 60; step++)
                         {
-                            using var panel = new SidePanel { FilmeVisivel = true, ArquivosVisivel = true, GruposVisivel = true };
+                            using var panel = new SidePanel { FilmeVisivel = true, ArquivosVisivel = true, GruposVisivel = true, NovidadesVisivel = novidades, NovidadesNovas = novidades };
                             panel.CreateControl();
                             int width = Streemu.Util.UiScale.Dp(panel, rail ? Streemu.Util.UiMetrics.RailWidth : SidePanel.OpenAt96);
                             panel.Size = new Size(width, 2000);
@@ -288,6 +289,9 @@ static class SidebarOverlapBehavior
                             var rows = ((System.Collections.IEnumerable)Field<object>(panel, "_rows")).Cast<object>()
                                 .Select(r => (Kind: r.GetType().GetProperty("Kind")!.GetValue(r)!.ToString()!, Bounds: (Rectangle)r.GetType().GetProperty("Bounds")!.GetValue(r)!))
                                 .Where(r => r.Kind is not ("Friend" or "Section")).ToList();
+                            if (novidades && rows.Count(r => r.Kind == "Novidades") != 1) problems.Add($"{scale:P0} {(rail ? "trilho" : "aberta")} {(live ? "com live" : "sem live")} {width}x{height}: o item Novidades não está na barra");
+                            if (novidades && rows.FirstOrDefault(r => r.Kind == "Novidades") is { Kind: not null } nov && (nov.Bounds.Bottom > height || nov.Bounds.Right > width))
+                                problems.Add($"{scale:P0} {(rail ? "trilho" : "aberta")} {(live ? "com live" : "sem live")} {width}x{height}: o item Novidades {nov.Bounds} não cabe na barra");
                             for (int i = 0; i < rows.Count; i++)
                                 for (int j = i + 1; j < rows.Count; j++)
                                     if (rows[i].Bounds.IntersectsWith(rows[j].Bounds))

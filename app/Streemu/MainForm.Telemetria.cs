@@ -340,6 +340,13 @@ public sealed partial class MainForm
         catch (Exception e) { Log.Info("[telemetria] relatório automático falhou: " + e.Message); }
     }
 
+    /// <summary>Um evento <c>live_resumo</c> (linha do tempo por minuto) ao fim da transmissão ou de assistir uma ligação; passa pela sessão como os outros eventos.</summary>
+    void EmitirResumoLive(ResumoLive resumo, string ligacao)
+    {
+        try { if (resumo.Fechar(ligacao) is { } ev) _teleSessao?.Evento("live_resumo", ev); }
+        catch (Exception e) { Log.Info("[telemetria] live_resumo falhou: " + e.Message); }
+    }
+
     /// <summary>Começo e fim da própria live (chamado em OnLiveStarted / OnLiveStopped).</summary>
     void TelemetriaLive(bool comecou)
     {
@@ -347,11 +354,13 @@ public sealed partial class MainForm
         if (comecou)
         {
             _teleSessao.Evento("live", new JsonObject { ["transmissao"] = _streamId, ["papel"] = "transmite", ["ligacao"] = "propria", ["jogo"] = _liveGame });
+            ResumoLive.Host.Iniciar();
         }
         else
         {
             _teleSerie?.Descarregar();
             RelatorioAutomatico("fim-da-transmissao");
+            EmitirResumoLive(ResumoLive.Host, "");
             _teleSessao.Evento("live_fim", new JsonObject { ["transmissao"] = _streamId, ["ligacao"] = "propria" });
         }
         _tele?.Agora();
@@ -366,6 +375,7 @@ public sealed partial class MainForm
             MarcarSePrivada(link);
             string? live = link.IAmSender ? _streamId : _room?.Find(link.PeerId)?.Live?.StreamId;
             _teleLiveDaLigacao[link.SessionId] = live;
+            if (!link.IAmSender) ResumoLive.Viewer.Iniciar(link.SessionId);
             if (live == null) return;
             var evento = new JsonObject { ["transmissao"] = live, ["ligacao"] = link.SessionId, ["papel"] = link.IAmSender ? "envia" : "assiste" };
             if (!LigacaoPrivada(link)) // privada: só dados técnicos, sem quem estava com quem (D5)
@@ -377,6 +387,7 @@ public sealed partial class MainForm
             _teleSessao.Evento("live", evento);
             return;
         }
+        if (!link.IAmSender) EmitirResumoLive(ResumoLive.Viewer, link.SessionId);
         if (!link.IAmSender)
             RelatorioAutomatico("fim-assistir-" + NomeParaTelemetria(link), new JsonObject
             {

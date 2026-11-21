@@ -191,7 +191,7 @@ public sealed class SessaoLocal
     }
 
     /// <summary>Eventos que não esperam o agrupamento da gravação: o que a pessoa marcou, o que o app viu falhar e o que fecha ou suspende a sessão são justamente os que um travamento logo depois deixaria sem rastro. São raros: o custo do disco sem agrupar é desprezível.</summary>
-    public static bool EventoUrgente(string tipo) => tipo is "marcacao" or "falha" or "sessao_fim" or "sessao_sem_fim" or "suspensao" or "ui_travada";
+    public static bool EventoUrgente(string tipo) => tipo is "marcacao" or "falha" or "sessao_fim" or "sessao_sem_fim" or "suspensao" or "ui_travada" or "midia_falha";
 
     /// <summary>Acrescenta linhas inteiras (cada uma com quebra no fim) a um arquivo da sessão; ele sobe aos pedaços, como o log.</summary>
     public void Acrescentar(string nome, string linhas) => Enfileirar(nome, linhas.TrimEnd('\n'), evento: false);

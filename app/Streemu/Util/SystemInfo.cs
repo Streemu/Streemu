@@ -6,6 +6,9 @@ public static class SystemInfo
 {
     static string[]? _gpus;
 
+    /// <summary>A lista de <see cref="Gpus"/> se já foi lida (nulo se não): quem não pode esperar o WMI, como a telemetria do caminho de mídia, usa esta.</summary>
+    public static string[]? GpusLidas => _gpus;
+
     public static string[] Gpus()
     {
         if (_gpus != null) return _gpus;

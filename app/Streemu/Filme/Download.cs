@@ -19,6 +19,7 @@ public sealed class Envio : IDisposable
     readonly Tunnel _t;
     readonly string _caminho, _filme, _nome;
     readonly Func<bool> _recuar;
+    readonly bool _priorizarLigacaoDireta;
     Microsoft.Win32.SafeHandles.SafeFileHandle? _h;
     long _tam;
     byte[]? _hashes;
@@ -27,9 +28,10 @@ public sealed class Envio : IDisposable
     public Tunnel Tunel => _t;
     public Emissor? Emissor => _emissor;
 
-    public Envio(Tunnel t, string caminho, string filme, string nome, Func<bool> recuar)
+    public Envio(Tunnel t, string caminho, string filme, string nome, Func<bool> recuar, bool priorizarLigacaoDireta = false)
     {
         _t = t; _caminho = caminho; _filme = filme; _nome = nome; _recuar = recuar;
+        _priorizarLigacaoDireta = priorizarLigacaoDireta;
     }
 
     static Manifesto ManifestoDe(string caminho, string filme)
@@ -87,7 +89,7 @@ public sealed class Envio : IDisposable
                     _h = File.OpenHandle(_caminho, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                     _tam = RandomAccess.GetLength(_h);
                     _hashes = m.Hashes;
-                    _emissor = new Emissor(_t, Tamanho, Ler, _recuar);
+                    _emissor = new Emissor(_t, Tamanho, Ler, _recuar, _priorizarLigacaoDireta);
                     Log.Info($"[filme] mandando o arquivo ({_tam / 1e6:N0} MB).");
                 }
                 r["tamanho"] = _tam; r["ext"] = Path.GetExtension(_caminho); r["pedaco"] = Pacote.Pedaco;

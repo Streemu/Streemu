@@ -52,6 +52,7 @@ static class Behavior
                     "Voltar da preparação perdeu HWND, página ou minimização");
                 presentation.Close();
                 Call(form, "ShowView", false);
+                NovidadesNaJanela(form, home, side);
             }
             catch (Exception ex) { failure = ex; }
             finally { form.Close(); }
@@ -60,6 +61,35 @@ static class Behavior
         if (failure != null) throw failure;
         Console.WriteLine("OK: Load/Shown e navegação reais em modo local minimizado, sem transmissão, player, miniaturas ou estado pessoal.");
     }
+    /// <summary>
+    /// Plano 027, etapa 4: o item "Novidades" abre a página no lugar do Início, o selo "NOVO" continua enquanto a pessoa lê e some quando ela sai; o Cinema não deixa a
+    /// página por baixo; um estado antigo (sem as chaves de agora) volta a mostrar o selo. Sem gravar nada: o MainForm(true) é local e não salva o estado (regra 3 do AGENTS.md).
+    /// </summary>
+    static void NovidadesNaJanela(MainForm form, Panel home, SidePanel side)
+    {
+        var host = Field<Panel>(form, "_novidadesHost");
+        var estado = Field<Streemu.Util.AppState>(form, "_state");
+        Check(side.NovidadesVisivel, "O item Novidades não apareceu na barra lateral");
+        Check(!side.NovidadesNovas && !host.Visible, "A primeira vez com Novidades mostrou selo ou a página");
+        estado.NovidadesVistas = ["chave-de-antes"]; // estado de antes das chaves de hoje: tudo o que existe conta como não visto
+        Call(form, "AtualizarSeloNovidades");
+        Check(side.NovidadesNovas, "Estado antigo não acendeu o selo de Novidades");
+        Call(form, "MostrarNovidades");
+        Check(host.Visible && !home.Visible && Field<Streemu.Ui.NovidadesTela>(form, "_novidadesTela").Visible, "Novidades não substituiu o Início");
+        Check(side.NovidadesNovas, "O selo sumiu ao ENTRAR em Novidades (a pessoa precisa das bolinhas enquanto lê)");
+        Call(form, "ShowView", false);
+        Check(home.Visible && !host.Visible, "Voltar ao Início não escondeu Novidades");
+        Check(!side.NovidadesNovas, "O selo continuou depois de sair de Novidades");
+        Check(Streemu.Util.Novidades.NaoLidas(Streemu.Util.Novidades.Embutidas(), estado.NovidadesVistas) == 0, "Sair de Novidades não marcou as novidades como vistas");
+        Call(form, "MostrarNovidades");
+        Call(form, "AbrirFilme");
+        Check(!host.Visible && !Field<bool>(form, "_novidadesView"), "Novidades ficou por baixo do Cinema");
+        Call(form, "ShowSettings");
+        Call(form, "MostrarNovidades");
+        Check(host.Visible && !Field<Panel>(form, "_settingsHost").Visible, "Novidades não saiu de cima das Configurações");
+        Call(form, "ShowView", false);
+    }
+
     public static void Run(string? output)
     {
         if (output != null) Directory.CreateDirectory(output);

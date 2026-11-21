@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "474827d9828cac09ecbd93e9b7d5df85064b9ca3",
-    "notas":  "- Lança a 0.5.1",
+    "privado":  "11bc22cb930c2927a880753f75746f3c11d38283",
+    "notas":  "- Completa a tela Novidades e registra a validacao focada\n- Remove dados privados bloqueados pelo espelho\n- Prioriza a velocidade no envio direto de arquivos\n- Blinda a telemetria de mídia para nunca interromper a live\n- Telemetria: live_resumo alimentado pelos pontos da CargaRecente e emitido no fim da live\n- Telemetria: ResumoLive, acumulador por minuto da live\n- Telemetria de mídia: carga recente do PC anexada ao midia_falha\n- Telemetria: midia_falha é gravado na hora (evento urgente)\n- Telemetria de mídia: eventos midia_* levam as lives ativas\n- Registra o caminho de mídia usado em tentativas e falhas\n- Documenta a tela Novidades e o NOVIDADES.md (plano 027, etapa 5)\n- Liga a tela Novidades na barra lateral (plano 027, etapa 4)\n- Compacta a faixa da versão em janela baixa (plano 027, etapa 3)\n- Adiciona a página Novidades com layout por largura (plano 027, etapa 3)\n- Adiciona a leitura desenhada das novidades (plano 027, etapa 2)",
     "obrigatoria":  false
 }

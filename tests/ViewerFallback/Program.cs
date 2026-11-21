@@ -1,10 +1,17 @@
 using System.Diagnostics;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Streemu.Media;
+using Streemu.Telemetria;
 using Streemu.Util;
 
 static class Program
 {
     const string SurfaceError = "Failed to create window: Installed Vulkan doesn't implement the VK_KHR_surface extension";
+    // o que o ffplay de verdade escreve quando acha o vídeo e quando o laço de exibição roda (o player na CPU daqui confirma o vídeo com isso)
+    const string VideoLine = "[info]   Stream #0:0[0x100]: Video: h264 (High) ([27][0][0][0] / 0x001B), yuv420p(progressive), 1280x720 [SAR 1:1 DAR 16:9], 60 fps";
+    const string StatusLine = "[info]    1.23 A-V:  0.012 fd=   0 aq=   10KB vq=  100KB sq=    0B";
+    static readonly List<(string Tipo, JsonObject Dados)> Midia = new();
 
     static async Task<int> Main(string[] args)
     {
@@ -16,10 +23,11 @@ static class Program
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "mpv.exe"), true);
         var results = new List<string>();
         int failed = 0;
+        CaminhoMidia.Ligar((tipo, dados) => { lock (Midia) Midia.Add((tipo, dados)); });
         foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-install", "d3d11-install-timeout", "d3d11-install-stop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview" })
         {
             if (Environment.GetEnvironmentVariable("VIEWER_CASE_FILTER") is { } filter && name != filter) continue;
-            try { await Check(name); results.Add($"OK    player-{name}"); }
+            try { CaminhoMidia.Descarregar(TimeSpan.FromSeconds(15)); lock (Midia) Midia.Clear(); await Check(name); ConferirMidia(name); results.Add($"OK    player-{name}"); }
             catch (Exception e) { failed++; results.Add($"FALHA player-{name}: {e.Message}"); }
         }
         foreach (var line in results) Console.WriteLine(line);
@@ -32,7 +40,13 @@ static class Program
         string name = Environment.GetEnvironmentVariable("VIEWER_FAKE_CASE")!;
         bool hardware = args.Contains("-enable_vulkan");
         File.AppendAllText(Environment.GetEnvironmentVariable("VIEWER_FAKE_TRACE")!, hardware ? "gpu\n" : "cpu\n");
-        if (!hardware && name is not ("cpu-error" or "retry-cpu-error")) { await Task.Delay(20000); return 0; }
+        if (!hardware && name is not ("cpu-error" or "retry-cpu-error"))
+        {
+            Console.Error.WriteLine(VideoLine);
+            Console.Error.WriteLine(StatusLine);
+            await Task.Delay(20000);
+            return 0;
+        }
         if (name == "normal-close") { await Task.Delay(100); return 0; }
         if (name is "stop-early" or "resize") { await Task.Delay(20000); return 0; }
         if (name == "network-close") { Console.Error.WriteLine("Connection to srt://127.0.0.1 failed: I/O error"); return 0; }
@@ -196,11 +210,83 @@ static class Program
         }
         finally
         {
+            await EsperarMidia(name);
             viewer.Stop();
             await Until(() => !viewer.Running);
             // Aguarda a conclusão do observador antes de descartar o sinal e iniciar o próximo caso.
             if (name is not ("stop-retry" or "d3d11-install-stop")) exited.Wait(3000);
             File.Delete(trace);
+        }
+    }
+
+    /// <summary>
+    /// Os eventos do caminho de mídia (Telemetria/CaminhoMidia.cs) de cada caso: a tentativa que falhou, a falha com etapa e motivo da lista fechada,
+    /// a tentativa da recuperação e o tempo até voltar, ligados pelo id. Sem texto livre: todo texto é código, versão ou id.
+    /// </summary>
+    static void ConferirMidia(string name)
+    {
+        Require(CaminhoMidia.Descarregar(TimeSpan.FromSeconds(15)), $"A fila dos eventos de mídia não esvaziou ({CaminhoMidia.Pendentes} pendentes).");
+        List<(string Tipo, JsonObject Dados)> ev;
+        lock (Midia) ev = Midia.ToList();
+        foreach (var (tipo, d) in ev)
+        {
+            Require(CaminhoMidia.Tipos.Contains(tipo), $"Tipo de evento inesperado: {tipo}.");
+            Require(d["lado"]?.GetValue<string>() == CaminhoMidia.Viewer, $"{tipo} sem lado viewer.");
+            Require(Regex.IsMatch(d["tentativa"]?.GetValue<string>() ?? "", "^[0-9a-f]{12}$"), $"{tipo} sem id de tentativa.");
+            foreach (var (k, v) in d)
+                if (v is JsonValue jv && jv.TryGetValue<string>(out var texto))
+                    Require(Regex.IsMatch(texto, @"^[a-z0-9_]{1,32}$") || k == "resolucao" && Regex.IsMatch(texto, @"^\d+x\d+$"),
+                        $"{tipo}.{k} não é código fechado: {texto}.");
+        }
+        string Resumo((string Tipo, JsonObject Dados) e) => e.Tipo switch
+        {
+            CaminhoMidia.TipoTentativa => $"tentativa:{e.Dados["decodificador"]}/{e.Dados["renderizador"]}/{e.Dados["gatilho"]}",
+            CaminhoMidia.TipoFalha => $"falha:{e.Dados["etapa"]}/{e.Dados["motivo"]}",
+            CaminhoMidia.TipoVideoOk => "video",
+            _ => "recuperada",
+        };
+        string got = string.Join(" ", ev.Select(Resumo));
+        string? want = Esperado(name);
+        if (want != null) Require(got == want, $"Eventos de mídia: esperava \"{want}\", veio \"{got}\".");
+        // a mesma tentativa liga a falha à tentativa que falhou, e a volta à que falhou
+        var falha = ev.FirstOrDefault(e => e.Tipo == CaminhoMidia.TipoFalha);
+        var volta = ev.FirstOrDefault(e => e.Tipo == CaminhoMidia.TipoRecuperada);
+        if (falha.Dados != null)
+            Require(falha.Dados["tentativa"]?.GetValue<string>() == ev[0].Dados["tentativa"]?.GetValue<string>(), "A falha não aponta para a tentativa que falhou.");
+        if (volta.Dados != null)
+        {
+            Require(volta.Dados["tentativa_falha"]?.GetValue<string>() == falha.Dados?["tentativa"]?.GetValue<string>(), "A recuperação não aponta para a falha.");
+            Require(volta.Dados["ms"]?.GetValue<long>() is >= 0 and < 20000, "Tempo até voltar fora do esperado.");
+            // quem volta é a última tentativa aberta antes da volta (depois dela pode vir a reabertura da janela, como no d3d11-resize)
+            var antes = ev.Take(ev.FindIndex(e => e.Tipo == CaminhoMidia.TipoRecuperada)).Where(e => e.Tipo == CaminhoMidia.TipoTentativa).ToList();
+            Require(volta.Dados["tentativa"]?.GetValue<string>() == antes[^1].Dados["tentativa"]?.GetValue<string>()
+                && antes[^1].Dados["numero"]?.GetValue<int>() == antes.Count, "Numeração ou id da tentativa que voltou errados.");
+        }
+    }
+
+    static string? Esperado(string name) => name switch
+    {
+        "surface-zero" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/janela_nao_abriu tentativa:cpu/sdl/recuperacao video recuperada",
+        "vram-loop" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/sem_memoria tentativa:cpu/sdl/recuperacao video recuperada",
+        "exit-error" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/saiu_cedo tentativa:cpu/sdl/recuperacao video recuperada",
+        "d3d11-after-vram" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/sem_memoria tentativa:d3d11va/d3d11/recuperacao video recuperada",
+        "d3d11-fails" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/sem_memoria tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:cpu/sdl/recuperacao video recuperada",
+        "d3d11-cooldown" => "tentativa:d3d11va/d3d11/inicio video",
+        "normal-close" => "tentativa:vulkan/vulkan/inicio",
+        "network-close" => "tentativa:vulkan/vulkan/inicio",
+        _ => null,
+    };
+
+    /// <summary>O player na CPU confirma o vídeo um instante depois de abrir: o caso espera os eventos esperados antes do Stop (que encerra a live).</summary>
+    static async Task EsperarMidia(string name)
+    {
+        if (Esperado(name) is not { } want) return;
+        int n = want.Split(' ').Length;
+        var elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed.TotalSeconds < 5)
+        {
+            lock (Midia) if (Midia.Count >= n && CaminhoMidia.Pendentes == 0) return;
+            await Task.Delay(20);
         }
     }
 

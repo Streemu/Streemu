@@ -15,13 +15,15 @@ public sealed class Viewer
     Process? _player;
     volatile bool _stopRequested, _reopening;
     bool _direct3DActive;
-    sealed record PlayerFailure(string Reason);
+    sealed record PlayerFailure(string Reason, Telemetria.MotivoMidia Motivo);
     sealed record Direct3DSample(int? AudioVideoMs, int RenderDrops, int DecoderDrops);
     volatile Direct3DSample? _direct3DSample;
     Process? _lastCpuProcess;
     TimeSpan _lastPlayerCpu;
     long _lastPlayerCpuAt;
     int? _playerCpuPerCore;
+    // telemetria do caminho de mídia (Telemetria/CaminhoMidia.cs): só observa; a recuperação abaixo continua decidindo sozinha
+    readonly Telemetria.CaminhoMidia.Tentativas _midia = new(Telemetria.CaminhoMidia.Viewer);
 
     // Chamado a cada amostra da telemetria. Reabrir o player começa uma medida nova.
     public int? SampleCpuPerCore()
@@ -132,6 +134,8 @@ public sealed class Viewer
         VideoSize = null; VideoAspect = null;
         lock (_errors) _errors.Clear();
         _direct3DExecutable = null;
+        _midia.NovaLive();
+        _midia.Preparar(Telemetria.GatilhoMidia.Inicio);
         if (UseHardware && AvoidVulkan && PrepareDirect3D != null)
             _ = TryDirect3DAsync(null, restartSender: false);
         else
@@ -151,6 +155,8 @@ public sealed class Viewer
         FellBackToCpu = null;
         VideoSize = null; VideoAspect = null;
         lock (_errors) _errors.Clear();
+        _midia.NovaLive();
+        _midia.Preparar(Telemetria.GatilhoMidia.Inicio);
         Launch(UseHardware);
     }
 
@@ -201,8 +207,9 @@ public sealed class Viewer
         // Teste 0.1.8 (PC do grupo, Cyberpunk aberto): o renderizador Vulkan ficou sem VRAM e repetiu o erro em loop sem sair,
         // então o "saiu em menos de 4 s" nunca disparava. Outro PC (11/11): VK_KHR_surface ausente fecha com código ZERO.
         // O erro explícito do renderizador vale mesmo sem código de falha; pacote perdido/erro de rede não pede CPU.
-        if (kind == "sem_memoria_de_video") return new("falha ao alocar memória de vídeo no Vulkan");
-        if (kind == "vulkan_outro" || line.Contains("Failed to create window")) return new("o player não conseguiu abrir o vídeo pelo Vulkan");
+        if (kind == "sem_memoria_de_video") return new("falha ao alocar memória de vídeo no Vulkan", Telemetria.MotivoMidia.SemMemoria);
+        if (kind == "vulkan_outro" || line.Contains("Failed to create window"))
+            return new("o player não conseguiu abrir o vídeo pelo Vulkan", line.Contains("Failed to create window") ? Telemetria.MotivoMidia.JanelaNaoAbriu : Telemetria.MotivoMidia.VulkanFalhou);
         return null;
     }
 
@@ -248,8 +255,18 @@ public sealed class Viewer
         var lifetime = Stopwatch.StartNew();
         PlayerFailure? fallback = null;
         Process? p = null;
+        var tentativa = _midia.Comecar(Telemetria.GatilhoMidia.Outro,
+            Telemetria.CaminhoMidia.CaminhoDoPlayer(hardware ? "vulkan" : "cpu", hardware ? "vulkan" : "sdl", IsPreview, OpenAt));
+        Size? achado = null;
         p = Tools.Start(Tools.Ffplay, args, "ffplay", redirectStdin: _localTap != null, hideWindow: true, onStderr: l =>
         {
+            // vídeo confirmado no ffplay: a descrição do vídeo e depois a linha de estado com vídeo (A-V/M-V), que só vem com o laço de exibição rodando
+            if (!tentativa.TemVideo && !_stopRequested)
+            {
+                if (achado == null && ParseVideoLine(l) is { } v) achado = v.Size;
+                else if (achado is { } t && l.Contains(" aq=") && (l.Contains("A-V") || l.Contains("M-V")))
+                    tentativa.VideoOk(() => new JsonObject { ["resolucao"] = Telemetria.CaminhoMidia.Resolucao(t.Width, t.Height) });
+            }
             var failure = OnStderr(l);
             if (hardware && !_stopRequested && failure != null && Interlocked.CompareExchange(ref fallback, failure, null) == null)
                 Tools.KillQuietly(p);
@@ -273,11 +290,15 @@ public sealed class Viewer
             int code = SafeExit(p);
             if (hardware && !_stopRequested && (fallback != null || lifetime.Elapsed.TotalSeconds < 4 && code != 0))
             {
+                // o Vulkan do ffplay decodifica e desenha: o erro que derruba (memória, superfície, janela) é do lado que desenha
+                var erros = ErrorCounts();
+                tentativa.Falhou(Telemetria.EtapaMidia.Renderizacao, fallback?.Motivo ?? Telemetria.MotivoMidia.SaiuCedo, medidas: () => new JsonObject { ["erros"] = erros });
                 if (fallback != null && !IsPreview)
                 {
                     VulkanFailed?.Invoke();
                     if (PrepareDirect3D != null)
                     {
+                        _midia.Preparar(Telemetria.GatilhoMidia.Recuperacao);
                         await TryDirect3DAsync(fallback.Reason, restartSender: true).ConfigureAwait(false);
                         return;
                     }
@@ -306,6 +327,8 @@ public sealed class Viewer
         if (_stopRequested) return;
         if (_direct3DExecutable == null)
         {
+            _midia.Comecar(Telemetria.GatilhoMidia.Outro, Telemetria.CaminhoMidia.CaminhoDoPlayer("d3d11va", "d3d11", IsPreview, OpenAt))
+                .Falhou(Telemetria.EtapaMidia.Decodificacao, Telemetria.MotivoMidia.D3d11Indisponivel);
             RecoverOnCpu(vulkanFailure == null ? "Direct3D 11 indisponível" : $"{vulkanFailure}; Direct3D 11 indisponível", restartSender);
             return;
         }
@@ -325,6 +348,7 @@ public sealed class Viewer
 
         Process player;
         int result = 0; // 0: aguardando vídeo; 1: D3D11 confirmado; 2: sem decodificação por hardware.
+        var tentativa = _midia.Comecar(Telemetria.GatilhoMidia.Outro, Telemetria.CaminhoMidia.CaminhoDoPlayer("d3d11va", "d3d11", IsPreview, OpenAt));
         Process? opening = null;
         try
         {
@@ -351,6 +375,8 @@ public sealed class Viewer
                         UsingHardware = true;
                         Volatile.Write(ref result, 1);
                         Log.Info("Player: decodificação por hardware confirmada pelo Direct3D 11.");
+                        var tamanho = VideoSize;
+                        tentativa.VideoOk(() => tamanho is { } t ? new JsonObject { ["resolucao"] = Telemetria.CaminhoMidia.Resolucao(t.Width, t.Height) } : null);
                     }
                     else
                     {
@@ -362,6 +388,7 @@ public sealed class Viewer
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
             Direct3DRejected?.Invoke();
+            tentativa.Falhou(Telemetria.EtapaMidia.Renderizacao, Telemetria.MotivoMidia.D3d11NaoAbriu);
             RecoverOnCpu("não consegui abrir o player Direct3D 11", restartSender: false);
             return;
         }
@@ -384,6 +411,14 @@ public sealed class Viewer
             if (!_stopRequested && (outcome != 1 || SafeExit(player) != 0))
             {
                 if (outcome == 2) Direct3DRejected?.Invoke();
+                // sem hardware ou sem vídeo em 8 s: não decodificou; com vídeo e depois saída com erro: caiu já desenhando
+                var amostra = _direct3DSample;
+                tentativa.Falhou(outcome == 1 ? Telemetria.EtapaMidia.Renderizacao : Telemetria.EtapaMidia.Decodificacao,
+                    outcome == 2 ? Telemetria.MotivoMidia.D3d11SemHardware : Telemetria.MotivoMidia.D3d11NaoManteve,
+                    medidas: () => amostra == null ? null : new JsonObject
+                    {
+                        ["descartes_exibicao"] = amostra.RenderDrops, ["descartes_decodificador"] = amostra.DecoderDrops,
+                    });
                 RecoverOnCpu("o player Direct3D 11 não conseguiu manter a reprodução");
             }
             else
@@ -450,6 +485,7 @@ public sealed class Viewer
                 _reopening = false;
                 if (!_stopRequested)
                 {
+                    _midia.Preparar(Telemetria.GatilhoMidia.ReaberturaJanela);
                     if (_direct3DActive) LaunchDirect3D();
                     else Launch(UsingHardware);
                 }
@@ -462,6 +498,7 @@ public sealed class Viewer
     {
         FellBackToCpu = reason;
         Log.Info($"[aviso] Player: {reason}; abrindo de novo decodificando na CPU.");
+        _midia.Preparar(Telemetria.GatilhoMidia.Recuperacao);
         if (restartSender) Relaunch(() => Launch(false));
         else if (!_stopRequested) Launch(false);
     }
@@ -479,6 +516,7 @@ public sealed class Viewer
     public void Stop()
     {
         _stopRequested = true;
+        _midia.Encerrar();
         Tools.KillQuietly(_player);
         _tap?.Dispose();
         _tap = null;

@@ -112,6 +112,8 @@ public sealed class AppState
     public bool ContaGoogleVinculado { get; set; }
     /// <summary>Grupos da conta como o servidor disse da última vez (a sala é a fonte da verdade; isto só evita uma tela vazia ao abrir).</summary>
     public List<GrupoSalvo> Grupos { get; set; } = new();
+    /// <summary>Chaves (<see cref="Novidades.Chave"/>) das novidades que a pessoa já viu, até 400. Nulo = nunca abriu um app com a tela Novidades: na primeira vez marca tudo como visto, sem selo.</summary>
+    public List<string>? NovidadesVistas { get; set; }
     public string? TelemetriaPerfilHash { get; set; }
     public DateTime TelemetriaPerfilEm { get; set; }
     public DateTime SavedAt { get; set; }

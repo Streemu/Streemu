@@ -19,7 +19,7 @@ public partial class MainForm
 
     static bool TesteArquivoAtivo => TestRoom && Environment.GetEnvironmentVariable("STREEMU_TEST_ARQUIVO") == "1";
     static readonly string? TesteArquivoNomeFalso = VarTeste("NOME_FALSO");
-    /// <summary>_LIVE_SAINDO=1: quem manda age como se tivesse live saindo (o recuo da transferência), sem transmitir nada (arquivo-com-live).</summary>
+    /// <summary>_LIVE_SAINDO=1: quem manda age como se tivesse live saindo, sem transmitir nada (arquivo-com-live).</summary>
     static bool TesteArquivoLiveSaindo => TesteArquivoAtivo && VarTeste("LIVE_SAINDO") == "1"; // propriedade: um campo estático pode ser lido antes do TestRoom (outro arquivo parcial)
 
     /// <summary>

@@ -30,6 +30,16 @@ public sealed partial class MainForm
             amostra["cpu_player_nucleo_pct"] = viewer.SampleCpuPerCore();
             amostra["gpu_pc_3d_pct"] = uso?.Total3d;
             amostra["gpu_pc_decoder_pct"] = uso?.Decoder;
+            var carga = CargaRecente.Viewer; // as mesmas leituras da amostra (nulo = sem leitura); o buffer é do lado, não da ligação
+            carga.Registrar("cpu_player_nucleo_pct", amostra["cpu_player_nucleo_pct"]?.GetValue<int>());
+            carga.Registrar("gpu_pc_3d_pct", uso?.Total3d); carga.Registrar("gpu_pc_decoder_pct", uso?.Decoder);
+            var resumo = ResumoLive.Viewer; // por ligação; só o que a amostra já traz (as recuperações não estão nela: ficam ausentes)
+            resumo.Marcar(id);
+            resumo.Registrar("cpu_player_nucleo_pct", amostra["cpu_player_nucleo_pct"]?.GetValue<int>(), id);
+            resumo.Registrar("gpu_pc_3d_pct", uso?.Total3d, id); resumo.Registrar("gpu_pc_decoder_pct", uso?.Decoder, id);
+            resumo.Registrar(ResumoLive.AvMs, ResumoLive.Inteiro(amostra["audio_menos_video_ms"]), id);
+            int? descartes = ResumoLive.Inteiro(amostra["quadros_descartados_exibicao"]) is { } de ? de + (ResumoLive.Inteiro(amostra["quadros_descartados_decodificador"]) ?? 0) : null;
+            resumo.Registrar(ResumoLive.Descartes, descartes, id);
             _serieSincronia.Add(_teleLiveDaLigacao.GetValueOrDefault(id), id, "assiste", amostra);
         }
     }

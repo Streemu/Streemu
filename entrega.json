@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "1259c77557dd826dda4edf889fa9e2e5a20eafb9",
-    "notas":  "- Corrige a imagem espremida quando a live gira e o texto atrás do player",
+    "privado":  "506acd5ec1754bb6bf954206dcdf2917173aa00a",
+    "notas":  "- Corrige o som da tela de pausa saindo em blocos de meio segundo",
     "obrigatoria":  false
 }

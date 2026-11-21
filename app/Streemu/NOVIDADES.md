@@ -20,6 +20,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 ### Correções
 - **Live de celular que gira:** quando quem transmite pelo celular vira o aparelho, a janela da live acompanha, e a imagem não fica mais espremida.
 - **Texto atrás de uma live em pé:** o aviso "Nenhuma stream à vista" não aparece mais dos lados de uma live estreita.
+- **Som na tela de pausa:** quando o jogo sai da frente e quem assiste vê "Transmissão pausada", o som continua contínuo, sem cortes de meio segundo.
 
 ## 0.5.1 — 2026-11-20
 Correções de tela em janela pequena e no tema claro, e um instalador que explica o que deu errado.

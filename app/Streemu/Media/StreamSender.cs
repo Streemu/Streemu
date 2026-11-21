@@ -536,12 +536,14 @@ public sealed class StreamSender : IDisposable
         if (withAudio) a.AddRange(AudioInputArgs());
         int imgInput = withAudio ? 1 : 0;
         // Sem "-re" na imagem: com "-re -loop 1 -framerate 2" o ffmpeg só começava a ler o stdin do áudio ~7,5 s depois de
-        // abrir (medido 2026-11-17 em 3440x1440, nvenc e libx264: ~15 quadros da imagem no ritmo de 2/s antes de liberar o
-        // resto), e o som da pausa era descartado. O ritmo vem do filtro "realtime" depois de "fps": a imagem continua
-        // sendo lida só 2 vezes por segundo (mesmo custo de CPU) e sai a 60 quadros/s em tempo real, sem espera na abertura.
-        a.AddRange(new[] { "-loop", "1", "-framerate", "2", "-i", img });
+        // abrir (medido 2026-11-17 em 3440x1440, nvenc e libx264), e o som da pausa era descartado. O ritmo vem do "realtime".
+        // A imagem é lida UMA vez e repetida pelo filtro "loop" (a cor é convertida antes, uma vez só). Com "-loop 1 -framerate 2"
+        // a entrada mandava um quadro a cada 500 ms, e o agendador do ffmpeg 8 segurava o som até o próximo: na tela de pausa o
+        // som saía em blocos de ~500 ms, com ~10 faltas a cada 2 s no celular (2026-11-21). Medido com a linha do app: maior
+        // intervalo do som de 497-512 ms para 46 ms.
+        a.AddRange(new[] { "-i", img });
         string pix = chosen.Encoder == "libx264" ? "format=yuv420p" : "format=nv12";
-        a.AddRange(new[] { "-map", $"{imgInput}:v:0", "-vf", $"{pix},fps={s.Preset.Fps},realtime" });
+        a.AddRange(new[] { "-map", $"{imgInput}:v:0", "-vf", $"{pix},loop=loop=-1:size=1:start=0,setpts=N/({s.Preset.Fps}*TB),realtime" });
         if (withAudio) a.AddRange(new[] { "-map", "0:a:0" });
         a.AddRange(EncoderArgs(new Pipeline(chosen.Encoder, Path.Cpu), s.Preset));
         if (withAudio) a.AddRange(AudioEncoderArgs());

@@ -96,10 +96,13 @@ public static partial class Fonte
         // -stats a cada 2 s: o EnvioStream lê o "time=" para saber se o envio acompanha o tempo real (a linha começa com "frame=" e não vai para o log)
         // sem -re: o ritmo é do EnvioStream, que lê o stdout adiantado ao filme e segura a leitura quando já mandou o bastante (buffer de quem assiste, teste de 11/11)
         var a = new List<string> { "-hide_banner", "-loglevel", "error", "-stats", "-stats_period", "2" };
+        bool naPlaca = perfil != PerfilStream.Copia && ConversaoPlaca.Ligada;
+        if (naPlaca) a.AddRange(ConversaoPlaca.Entrada());
         // "auto": o ffmpeg tenta d3d11va, dxva2... e decodifica na CPU se nenhum servir; os quadros voltam para a memória, onde os filtros (scale, tone-map) rodam
-        if (perfil != PerfilStream.Copia && Placa) a.AddRange(new[] { "-hwaccel", "auto" });
+        else if (perfil != PerfilStream.Copia && Placa) a.AddRange(new[] { "-hwaccel", "auto" });
         a.AddRange(new[] { "-ss", inicioS.ToString("0.###", CultureInfo.InvariantCulture), "-i", f.Caminho, "-map", "0:v:0", "-map", audio?.Map ?? "0:a:0?", "-sn", "-dn" });
         if (perfil == PerfilStream.Copia) a.AddRange(new[] { "-c:v", "copy" });
+        else if (naPlaca) a.AddRange(ConversaoPlaca.Video(AltoDe(perfil), KbpsDe(perfil)));
         else a.AddRange(VideoArgs(f, perfil));
         string? codecAudio = audio?.Codec ?? f.Audios.FirstOrDefault();
         bool audioDireto = codecAudio != null && AudioDireto.Contains(codecAudio) && perfil == PerfilStream.Copia;
@@ -142,10 +145,13 @@ public static partial class Fonte
     internal static string FiltroTom(FonteInfo f) =>
         f.Hdr ? "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv," : "";
 
+    static int AltoDe(PerfilStream perfil) => perfil == PerfilStream.Leve ? 720 : 1080;
+    static string KbpsDe(PerfilStream perfil) => perfil == PerfilStream.Leve ? "3000k" : "6000k";
+
     static IEnumerable<string> VideoArgs(FonteInfo f, PerfilStream perfil)
     {
-        int alto = perfil == PerfilStream.Leve ? 720 : 1080;
-        string kbps = perfil == PerfilStream.Leve ? "3000k" : "6000k";
+        int alto = AltoDe(perfil);
+        string kbps = KbpsDe(perfil);
         // HDR vira SDR antes de recomprimir (o x264 de 8 bits sem isso sai lavado). REDUZ ANTES do tone-map: num 4K HDR10 (3832x1600) de um amigo com o tone-map na resolução cheia o x264
         // rodava a 0,85x do tempo real (Ryzen 5 3600) e engasgava; reduzindo primeiro foram 1,35x (medido em 2026-11-11). Sem HDR só reduz e fica em 4:2:0.
         return new[] { "-vf", $"scale=-2:'min({alto},ih)',{FiltroTom(f)}format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-b:v", kbps, "-maxrate", kbps, "-bufsize", "2M", "-g", "48", "-keyint_min", "48" };

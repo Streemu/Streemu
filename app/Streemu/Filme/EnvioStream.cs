@@ -404,14 +404,24 @@ internal sealed partial class EnvioStream : IDisposable
             return;
         }
         if (!placa) { lock (_gate) if (_epoca == epoca) _fonteParou = true; return; }
-        // o ffmpeg saiu sem escrever nada com a decodificação na placa (driver ou placa sem suporte): tenta a mesma época na CPU, e as próximas já vão sem a placa
+        // o ffmpeg saiu sem escrever nada usando a placa (driver ou placa sem suporte): tenta a mesma época pelo caminho seguinte, e as próximas já vão por ele
         lock (_gate)
         {
-            if (_fim || _epoca != epoca || !ReferenceEquals(_fonte, p) || !Fonte.Placa) return;
-            Fonte.Placa = false;
-            Log.Info($"[filme] [aviso] o envio do filme não abriu decodificando na placa de vídeo (saída {SaidaDe(p)}); tentando na CPU.");
-            IniciarEpocaLocked(_epocaInicio, "sem a placa de vídeo");
+            if (_fim || _epoca != epoca || !ReferenceEquals(_fonte, p)) return;
+            string? largou = RecuarDaPlaca();
+            if (largou == null) return;
+            Log.Info($"[filme] [aviso] o envio do filme não abriu {largou} (saída {SaidaDe(p)}); tentando o caminho seguinte.");
+            IniciarEpocaLocked(_epocaInicio, $"sem {largou}");
         }
+    }
+
+    /// <summary>Conversão inteira na placa → só decodificar na placa → CPU. Devolve o que foi desligado (para o log), ou nulo se já está na CPU.</summary>
+    static string? RecuarDaPlaca()
+    {
+        if (ConversaoPlaca.Ligada) { ConversaoPlaca.Ligada = false; return "convertendo na placa (Vulkan + AMF)"; }
+        if (!Fonte.Placa) return null;
+        Fonte.Placa = false;
+        return "decodificando na placa de vídeo";
     }
 
     /// <summary>

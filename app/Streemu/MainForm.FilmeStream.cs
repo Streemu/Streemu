@@ -100,7 +100,7 @@ public sealed partial class MainForm
             var perfil = Fonte.Escolher(info, Math.Max(1, _streamSids.Count + 1), UploadSupostoMbps, nucleos: Environment.ProcessorCount);
             _streamPerfilForcado = Enum.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_FILME_PERFIL"), true, out PerfilStream forcado);
             if (_streamPerfilForcado) perfil = forcado; // só em teste
-            Log.Info($"[filme] transmitindo o filme sem download: {info.Resumo}; perfil {perfil} ({Environment.ProcessorCount} threads, placa {(Fonte.Placa ? "ligada" : "desligada")}).");
+            Log.Info($"[filme] transmitindo o filme sem download: {info.Resumo}; perfil {perfil} ({Environment.ProcessorCount} threads, placa {(perfil == PerfilStream.Copia ? "sem uso (cópia direta)" : ConversaoPlaca.Ligada ? "convertendo (Vulkan + AMF)" : Fonte.Placa ? "decodificando" : "desligada")}).");
             var e = _filmeStream = new EnvioStream(info, perfil) { UploadMbps = UploadSupostoMbps };
             e.Mudou += (epoca, pos, tocando) => Ui(() => AvisarEspectadores(new JsonObject { ["type"] = "filme_stream_epoca", ["epoca"] = epoca, ["pos"] = pos, ["tocando"] = tocando }));
             e.Lento += v => Ui(() => EnvioLento(e, v));

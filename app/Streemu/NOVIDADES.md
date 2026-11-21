@@ -14,6 +14,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 
 ### Melhorias
 - **Envio de arquivo mais rápido:** quando os dois PCs se conectam diretamente, o download tem prioridade na conexão, mesmo com uma live ou um jogo aberto.
+- **Cinema mais leve para quem transmite um filme 4K:** com placa AMD, o filme que vai para quem não tem o arquivo é preparado na placa de vídeo, e o seu filme não engasga mais.
 
 ## 0.5.1 — 2026-11-20
 Correções de tela em janela pequena e no tema claro, e um instalador que explica o que deu errado.

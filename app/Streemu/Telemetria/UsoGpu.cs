@@ -86,7 +86,20 @@ public sealed partial class UsoGpu : IDisposable
 
     public void Dispose() => _parar = true;
 
-    [GeneratedRegex(@"pid_(\d+)_luid_(\w+)_(\w+)_phys_(\d+)_eng_(\d+)_engtype_(\w+)", RegexOptions.IgnoreCase)] private static partial Regex InstanciaRx();
+    // engtype_(.+): na AMD o motor de vídeo é "Video Codec 0" (com espaço e número); o (\w+) antigo parava em "Video" e as colunas de decodificador/encoder
+    // ficavam vazias em toda placa AMD (achado na RX 6750 XT, docs/DESCOBERTAS.md 2026-11-20)
+    [GeneratedRegex(@"pid_(\d+)_luid_(\w+)_(\w+)_phys_(\d+)_eng_(\d+)_engtype_(.+)$", RegexOptions.IgnoreCase)] private static partial Regex InstanciaRx();
+
+    /// <summary>Tipo do motor sem espaços nem o número do fim: "Video Codec 0" → "VideoCodec", "3D" → "3D".</summary>
+    /// <example><code>UsoGpu.TipoDoMotor("Video Codec 0") == "VideoCodec"</code></example>
+    internal static string TipoDoMotor(string bruto)
+    {
+        string t = bruto.Trim();
+        int fim = t.Length;
+        while (fim > 0 && (char.IsDigit(t[fim - 1]) || t[fim - 1] == ' ')) fim--;
+        string sem = t[..fim].Replace(" ", "");
+        return sem.Length == 0 ? t : sem; // "3D" termina em letra; um tipo só de dígitos fica como veio
+    }
 
     void Laco()
     {
@@ -131,7 +144,7 @@ public sealed partial class UsoGpu : IDisposable
                 if (item.CStatus != 0 || item.szName == IntPtr.Zero) continue;
                 var m = InstanciaRx().Match(Marshal.PtrToStringUni(item.szName) ?? "");
                 if (!m.Success) continue;
-                string tipo = m.Groups[6].Value;
+                string tipo = TipoDoMotor(m.Groups[6].Value);
                 string motor = $"{m.Groups[2].Value}_{m.Groups[3].Value}_{m.Groups[4].Value}_{m.Groups[5].Value}";
                 porMotor[motor] = porMotor.GetValueOrDefault(motor) + item.Value;
                 tipoDoMotor[motor] = tipo;
@@ -143,10 +156,11 @@ public sealed partial class UsoGpu : IDisposable
                     else if (_pidsDwm.Contains(pid)) dwm += item.Value;
                 }
             }
-            int Max(string tipo) => (int)Math.Round(Math.Min(100, porMotor.Where(x => tipoDoMotor[x.Key].Equals(tipo, StringComparison.OrdinalIgnoreCase)).Select(x => x.Value).DefaultIfEmpty(0).Max()));
+            int Max(params string[] tipos) => (int)Math.Round(Math.Min(100, porMotor.Where(x => tipos.Contains(tipoDoMotor[x.Key], StringComparer.OrdinalIgnoreCase)).Select(x => x.Value).DefaultIfEmpty(0).Max()));
             static int Pct(double v) => (int)Math.Round(Math.Min(100, v));
             var (appCpu, jogoCpu) = Cpu(pidJogo);
-            return new Amostra(Max("3D"), Pct(jogo), Max("VideoEncode"), Max("VideoDecode"), Pct(app), Pct(dwm), appCpu, jogoCpu);
+            // na AMD codificar e decodificar são o mesmo motor ("VideoCodec"): as duas colunas mostram o mesmo uso
+            return new Amostra(Max("3D"), Pct(jogo), Max("VideoEncode", "VideoCodec"), Max("VideoDecode", "VideoCodec"), Pct(app), Pct(dwm), appCpu, jogoCpu);
         }
         finally { Marshal.FreeHGlobal(buf); }
     }

@@ -168,6 +168,7 @@ public sealed partial class MainForm
     {
         GravarSincronia();
         GravarRede();
+        AcompanharLatenciaSrt();
         EnsinarNomesAoAnonimizador();
         if (_tele != null)
         {

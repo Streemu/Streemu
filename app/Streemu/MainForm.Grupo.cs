@@ -561,7 +561,7 @@ public sealed partial class MainForm
         _linkViewers[sid] = v;
         var stage = _playerStage ??= new PlayerStage(this);
         stage.Add(v, () => StreamCaption(link.PeerId), () => AvatarOfMember(link.PeerId)); // antes do Start: o ffplay novo já abre no lugar que a janela de streams reservou
-        v.Start(link.Relay.Port, link.Tunnel.Passphrase, LatencyMs, $"{UiBrand.Name} — {link.PeerNick}");
+        v.Start(link.Relay.Port, link.Tunnel.Passphrase, LatenciaDoEspectador(link), $"{UiBrand.Name} — {link.PeerNick}");
         PlayerOverlay.ShowFor(v, () => _room?.Members.FirstOrDefault(m => m.Id == link.PeerId)?.Live?.Quality ?? "", () => WatchersRoster(link), new AppStateMiniStore(_state, !Automated), text => Ui(() => Notify(text)), stage);
         _groupStatus.Text = DefaultStatus();
         AtualizarIconeAtividade(); // passou a assistir (o fim sai pelo EndLink, que chama o UpdateLive)
@@ -617,6 +617,7 @@ public sealed partial class MainForm
         // "saiu" só para quem chegou a entrar (tocou o "entrou"); quem desistiu antes de conectar não faz som
         if (_linkEverConnected.Remove(sid) && link.IAmSender && !_closingLive) { TocarSom(Sons.Som.EspectadorSaiu); AnunciarSaidaDaLive(link.PeerId); }
         _watchersBySession.Remove(sid);
+        _escaladaLatencia.Remove(sid);
         if (_linkViewers.Remove(sid, out var v)) v.Stop();
         if (link.IAmSender) _sender.RemoveOutput(sid);
         if (tellPeer) _ = _room?.SendTo(link.PeerId, new JsonObject { ["tipo"] = "parar", ["sessao"] = sid });

@@ -60,6 +60,8 @@ public sealed class Viewer
         };
     }
     int _relayPort, _latencyMs;
+    /// <summary>Latência do SRT deste player (ms). Ler dá a que está em uso; trocar vale na PRÓXIMA abertura (<see cref="LiveUrl"/> lê a cada <c>Launch</c>), sem reabrir.</summary>
+    public int LatencyMs { get => _latencyMs; set => _latencyMs = value; }
     string _passphrase = "", _title = "";
     readonly Dictionary<string, int> _errors = new();
     public ViewerSync Sync { get; } = new();

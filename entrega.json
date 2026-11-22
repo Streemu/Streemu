@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "33773ec283e65d43a3021e96d1cc035e4af1b2a7",
-    "notas":  "- Tira nomes de pessoas do grupo dos testes do nome da conta\n- Desktop: o nome passa a ser da conta e igual em todos os aparelhos [obrigatória]\n- Identifica pessoas pelo id da conta, não pelo nome (spec 027, seção 7)",
-    "obrigatoria":  true
+    "privado":  "66b2cf1815c491fdfcef6c314ed812e7f849eed3",
+    "notas":  "- Latência do SRT automática no espectador e telemetria de rede",
+    "obrigatoria":  false
 }

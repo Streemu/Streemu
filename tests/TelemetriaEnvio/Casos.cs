@@ -47,6 +47,9 @@ static class Casos
         Caso("vigia-suspensao-nao-vira-ui-travada", VigiaSuspensao);
         Caso("rede-por-ligacao-calcula-taxa-e-perda-do-intervalo", RedePorLigacao);
         Caso("rede-por-ligacao-so-amostra-conectada-e-esquece-quem-saiu", RedeSoConectada);
+        Caso("rede-trocas-de-caminho-tempo-no-relay-e-perda-da-volta-do-transmissor", RedeCaminhoEVolta);
+        Caso("latencia-srt-calculo-por-ida-e-volta-piso-do-relay-e-teto", LatenciaCalculo);
+        Caso("latencia-srt-escalada-so-com-perda-sustentada-e-no-maximo-4-vezes", LatenciaEscalada);
         Caso("anonimo-troca-nomes-por-pessoa-n-e-tira-identidade-do-evento", AnonimizadorTroca);
         Caso("anonimo-sessao-grava-log-e-series-mas-nao-o-texto-livre", ReduzidaGrava);
         Caso("anonimo-envio-sem-nome-sem-identidade-e-so-depois-da-sala", ReduzidaEnvio);
@@ -904,6 +907,53 @@ static class Casos
         Exigir(t2["perda_pct"] == null && t2["caminho"]!.GetValue<string>() == "meu_relay" && t2["enviado_kbps"]!.GetValue<double>() == 2000, "transmissor: " + t2.ToJsonString());
         // só números e nomes de caminho: nada que pareça endereço
         Exigir(!l.Any(x => System.Text.RegularExpressions.Regex.IsMatch(x.ToJsonString(), @"\d+\.\d+\.\d+\.\d+")), "IP na série de rede");
+    }
+
+    static void RedeCaminhoEVolta()
+    {
+        var s = Sessao(0, 0);
+        var r = new SerieRede(s);
+        LeituraRede T(long tx, long volta, double perdaVolta, long trocas, long relayMs, bool conf = true) =>
+            new("Connected", "meu_relay", 100, tx, 0, 0, 0, false, volta, perdaVolta, trocas, relayMs, conf, 80);
+        r.Amostrar(0, () => Uma("T1", T(0, 1000, 0, 0, 0), "transmite"));
+        // 5 s: 3 trocas, 4 s no relay (80%), 1000 -> 1500 pacotes de volta com 100 perdidos no total (6,25% do total de 1600)
+        r.Amostrar(5000, () => Uma("T1", T(1000, 1500, 100.0 * 100 / 1600, 3, 4000, conf: false), "transmite"));
+        var u = LinhasRede(s).Last(x => x["ligacao"]!.GetValue<string>() == "T1");
+        Exigir(u["trocas_caminho"]!.GetValue<long>() == 3 && u["tempo_relay_pct"]!.GetValue<double>() == 80, "caminho no intervalo: " + u.ToJsonString());
+        Exigir(u["caminho"]!.GetValue<string>() == "meu_relay" && !u["caminho_confirmado"]!.GetValue<bool>() && u["latencia_srt_ms"]!.GetValue<int>() == 80, "campos novos: " + u.ToJsonString());
+        Exigir(u["perda_pct"] == null && Math.Abs(u["perda_recebendo_pct"]!.GetValue<double>() - 16.67) < 0.05 && u["pacotes_recebidos_volta"]!.GetValue<long>() == 500, "perda da volta: " + u.ToJsonString());
+        // quem assiste não ganha o campo da volta e não inventa latência quando o app não informou
+        r.Amostrar(10_000, () => Uma("V1", Leit("Connected", 0, 0, 0, 0)));
+        r.Amostrar(15_000, () => Uma("V1", Leit("Connected", 1, 1, 10, 0)));
+        var v = LinhasRede(s).Last(x => x["ligacao"]!.GetValue<string>() == "V1");
+        Exigir(v["perda_recebendo_pct"] == null && v["latencia_srt_ms"] == null && v["perda_pct"] != null, "espectador: " + v.ToJsonString());
+    }
+
+    static void LatenciaCalculo()
+    {
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(5, false) == 80, "rede local deve dar 80: " + Streemu.Media.LatenciaSrt.Calcular(5, false));
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(106, false) == 338, "106 ms direto: " + Streemu.Media.LatenciaSrt.Calcular(106, false));
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(130, true) == 410, "130 ms relay: " + Streemu.Media.LatenciaSrt.Calcular(130, true));
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(20, true) == 200, "piso do relay: " + Streemu.Media.LatenciaSrt.Calcular(20, true));
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(900, false) == 600, "teto de 600");
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(-1, false) == 380, "sem medida presume 120 ms: " + Streemu.Media.LatenciaSrt.Calcular(-1, false));
+        Exigir(Streemu.Media.LatenciaSrt.Subir(400) == 600 && Streemu.Media.LatenciaSrt.Subir(800) == 1000 && Streemu.Media.LatenciaSrt.Subir(1000) == 1000, "subir x1,5 até 1000");
+    }
+
+    static void LatenciaEscalada()
+    {
+        var e = new Streemu.Media.EscaladaLatencia();
+        e.Iniciar(200);
+        long rec = 0, perd = 0, t = 0;
+        bool Passo(int segundos, long dRec, long dPerd) { bool subiu = false; for (int i = 0; i < segundos; i++) { t += 1000; rec += dRec; perd += dPerd; subiu |= e.Observar(t, rec, perd); } return subiu; }
+        Exigir(!Passo(10, 1000, 10), "1% de perda não sobe");
+        Exigir(!Passo(5, 1000, 50), "5 s de perda não bastam");
+        Exigir(Passo(2, 1000, 50) && e.ProximaMs == 300 && e.Subidas == 1, "6 s de perda sobe 200 -> 300: " + e.ProximaMs);
+        Exigir(!Passo(3, 1000, 0) , "perda some");
+        Exigir(!Passo(4, 1000, 50) && Passo(3, 1000, 50) && e.ProximaMs == 450, "interrupção zera a espera: " + e.ProximaMs);
+        Exigir(!Passo(10, 3, 1), "pouco tráfego não conta nem dispara");
+        for (int i = 0; i < 20; i++) Passo(7, 1000, 100);
+        Exigir(e.Subidas == 4 && e.ProximaMs <= 1000, "no máximo 4 subidas: " + e.Subidas + " " + e.ProximaMs);
     }
 
     static void RedeSoConectada()

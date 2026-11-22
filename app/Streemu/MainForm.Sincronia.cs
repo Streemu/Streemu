@@ -64,10 +64,13 @@ public sealed partial class MainForm
     /// <summary>O caminho confirmado da ligação, com o "direto pela operadora" separado do direto comum (decisão em <see cref="Tunnel.TargetIsCarrierAlt"/>).</summary>
     static string CaminhoDaLigacao(PeerLink l) => SerieRede.NomeDoCaminho(l.Tunnel.Target is { } c ? (int)c.Kind : null, l.Tunnel.TargetIsCarrierAlt);
 
-    static LeituraRede LerRede(PeerLink l)
+    /// <summary>A latência SRT é a do envio (quem transmite) ou a do player desta ligação (quem assiste); o SRT usa a maior das duas na negociação.</summary>
+    LeituraRede LerRede(PeerLink l)
     {
+        int? latenciaSrtMs = l.IAmSender ? _sender.Current?.LatencyMs : _linkViewers.GetValueOrDefault(l.SessionId) is { LatencyMs: > 0 } vw ? vw.LatencyMs : null;
         var t = l.Tunnel;
-        return new LeituraRede(t.State.ToString(), CaminhoDaLigacao(l), t.RttMs, t.TxBytes, t.RxBytes, t.RxViewer.Received, t.RxViewer.TotalLossPct, !l.IAmSender);
+        return new LeituraRede(t.State.ToString(), CaminhoDaLigacao(l), t.RttMs, t.TxBytes, t.RxBytes, t.RxViewer.Received, t.RxViewer.TotalLossPct, !l.IAmSender,
+            t.RxSender.Received, t.RxSender.TotalLossPct, t.PathSwitches, t.RelayMs(), t.TargetValidated, latenciaSrtMs);
     }
 
     /// <summary>

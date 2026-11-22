@@ -77,6 +77,14 @@ public sealed class Tunnel : IDisposable
     public IPEndPoint? PublicEndpoint { get; private set; }
     public IPEndPoint? Peer => _target?.Ep;
     public Cand? Target => _target;
+    /// <summary>O destino atual já respondeu a um ping (<see cref="Target"/> só é de verdade depois disso; antes é o primeiro candidato, o direto, por padrão).</summary>
+    public bool TargetValidated => _validated;
+    readonly object _pathGate = new();
+    long _pathSwitches, _relayMsAcc, _targetSinceMs;
+    /// <summary>Quantas vezes o caminho de envio trocou desde que a ligação abriu (direto para relay e de volta). Telemetria: troca em excesso é rede instável.</summary>
+    public long PathSwitches { get { lock (_pathGate) return _pathSwitches; } }
+    /// <summary>Tempo total (ms do relógio do túnel) com o destino num relay (do amigo ou meu), até agora. A série de rede tira a fração do intervalo pela diferença.</summary>
+    public long RelayMs() { lock (_pathGate) return _relayMsAcc + (_target is { Kind: not CandKind.Direct } && _targetSinceMs > 0 ? _clock.ElapsedMilliseconds - _targetSinceMs : 0); }
     /// <summary>
     /// O destino confirmado é o endereço alternativo do amigo (o dele dentro da operadora, CGNAT), e não o público? Só vale se o alternativo for mesmo um IP de
     /// operadora ou privado: o candidato alternativo de teste (127.0.0.2) e qualquer outro IP público nunca contam, então a telemetria não vê "direto pela operadora" à toa.
@@ -325,7 +333,7 @@ public sealed class Tunnel : IDisposable
         if (code.Relay != null) cands.Add(new(code.Relay, CandKind.PeerRelay));
         if (Turn?.Relayed != null) cands.Add(new(code.Endpoint, CandKind.ViaMyRelay));
         lock (_candGate) { _cands = cands.ToArray(); _candPong = new long[_cands.Length]; Array.Fill(_candPong, -1); }
-        _target = cands[0];
+        TrocarAlvo(cands[0], contaTroca: false);
         _validated = false;
         lock (_seenAsSent) _seenAsSent.Clear();
         PermitPeer();
@@ -429,9 +437,22 @@ public sealed class Tunnel : IDisposable
         if (!best.Equals(_target) || !_validated)
         {
             Log.Info($"Caminho de envio: {best}" + (best.Kind == CandKind.Direct ? "." : " (o direto não respondeu)."));
-            _target = best;
+            TrocarAlvo(best, contaTroca: _target != null && !best.Equals(_target));
         }
         _validated = true;
+    }
+
+    /// <summary>Troca o destino fechando a conta do tempo no relay. <paramref name="contaTroca"/>: só troca de verdade entra na contagem (a primeira escolha e a revalidação do mesmo destino, não).</summary>
+    void TrocarAlvo(Cand novo, bool contaTroca)
+    {
+        lock (_pathGate)
+        {
+            long now = _clock.ElapsedMilliseconds;
+            if (_target is { Kind: not CandKind.Direct } && _targetSinceMs > 0) _relayMsAcc += now - _targetSinceMs;
+            if (contaTroca) _pathSwitches++;
+            _targetSinceMs = Math.Max(1, now);
+            _target = novo;
+        }
     }
 
     byte[] PunchPayload()
@@ -797,4 +818,5 @@ public sealed class SeqTracker
 
     public double TotalLossPct { get { lock (_gate) { long t = _received + _lost; return t == 0 ? 0 : 100.0 * _lost / t; } } }
     public long Received { get { lock (_gate) return _received; } }
+    public long Lost { get { lock (_gate) return _lost; } }
 }

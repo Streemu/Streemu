@@ -96,8 +96,9 @@ public sealed partial class MainForm : Form
         _audio.SelectedIndex = 0;
         _encoder.Items.AddRange(new object[] { "Automático", "NVIDIA (NVENC)", "AMD (AMF)", "Intel (QSV)", "CPU (x264)", "Windows (Media Foundation)" });
         _encoder.SelectedIndex = 0;
-        _latency.Items.AddRange(new object[] { "80 ms", "120 ms", "200 ms", "400 ms" });
-        _latency.SelectedIndex = 0; // 80 ms: no teste de campo ficou bem mais fluido que 120 ms
+        // "Automática": quem assiste calcula pela ida e volta do túnel (Media/LatenciaSrt.cs); quem transmite fica nos 80 ms, que no teste de campo ficaram bem mais fluidos que 120 ms
+        _latency.Items.AddRange(new object[] { "Automática", "80 ms", "120 ms", "200 ms", "400 ms" });
+        _latency.SelectedIndex = 0;
         RefreshSources();
     }
 
@@ -214,7 +215,8 @@ public sealed partial class MainForm : Form
         _source.SelectedIndex = idx >= 0 ? idx : (items.Count > 0 ? 0 : -1);
     }
 
-    int LatencyMs => int.Parse(((string)_latency.SelectedItem!).Split(' ')[0]);
+    /// <summary>Latência do envio (quem transmite): a do combo, ou 80 ms na Automática (subir no transmissor atrasa todos os espectadores da live).</summary>
+    int LatencyMs => LatenciaAutomatica ? LatenciaSrt.PadraoMs : int.Parse(((string)_latency.SelectedItem!).Split(' ')[0]);
 
     void SetTransmitInputs(bool enabled)
     {

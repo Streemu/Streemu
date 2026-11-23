@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "9e729ec7ba3e98a80b5d7cf7f85e03ceb652b632",
-    "notas":  "- Troca de qualidade compara o FPS pedido, não o limitado pelo monitor\n- 90 e 120 FPS (beta), limitados a 1440p",
+    "privado":  "5dd87f16bafe076ef6928ee224c0528645d00dd9",
+    "notas":  "- Prévias só se atualizam com o Streemu em foco; item em Novidades\n- Transmitir: grade de 3 colunas por padrão e prévias atualizadas a cada 8 s\n- Mostra prévias de telas e janelas na aba Transmitir",
     "obrigatoria":  false
 }

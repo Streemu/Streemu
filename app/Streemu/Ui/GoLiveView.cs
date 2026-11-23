@@ -102,7 +102,7 @@ public sealed class GoLiveView : UserControl
         _back.KeyDown += (_, e) => { if (e.KeyCode is Keys.Enter or Keys.Space) { _back.Focus(); if (!_busy) BackRequested?.Invoke(); e.Handled = true; } };
         _grid.BackColor = Theme.Surface;
         _go.Enabled = false;
-        _watch.Tick += (_, _) => WatchSources();
+        _watch.Tick += (_, _) => { WatchSources(); RefreshThumbnails(); };
         VisibleChanged += (_, _) => UpdateActivity();
         HandleCreated += (_, _) => { UpdateActivity(); ShowBroadcastIcon(); };
     }
@@ -197,7 +197,7 @@ public sealed class GoLiveView : UserControl
             _grid.BackColor = Theme.Surface; // os cartões ficam direto sobre o fundo (página e painel do Início), sem placa atrás da lista; os cartões também limpam com Surface
             foreach (var choice in new[] { _resSeg, _fpsSeg, _privacySeg }) choice.Outline = page;
             _audioSeg.Outline = page;
-            int width = Math.Max(1, Math.Min(S(page ? 520 : UiMetrics.PreparationMaxWidth), ClientSize.Width - pad * 2)); // a coluna da página é estreita e centrada, como no desenho
+            int width = Math.Max(1, Math.Min(S(UiMetrics.PreparationMaxWidth), ClientSize.Width - pad * 2)); // conteúdo centrado e alinhado à grade
             _back.Visible = !_inline || _showBack;
             int outerX = (ClientSize.Width - width) / 2;
             _back.Bounds = new Rectangle(outerX, gap, Math.Min(width, TextRenderer.MeasureText(_back.Text, _back.Font).Width + S(16)), S(UiMetrics.ActionHeight)); // só o texto é clicável
@@ -214,7 +214,7 @@ public sealed class GoLiveView : UserControl
             _title.Location = new Point(x, y); y += _title.PreferredHeight + gap;
             _showLabel.Visible = !_changing;
             if (_showLabel.Visible) { _showLabel.Location = new Point(x, y); y += _showLabel.PreferredHeight + S(6); }
-            // Grade de todas as fontes (sem "Mostrar mais"): quantas colunas couberem na largura útil de AGORA, com cartão de largura mínima legível, e os
+            // Grade de todas as fontes (sem "Mostrar mais"): 3 colunas, menos se o cartão ficar pequeno demais para a largura útil de AGORA (mais só se ficar grande), e os
             // cartões dividem a largura toda. Recalculada a cada layout (janela, escala do Windows e escala do Streemu mudam a largura útil).
             y = ArrumarGrade(x, y, available) + gap;
             SettingsLayout.Constrain(_options, available);
@@ -223,7 +223,7 @@ public sealed class GoLiveView : UserControl
             int optionsHeight = _options.Controls.Cast<Control>().Where(c => c.Visible).Select(c => c.Bottom + c.Margin.Bottom).DefaultIfEmpty(0).Max();
             _options.MaximumSize = new Size(available, Math.Max(1, optionsHeight)); // sem isso a tabela ficava ~500 px mais alta que as opções e a rolagem da página ganhava um vazio no fim
             y += optionsHeight + gap;
-            if (_summary.Visible) { _summary.AutoSize = true; _summary.MaximumSize = new Size(available, 0); _summary.Location = new Point(pad, y); y += _summary.PreferredHeight + gap; }
+            if (_summary.Visible) { _summary.AutoSize = true; _summary.MaximumSize = new Size(available, 0); _summary.Location = new Point(x, y); y += _summary.PreferredHeight + gap; }
             _failure.FitWidth(available); _failure.Location = new Point(x, y);
             _body.AutoScrollMinSize = new Size(0, y - _body.AutoScrollPosition.Y + (_failure.Visible ? _failure.Height + gap : 0));
         }
@@ -234,17 +234,33 @@ public sealed class GoLiveView : UserControl
     /// sem depender do que o WinForms mediu antes. Antes eram no máximo 2 colunas num FlowLayoutPanel que passava para 1 se faltasse 1 px, e a lista mostrava só 4
     /// peças até clicar em "Mostrar mais" (teste de primeiro uso, 2026-11-19). Quem rola é a página (<c>_body</c>, com a barra do tema).
     /// </summary>
+    /// <summary>Cartão mínimo legível (dp) na coluna do Início e na página: a coluna de 344 dp tem ~280 dp úteis, o que dá 3 cartões de ~86 dp.</summary>
+    const int MinCardInline = 80, MinCardPage = 96, BigCard = 220;
+
+    /// <summary>
+    /// Regra das colunas (px já na escala atual): 3 por padrão; cai para 2 e depois 1 quando o cartão ficaria menor que <paramref name="minCard"/>;
+    /// sobe para 4 só se cada cartão, com 4 colunas, continuar com <paramref name="bigCard"/> ou mais. Pública para o check de interface conferir a mesma regra.
+    /// </summary>
+    public static int ColunasDaGrade(int available, int cardGap, int minCard, int bigCard)
+    {
+        int Card(int cols) => (available - (cols - 1) * cardGap) / cols;
+        if (Card(4) >= bigCard) return 4;
+        int columns = 3;
+        while (columns > 1 && Card(columns) < minCard) columns--;
+        return columns;
+    }
+
     int ArrumarGrade(int x, int y, int available)
     {
-        int cardGap = S(10), minCard = S(_inline ? 128 : 150);
-        int columns = Math.Max(1, (available + cardGap) / (minCard + cardGap));
+        int cardGap = S(10);
+        int columns = ColunasDaGrade(available, cardGap, S(_inline ? MinCardInline : MinCardPage), S(BigCard));
         int cardWidth = Math.Max(1, (available - (columns - 1) * cardGap) / columns);
         int extra = Math.Max(0, available - (columns * cardWidth + (columns - 1) * cardGap)); // os pixels que sobram vão 1 a 1 para as primeiras colunas
         int rowHeight = 0;
         for (int i = 0; i < _tiles.Count; i++)
         {
             var tile = _tiles[i];
-            tile.Visible = true; tile.Compact = !_inline;
+            tile.Visible = true;
             tile.FitWidth(cardWidth + (i % columns < extra ? 1 : 0));
             rowHeight = Math.Max(rowHeight, tile.Height);
         }
@@ -364,7 +380,7 @@ public sealed class GoLiveView : UserControl
     void AddTile(CaptureSource s)
     {
         string caption = s.IsWindow ? WindowTitle(s) : ScreenCaption(s);
-        var tile = new Tile(s, caption, S(UiMetrics.SourceWidth), S(UiMetrics.SourceHeight)) { Selected = s == SelectedSource };
+        var tile = new Tile(s, caption, UiMetrics.SourceWidth, UiMetrics.SourceHeight) { Selected = s == SelectedSource };
         tile.Click += (_, _) => Select(tile);
         // Selecionar uma miniatura nunca começa a transmissão.
         _tiles.Add(tile);
@@ -417,6 +433,21 @@ public sealed class GoLiveView : UserControl
         finally { _watching = false; }
     }
 
+    DateTime _lastPreviewRefresh = DateTime.Now;
+    /// <summary>
+    /// Atualiza a prévia das peças que estão à vista a cada ~8 s enquanto a tela está aberta (o _watch só roda com ela visível, a janela fora de minimizada
+    /// e sem transmissão em andamento). Peça cuja captura anterior ainda não terminou é pulada; a imagem antiga é descartada pelo setter do cartão.
+    /// </summary>
+    void RefreshThumbnails()
+    {
+        if (!_loaded || IsDisposed || Form.ActiveForm == null || Form.ActiveForm != FindForm() || DateTime.Now - _lastPreviewRefresh < TimeSpan.FromSeconds(8)) return;
+        // só com o Streemu em foco: o painel do Início fica visível com o app atrás do jogo, e um PrintWindow no jogo a cada 8 s pode dar engasgo nele
+        _lastPreviewRefresh = DateTime.Now;
+        var viewport = _body.RectangleToScreen(_body.ClientRectangle);
+        foreach (var t in _tiles.ToList())
+            if (!t.Loading && !t.IsDisposed && t.Visible && viewport.IntersectsWith(t.RectangleToScreen(t.ClientRectangle))) LoadThumbnail(t);
+    }
+
     void SyncSources(List<CaptureSource> fresh)
     {
         if (fresh.Select(s => (s.Handle, s.IsWindow, s.Label)).SequenceEqual(_sources.Select(s => (s.Handle, s.IsWindow, s.Label)))) return;
@@ -465,6 +496,8 @@ public sealed class GoLiveView : UserControl
         var src = tile.Source;
         var token = _lifetime.Token;
         Bitmap? thumbnail = null;
+        if (tile.Loading) return;
+        tile.Loading = true;
         try
         {
             await ThumbnailGate.WaitAsync(token);
@@ -483,7 +516,7 @@ public sealed class GoLiveView : UserControl
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { Log.Info("[transmitir] miniatura indisponível: " + ex.Message); }
-        finally { thumbnail?.Dispose(); }
+        finally { thumbnail?.Dispose(); tile.Loading = false; }
     }
 
     static Bitmap? CaptureWindow(IntPtr hwnd)
@@ -570,6 +603,9 @@ public sealed class GoLiveView : UserControl
         public CaptureSource Source { get; }
         public Size ThumbSize { get; }
         public string Caption { get; }
+        /// <summary>Há uma captura da prévia em andamento (evita duas ao mesmo tempo na mesma peça).</summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool Loading { get; set; }
 
         public Tile(CaptureSource source, string caption, int w, int h)
         {
@@ -588,20 +624,7 @@ public sealed class GoLiveView : UserControl
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool Selected { get => _selected; set { _selected = value; Invalidate(); } }
 
-        /// <summary>
-        /// Na página cheia (janela estreita ou "Transmitir" aberto sozinho) a peça é um cartão só com ícone e nome, sem miniatura, como no desenho; no painel do Início continua com a miniatura.
-        /// </summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public bool Compact { get; set; }
-        bool Horizontal => Width < Font.Height * 12; // cartão estreito: ícone ao lado do nome; largo: ícone em cima
-        int IconSize => Font.Height * 2;
-
-        public void FitWidth(int width)
-        {
-            if (!Compact) { Size = new Size(width, ThumbHeightFor(width) + CaptionHeight + 10); return; }
-            bool horizontal = width < Font.Height * 12;
-            Size = new Size(width, horizontal ? IconSize + Font.Height + 10 : IconSize + Font.Height * 2 + 18);
-        }
+        public void FitWidth(int width) => Size = new Size(width, ThumbHeightFor(width) + CaptionHeight + 10);
         /// <summary>A miniatura ocupa a largura do cartão menos a borda; a legenda (ícone e nome) fica numa linha embaixo dela, como no desenho.</summary>
         static int ThumbHeightFor(int width) => Math.Max(1, width - 10) * 9 / 16;
         int CaptionHeight => Font.Height + 16;
@@ -618,15 +641,15 @@ public sealed class GoLiveView : UserControl
             g.Clear(Theme.Surface);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             var card = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
-            if (Compact) { PaintCompact(g, card); return; }
-            using (var cardPath = Rounded(card, 10))
+            int radius = Math.Clamp(Width / 14, 5, 10); // cartão estreito: cantos e traços menores
+            using (var cardPath = Rounded(card, radius))
             {
                 using (var bg = new SolidBrush(Theme.SurfaceInput)) g.FillPath(bg, cardPath);
-                using var pen = new Pen(_selected ? Theme.Accent : _hover || Focused ? Theme.NeutralHover : Theme.Neutral, _selected ? 3 : 2);
+                using var pen = new Pen(_selected ? Theme.Accent : _hover || Focused ? Theme.NeutralHover : Theme.Neutral, _selected ? (Width < 130 ? 2.5f : 3) : (Width < 130 ? 1.5f : 2));
                 g.DrawPath(pen, cardPath);
             }
             var thumbRect = new Rectangle(card.X + 4, card.Y + 4, Math.Max(1, card.Width - 8), Math.Max(1, card.Width - 8) * 9 / 16);
-            using (var round = Rounded(thumbRect, 7))
+            using (var round = Rounded(thumbRect, Math.Max(3, radius - 3)))
             {
                 using (var bg = new SolidBrush(Theme.SurfaceRaised)) g.FillPath(bg, round);
                 if (_image != null) { g.SetClip(round); g.DrawImage(_image, thumbRect); g.ResetClip(); }
@@ -635,47 +658,24 @@ public sealed class GoLiveView : UserControl
             if (_selected) DrawCheck(g, thumbRect);
         }
 
-        void PaintCompact(Graphics g, Rectangle card)
-        {
-            using (var path = Rounded(card, 10))
-            {
-                using (var bg = new SolidBrush(_selected ? Theme.CardSelected : _hover ? Theme.SurfaceRaised : Theme.SurfaceInput)) g.FillPath(bg, path);
-                using var pen = new Pen(_selected ? Theme.CardSelectedBorder : Theme.CardBorder, _selected ? 2.5f : 2);
-                g.DrawPath(pen, path);
-            }
-            var icon = Source.IsWindow ? UiIcon.Window : UiIcon.Monitor;
-            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
-            if (Horizontal)
-            {
-                int x = card.X + 14;
-                UiIcons.Draw(g, icon, new Rectangle(x, card.Y + (card.Height - IconSize) / 2, IconSize, IconSize), Theme.Text);
-                TextRenderer.DrawText(g, Caption, Font, new Rectangle(x + IconSize + 12, card.Y, Math.Max(1, card.Right - x - IconSize - 22), card.Height), Theme.Text, flags | TextFormatFlags.Left);
-            }
-            else
-            {
-                UiIcons.Draw(g, icon, new Rectangle(card.X + (card.Width - IconSize) / 2, card.Y + 9, IconSize, IconSize), Theme.Text);
-                TextRenderer.DrawText(g, Caption, Font, new Rectangle(card.X + 8, card.Y + 9 + IconSize + 2, Math.Max(1, card.Width - 16), Font.Height + 6), Theme.Text, flags | TextFormatFlags.HorizontalCenter);
-            }
-            if (_selected) DrawCheck(g, new Rectangle(card.X, card.Y, card.Width + 2, card.Height));
-        }
-
         /// <summary>A legenda fica embaixo da miniatura, com o ícone de tela ou de janela e o nome em negrito.</summary>
         void DrawCaption(Graphics g, Rectangle thumb)
         {
             var row = new Rectangle(thumb.X, thumb.Bottom, thumb.Width, Math.Max(1, Height - 4 - thumb.Bottom));
-            int icon = Font.Height;
+            int icon = Width < 130 ? Font.Height * 4 / 5 : Font.Height;
             UiIcons.Draw(g, Source.IsWindow ? UiIcon.Window : UiIcon.Monitor, new Rectangle(row.X + 6, row.Y + (row.Height - icon) / 2, icon, icon), Theme.Text);
-            using var bold = new Font(Font, FontStyle.Bold);
-            TextRenderer.DrawText(g, Caption, bold, new Rectangle(row.X + 6 + icon + 8, row.Y, Math.Max(1, row.Width - icon - 20), row.Height), Theme.Text,
+            using var bold = new Font(Font.FontFamily, Width < 130 ? Font.Size * 0.88f : Font.Size, FontStyle.Bold, Font.Unit); // cartão estreito: nome um pouco menor, com reticências
+            TextRenderer.DrawText(g, Caption, bold, new Rectangle(row.X + 6 + icon + 6, row.Y, Math.Max(1, row.Width - icon - 18), row.Height), Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         }
 
         /// <summary>O selo de "esta é a fonte" no canto de cima à direita.</summary>
         static void DrawCheck(Graphics g, Rectangle thumb)
         {
-            var badge = new Rectangle(thumb.Right - 26, thumb.Y + 6, 20, 20);
+            int size = Math.Clamp(thumb.Width / 6, 14, 20), margin = size >= 20 ? 6 : 4; // selo menor em cartão estreito
+            var badge = new Rectangle(thumb.Right - size - margin, thumb.Y + margin, size, size);
             using (var fill = new SolidBrush(Theme.Accent)) g.FillEllipse(fill, badge);
-            UiIcons.Draw(g, UiIcon.Check, Rectangle.Inflate(badge, -4, -4), Color.White);
+            UiIcons.Draw(g, UiIcon.Check, Rectangle.Inflate(badge, -size / 5, -size / 5), Color.White);
         }
 
         static GraphicsPath Rounded(Rectangle r, int radius)

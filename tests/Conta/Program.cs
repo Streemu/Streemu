@@ -660,6 +660,107 @@ Caso("nome-da-sala-so-vale-com-conta-ja-com-nome-e-depois-da-troca-recente", asy
     Exige(c.AdotarNomeDaSala("Caio") && c.Nome == "Caio", "passado o tempo, vale");
 });
 
+// ---------------------------------------------------------------- ids do aparelho (spec 029, seção 8.2)
+
+static bool Hex16(string? v) => v is { Length: 16 } && v.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
+static string Sha16(string texto) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(texto)))[..16].ToLowerInvariant();
+const string PcDeTeste = "0123456789abcdef", HwDeTeste = "fedcba9876543210";
+
+Caso("ids-da-telemetria-nao-mudaram-com-o-refator", () =>
+{
+    // valores de referência calculados aqui, com a fórmula antiga (spec 009): se o Ids.cs mudar o resultado, o servidor deixa de ligar os relatórios antigos
+    Exige(Streemu.Telemetria.Ids.HashPc(("3f2a9c1e-aaaa-bbbb-cccc-0123456789ab", true)) == Sha16("streemu-pc:3f2a9c1e-aaaa-bbbb-cccc-0123456789ab"), "Ids.Pc com MachineGuid");
+    Exige(Streemu.Telemetria.Ids.HashPc(("abcdefabcdefabcd", false)) == "abcdefabcdefabcd", "Ids.Pc do fallback aleatório é o próprio valor salvo, sem novo hash");
+    var partes = new[] { "Win32_ComputerSystemProduct=UUID-DE-TESTE-1234", "Win32_BaseBoard=SERIAL-DA-PLACA", "Win32_BIOS=SERIAL-DA-BIOS" };
+    Exige(Streemu.Telemetria.Ids.HashHw(partes) == Sha16("streemu-hw:" + string.Join("|", partes)), "Ids.Hardware()");
+    Exige(Streemu.Telemetria.Ids.HashHw(partes.Take(1).ToArray()) == null && Streemu.Telemetria.Ids.HashHw(null) == null, "menos de duas partes: nulo");
+    // o Ids.Pc real continua sendo o hash do mesmo MachineGuid (ou do arquivo, sem ele) pela fórmula antiga
+    var fonte = Streemu.Telemetria.Ids.FontePc();
+    Exige(Streemu.Telemetria.Ids.Pc == (fonte.EhMachineGuid ? Sha16("streemu-pc:" + fonte.Texto) : fonte.Texto), "Ids.Pc real = fórmula antiga sobre a fonte");
+    return Task.CompletedTask;
+});
+
+Caso("ids-da-conta-tem-prefixo-proprio-e-nao-cruzam-com-os-da-telemetria", () =>
+{
+    var fonte = Streemu.Telemetria.Ids.FontePc();
+    string pc = IdsConta.Pc ?? "";
+    Exige(Hex16(pc), "pc da conta: 16 hex minúsculos");
+    Exige(pc == Sha16("streemu-conta-pc:" + fonte.Texto), "pc da conta = SHA-256 de 'streemu-conta-pc:' + a mesma fonte do Ids.Pc");
+    Exige(pc != Streemu.Telemetria.Ids.Pc, "o pc da conta não pode ser o da telemetria");
+    Exige(Streemu.Telemetria.Ids.HashPcConta(("00000000-1111", true)) == Sha16("streemu-conta-pc:00000000-1111"), "fórmula do pc");
+    Exige(Streemu.Telemetria.Ids.HashPcConta(("abcdefabcdefabcd", false)) == Sha16("streemu-conta-pc:abcdefabcdefabcd"), "no fallback aleatório, a conta usa o mesmo valor salvo (estável)");
+    var partes = new[] { "Win32_ComputerSystemProduct=UUID-DE-TESTE-1234", "Win32_BaseBoard=SERIAL-DA-PLACA" };
+    string? hw = Streemu.Telemetria.Ids.HashHwConta(partes);
+    Exige(hw == Sha16("streemu-conta-hw:" + string.Join("|", partes)) && hw != Streemu.Telemetria.Ids.HashHw(partes), "hw da conta: prefixo próprio, diferente do da telemetria");
+    Exige(Streemu.Telemetria.Ids.HashHwConta(partes.Take(1).ToArray()) == null, "sem partes suficientes o hw da conta é nulo");
+    Exige(IdsConta.Atuais().Pc == pc, "Atuais() devolve o pc");
+    return Task.CompletedTask;
+});
+
+Caso("ids-iniciar-da-entrada-e-da-acao-levam-pc-e-hw-so-quando-existem", async () =>
+{
+    // 1) entrada, sem hw pronto: só o pc
+    var (c, _, f) = Novo();
+    string? hw = null;
+    c.IdsDoAparelho = () => (PcDeTeste, hw);
+    f.Rota = (m, p, b) => p == "/conta/login/iniciar" ? (200, new JsonObject { ["pedido"] = new string('a', 32) }) : (404, new JsonObject());
+    Exige((await c.IniciarEntradaAsync()).Ok, "iniciar sem hw");
+    var corpo = f.Pedidos.Last(p => p.Path == "/conta/login/iniciar").Corpo!;
+    Exige(corpo["pc"]?.GetValue<string>() == PcDeTeste, "pc vai no iniciar da entrada");
+    Exige(!corpo.ContainsKey("hw"), "sem hw pronto o campo não vai (nem nulo, nem vazio)");
+    Exige(corpo["acao"]!.GetValue<string>() == "entrar" && corpo.ContainsKey("desafio"), "o resto do corpo não mudou");
+    // 2) hw pronto: os dois
+    hw = HwDeTeste;
+    Exige((await c.IniciarEntradaAsync()).Ok, "iniciar com hw");
+    corpo = f.Pedidos.Last(p => p.Path == "/conta/login/iniciar").Corpo!;
+    Exige(corpo["pc"]?.GetValue<string>() == PcDeTeste && corpo["hw"]?.GetValue<string>() == HwDeTeste, "com hw pronto, os dois vão");
+    // 3) ação com token
+    var (c2, _, f2, _, _, _) = await Entrar();
+    c2.IdsDoAparelho = () => (PcDeTeste, HwDeTeste);
+    f2.Rota = RotaAcao(2);
+    f2.Pedidos.Clear();
+    Exige((await c2.IniciarAcaoAsync(AcaoConta.SairDeTodos)).Ok, "iniciar da ação");
+    corpo = f2.Pedidos.Single(p => p.Path == "/conta/login/iniciar").Corpo!;
+    Exige(corpo["pc"]?.GetValue<string>() == PcDeTeste && corpo["hw"]?.GetValue<string>() == HwDeTeste && corpo["acao"]!.GetValue<string>() == "sessoes", "a ação também leva pc e hw");
+    // 4) valor fora do formato nunca sai: nulo, vazio, maiúsculo, curto
+    foreach (var ruim in new string?[] { null, "", "ABCDEF0123456789", "abc", "ghijklmnopqrstuv" })
+    {
+        var (c3, _, f3) = Novo();
+        c3.IdsDoAparelho = () => (ruim, ruim);
+        f3.Rota = (m, p, b) => p == "/conta/login/iniciar" ? (200, new JsonObject { ["pedido"] = new string('a', 32) }) : (404, new JsonObject());
+        await c3.IniciarEntradaAsync();
+        var b3 = f3.Pedidos.Last().Corpo!;
+        Exige(!b3.ContainsKey("pc") && !b3.ContainsKey("hw"), $"id fora do formato ('{ruim}') não vai");
+    }
+});
+
+Caso("ids-sem-delegado-nada-vai-e-o-renovar-leva-pc-e-hw-quando-prontos", async () =>
+{
+    var (c, s, f, _, _, _) = await Entrar();
+    f.Rota = (m, p, b) => p == "/conta/renovar" ? (200, Sessao("sa1.r.x", Agora() + 3600)) : (404, new JsonObject());
+    f.Pedidos.Clear();
+    Exige(await c.GarantirAsync() == EstadoSessao.Ok, "renovar sem delegado");
+    var sem = f.Pedidos.Single(p => p.Path == "/conta/renovar").Corpo!;
+    Exige(!sem.ContainsKey("pc") && !sem.ContainsKey("hw"), "sem delegado, nenhum id");
+    Exige(sem.ContainsKey("dispositivo") && sem.ContainsKey("segredo") && sem.ContainsKey("apelido"), "o corpo antigo continua inteiro");
+    // pc sem hw (WMI ainda rodando)
+    string? hw = null;
+    c.IdsDoAparelho = () => (PcDeTeste, hw);
+    f.Pedidos.Clear();
+    Exige(await c.GarantirAsync() == EstadoSessao.Ok, "renovar com pc");
+    var meio = f.Pedidos.Single(p => p.Path == "/conta/renovar").Corpo!;
+    Exige(meio["pc"]?.GetValue<string>() == PcDeTeste && !meio.ContainsKey("hw"), "renovar com pc e sem hw");
+    // o hw fica pronto: segue na renovação seguinte
+    hw = HwDeTeste;
+    f.Pedidos.Clear();
+    Exige(await c.GarantirAsync() == EstadoSessao.Ok, "renovar com hw");
+    var cheio = f.Pedidos.Single(p => p.Path == "/conta/renovar").Corpo!;
+    Exige(cheio["pc"]?.GetValue<string>() == PcDeTeste && cheio["hw"]?.GetValue<string>() == HwDeTeste, "renovar com pc e hw");
+    // os ids não vão para o estado salvo
+    var estadoJson = System.Text.Json.JsonSerializer.Serialize(s);
+    Exige(!estadoJson.Contains(PcDeTeste) && !estadoJson.Contains(HwDeTeste), "pc e hw não podem estar no estado salvo");
+});
+
 Console.WriteLine($"casos: {falhas} falha(s) em {total}");
 return falhas == 0 ? 0 : 1;
 

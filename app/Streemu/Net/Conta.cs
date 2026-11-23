@@ -128,7 +128,7 @@ public sealed partial class Conta : IDisposable
         var verificador = Base64Url(RandomNumberGenerator.GetBytes(32));
         var segredo = Base64Url(RandomNumberGenerator.GetBytes(32));
         var desafio = Base64Url(SHA256.HashData(Encoding.UTF8.GetBytes(verificador)));
-        var r = await ChamarAsync(HttpMethod.Post, "/conta/login/iniciar", new JsonObject { ["desafio"] = desafio, ["acao"] = "entrar" }, null);
+        var r = await ChamarAsync(HttpMethod.Post, "/conta/login/iniciar", ComIds(new JsonObject { ["desafio"] = desafio, ["acao"] = "entrar" }), null);
         if (r.SemRede) return new(false, null, TextoSemRede);
         if (r.Status != HttpStatusCode.OK || r.Json?["pedido"]?.GetValue<string>() is not string pedido)
             return new(false, null, TextoDe(r, "O servidor não aceitou começar o login. Tente de novo em instantes."));
@@ -201,7 +201,7 @@ public sealed partial class Conta : IDisposable
             if (segredo == null || string.IsNullOrEmpty(_estado.DispositivoId)) { Apagar(); return EstadoSessao.Encerrada; }
             // o apelido só vai enquanto a conta não tem nome: o servidor o adota na migração (spec 027, seção 5). Com nome, ele vale mais que qualquer apelido local.
             var corpo = new JsonObject { ["dispositivo"] = _estado.DispositivoId, ["segredo"] = segredo, ["apelido"] = _estado.ContaNome == null ? ApelidoAtual?.Invoke() ?? "" : "" };
-            var r = await ChamarAsync(HttpMethod.Post, "/conta/renovar", corpo, null);
+            var r = await ChamarAsync(HttpMethod.Post, "/conta/renovar", ComIds(corpo), null);
             if (r.SemRede)
             {
                 // espera crescente; a credencial fica
@@ -228,6 +228,24 @@ public sealed partial class Conta : IDisposable
         }
         finally { _renovando.Release(); }
     }
+
+    /// <summary>
+    /// Quem dá os ids deste aparelho (spec 029, seção 8.2): <c>pc</c> e <c>hw</c>, hashes de 16 hex com prefixo próprio da conta (não cruzam com os da telemetria).
+    /// Chamado a cada login e renovação, então tem que ser instantâneo (só devolve o que já está em memória; o <c>hw</c> vem do WMI em segundo plano e
+    /// fica nulo até ficar pronto). Sem o delegado, nenhum id vai. Não grava nada e não vai a log nem a telemetria.
+    /// </summary>
+    public Func<(string? Pc, string? Hw)>? IdsDoAparelho { get; set; }
+
+    /// <summary>Acrescenta <c>pc</c> e <c>hw</c> ao corpo. Campo que não existe fica de fora (nem nulo, nem texto vazio); fora de 16 hex minúsculos também.</summary>
+    JsonObject ComIds(JsonObject corpo)
+    {
+        (string? pc, string? hw) = IdsDoAparelho?.Invoke() ?? default;
+        if (IdValido(pc)) corpo["pc"] = pc;
+        if (IdValido(hw)) corpo["hw"] = hw;
+        return corpo;
+    }
+
+    static bool IdValido(string? id) => id is { Length: 16 } && id.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
 
     /// <summary>Quem dá o apelido salvo de antes da spec 027 (o servidor o adota como nome se a conta ainda não tem). Só é lido enquanto a conta não tem nome. Opcional.</summary>
     public Func<string>? ApelidoAtual { get; set; }
@@ -296,7 +314,7 @@ public sealed partial class Conta : IDisposable
     {
         var verificador = Base64Url(RandomNumberGenerator.GetBytes(32));
         var desafio = Base64Url(SHA256.HashData(Encoding.UTF8.GetBytes(verificador)));
-        var corpo = new JsonObject { ["desafio"] = desafio, ["acao"] = NomeDaAcao(acao) };
+        var corpo = ComIds(new JsonObject { ["desafio"] = desafio, ["acao"] = NomeDaAcao(acao) });
         ChamadaResultado? r = null;
         bool tinhaConta = TemConta;
         for (int tentativa = 0; tentativa < 2; tentativa++)

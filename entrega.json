@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "d52a1aeffb2dd5d128def2ff1e73883cc0261d11",
-    "notas":  "- Mostra a oferta de 30 FPS por cima do jogo, com atalho Ctrl+Alt+3\n- Corrige a oferta de 30 FPS: posicao do card e aviso pela bandeja",
-    "obrigatoria":  false
+    "privado":  "93a9979001dc250b52129b62673b718760516902",
+    "notas":  "- Envia os ids do aparelho no login da conta [obrigatória] (spec 029, E4)",
+    "obrigatoria":  true
 }

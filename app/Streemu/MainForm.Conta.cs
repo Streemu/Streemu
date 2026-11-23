@@ -86,6 +86,8 @@ public sealed partial class MainForm
         _conta = new Conta(serverUrl, _state, SalvarConta);
         _conta.Changed += () => Ui(() => { AtualizarContaUi(); AplicarNomeDaConta(); }); // MainForm.Nome.cs: o nome é da conta
         _conta.ApelidoAtual = () => _apelidoAntigo ?? ""; // só vai ao servidor enquanto a conta não tem nome (migração)
+        _conta.IdsDoAparelho = IdsConta.Atuais; // spec 029, 8.2: pc e hw no login e no renovar, com ou sem diagnóstico; o hw chega quando o WMI acabar
+        if (!Automated) IdsConta.IniciarHardware(); // em teste automático não há WMI (a telemetria também não sobe)
         _conta.NomeAdotadoNaMigracao += nome => Ui(() => AvisarNomeAdotado(nome));
         var c = _conta;
         RelayConfig.Token = async () => c.TemConta ? await c.AcessoAsync() : null; // relay, ffmpeg e mpv só atendem quem tem conta

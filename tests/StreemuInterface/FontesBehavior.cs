@@ -25,7 +25,7 @@ static class FontesBehavior
                 foreach (bool inline in new[] { false, true })
                 {
                     var colunasVistas = new HashSet<int>();
-                    foreach (int larguraDp in new[] { 200, 280, 344, 440, 580, 760, 1100 })
+                    foreach (int larguraDp in new[] { 200, 280, 344, 400, 440, 580, 760, 1100 })
                         foreach (int fontes in new[] { 1, 3, 9, 25 })
                             casos.Add(Caso(fotos, larguraDp, 640, inline, fontes, colunasVistas, escala));
                     casos.Add(Caso(null, 580, 400, inline, 9, colunasVistas, escala));
@@ -94,13 +94,13 @@ static class FontesBehavior
                 int espaco = UiScale.Dp(view, 10);
                 int esperadas = GoLiveView.ColunasDaGrade(grid.Width, espaco, minimo, UiScale.Dp(view, 220));
                 Check(colunas == Math.Min(quantas, esperadas), quem + $": {colunas} colunas, a regra pedia {esperadas} (lista {grid.Width}px, cartão {tiles[0].Width}px, escala {escala})");
-                // o padrão visível: a coluna normal do Início (344 dp) e a página (>= 440 dp) mostram 3 colunas
-                if (quantas >= 3 && ((inline && larguraDp == 344) || (!inline && larguraDp >= 440))) Check(colunas == 3, quem + $": o padrão são 3 colunas, vieram {colunas}");
+                // o padrão visível: a coluna normal do Início (400 dp) e a página (>= 440 dp) mostram 3 colunas
+                if (quantas >= 3 && ((inline && larguraDp >= 344) || (!inline && larguraDp >= 440))) Check(colunas == 3, quem + $": o padrão são 3 colunas, vieram {colunas}");
                 if (larguraDp == 200) Check(colunas == 1 && quantas >= 3 ? true : quantas < 3, quem + ": coluna muito estreita devia cair para 1 coluna");
                 ConfereImagemESelecao(view, tiles[0], quem);
                 if (quantas >= 25) JanelasQueAbremEFecham(view, body, fontes, quem);
                 resultado = $"{quem}: colunas {colunas}, cartão {tiles[0].Width}px, lista {grid.Width}px";
-                if (fotos != null && quantas == 9 && larguraDp is 344 or 580 or 760 && escalaUsuario is 1 or 1.5)
+                if (fotos != null && quantas == 9 && larguraDp is 400 or 580 or 760 && escalaUsuario is 1 or 1.5)
                 {
                     foreach (var t in tiles.Skip(1))
                     {

@@ -234,7 +234,7 @@ public sealed class GoLiveView : UserControl
     /// sem depender do que o WinForms mediu antes. Antes eram no máximo 2 colunas num FlowLayoutPanel que passava para 1 se faltasse 1 px, e a lista mostrava só 4
     /// peças até clicar em "Mostrar mais" (teste de primeiro uso, 2026-11-19). Quem rola é a página (<c>_body</c>, com a barra do tema).
     /// </summary>
-    /// <summary>Cartão mínimo legível (dp) na coluna do Início e na página: a coluna de 344 dp tem ~280 dp úteis, o que dá 3 cartões de ~86 dp.</summary>
+    /// <summary>Cartão mínimo legível (dp) na coluna do Início e na página: a coluna de 400 dp tem ~335 dp úteis, o que dá 3 cartões de ~105 dp (80 dp é o piso quando ela encolhe).</summary>
     const int MinCardInline = 80, MinCardPage = 96, BigCard = 220;
 
     /// <summary>

@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "5dd87f16bafe076ef6928ee224c0528645d00dd9",
-    "notas":  "- Prévias só se atualizam com o Streemu em foco; item em Novidades\n- Transmitir: grade de 3 colunas por padrão e prévias atualizadas a cada 8 s\n- Mostra prévias de telas e janelas na aba Transmitir",
+    "privado":  "27f90315815e2e70452d5e2fca0f5d930e315371",
+    "notas":  "- Coluna Transmitir do Início um pouco mais larga (344 -\u003e 400 dp)",
     "obrigatoria":  false
 }

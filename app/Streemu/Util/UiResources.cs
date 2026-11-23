@@ -11,7 +11,7 @@ public static class UiMetrics
     public const int RailWidth = 64, SidebarWidth = 232, Avatar = 32;
     public const int CardMinWidth = 240, CardMaxWidth = 480, FeaturedCardMaxWidth = 640, CardDetailsHeight = 112;
     public const int CinemaCardHeight = 224;
-    public const int PreparationMaxWidth = 760, PreparationColumnWidth = 344, SourceWidth = 320, SourceHeight = 180;
+    public const int PreparationMaxWidth = 760, PreparationColumnWidth = 400, SourceWidth = 320, SourceHeight = 180;
     public const int SegmentHeight = 34, SegmentMinWidth = 72, SegmentTextPadding = 18, SegmentInset = 3;
     public const int ToggleWidth = 44, ToggleHeight = 24, ToggleInset = 3, ToggleText = 60;
     public const int DisclosureHeight = 42, DiagnosisIcon = 38, DiagnosisText = 56, DiagnosisMinHeight = 60;

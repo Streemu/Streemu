@@ -31,12 +31,17 @@ public sealed class SugestaoFpsCard : Control
         Size = TamanhoIdeal();
     }
 
-    string Apoio => $"Chegam ~{_quadros} quadros por segundo. Em 30 FPS a imagem fica mais estável e o PC trabalha menos.";
+    string? _dica;
 
-    /// <summary>Atualiza o número mostrado e recalcula o tamanho (a escala da tela muda a altura).</summary>
-    public void Mostrar(int quadrosPorSegundo)
+    string Apoio => $"Chegam ~{_quadros} quadros por segundo. Em 30 FPS a imagem fica mais estável e o PC trabalha menos." + (_dica == null ? "" : " " + _dica);
+
+    /// <summary>
+    /// Atualiza o número mostrado e recalcula o tamanho (a escala da tela muda a altura). <paramref name="dica"/> é uma frase a mais
+    /// (o atalho do teclado, quando o card está sobre o jogo e o mouse não está à mão).
+    /// </summary>
+    public void Mostrar(int quadrosPorSegundo, string? dica = null)
     {
-        _quadros = quadrosPorSegundo;
+        _quadros = quadrosPorSegundo; _dica = dica;
         AccessibleName = $"Live abaixo de 60 FPS. {Apoio}";
         Size = TamanhoIdeal();
         PerformLayout(); Invalidate();

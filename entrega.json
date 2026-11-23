@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "27f90315815e2e70452d5e2fca0f5d930e315371",
-    "notas":  "- Coluna Transmitir do Início um pouco mais larga (344 -\u003e 400 dp)",
+    "privado":  "8210e1336221c84936f63a1143f111a5c01f7982",
+    "notas":  "- Ajusta a oferta de 30 FPS aos presets de 90 e 120 FPS\n- Oferece 30 FPS quando a live em 60 chega abaixo da meta\n- Para de reabrir a captura quando nao ajuda e corrige a latencia presumida do SRT",
     "obrigatoria":  false
 }

@@ -16,6 +16,9 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 
 ### Melhorias
 - **Prévia das janelas em Transmitir:** em "O que mostrar", telas e janelas aparecem com uma imagem atual, em grade de 3 colunas, para achar mais rápido o que transmitir.
+- **Oferta de 30 FPS quando o PC não chega a 60:** se a sua live em 60 FPS fica com poucos quadros por segundo, um aviso discreto aparece no canto da janela. Você escolhe "Usar 30 FPS" ou "Agora não". Nada muda sozinho.
+- **Menos travadas ao transmitir de um PC fraco:** se reabrir a captura não aumenta os quadros, o Streemu para de reabrir e a imagem deixa de congelar a cada poucos segundos. Em PC limitado, escolha 30 FPS.
+- **Menos atraso para quem assiste em rede local:** o atraso inicial do vídeo agora usa o tempo real de conexão, em vez de presumir uma conexão lenta.
 - **Menos blocos em live pelo relay:** quem assiste ajusta sozinho o atraso do vídeo à qualidade da conexão. Em "Latência SRT" a opção "Automática" é a padrão.
 - **Envio de arquivo mais rápido:** quando os dois PCs se conectam diretamente, o download tem prioridade na conexão, mesmo com uma live ou um jogo aberto.
 - **Cinema mais leve para quem transmite um filme 4K:** com placa AMD, o filme que vai para quem não tem o arquivo é preparado na placa de vídeo, e o seu filme não engasga mais.

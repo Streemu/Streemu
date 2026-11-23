@@ -19,11 +19,11 @@ public sealed partial class MainForm
         bool relay = link.Tunnel.Target is { Kind: not CandKind.Direct };
         string caminho = CaminhoDaLigacao(link);
         int ms; string motivo;
-        if (LatenciaAutomatica) { ms = LatenciaSrt.Calcular(rtt, relay); motivo = "inicio"; }
+        if (LatenciaAutomatica) { ms = LatenciaSrt.Calcular(rtt, relay, link.Tunnel.ConnectMs); motivo = "inicio"; }
         else { ms = LatencyMs; motivo = "manual"; }
         var esc = new EscaladaLatencia(); esc.Iniciar(ms);
         if (LatenciaAutomatica) _escaladaLatencia[link.SessionId] = esc;
-        string quando = rtt > 0 ? $"ida e volta {rtt:0} ms" : $"ida e volta ainda não medida, presumi {LatenciaSrt.RttPresumidoMs:0} ms";
+        string quando = rtt > 0 ? $"ida e volta {rtt:0} ms" : $"ida e volta ainda não medida, presumi {LatenciaSrt.RttPresumido(link.Tunnel.ConnectMs):0} ms";
         Log.Info(motivo == "manual"
             ? $"Latência do SRT: {ms} ms (a que você escolheu em Latência SRT)."
             : $"Latência do SRT: {ms} ms ({quando}, {(relay ? "pelo relay" : "direto")}).");

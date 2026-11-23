@@ -94,6 +94,7 @@ public sealed class StreamSender : IDisposable
     TimeSpan _backoff = TimeSpan.FromSeconds(10);
     // nesta live o diagnóstico já viu a captura TRAVAR (a nova pegava, a da live não): a próxima queda reabre sem a sonda (ver CanFastReopen)
     bool _staleConfirmed;
+    readonly ReaberturaInutil _inutil = new();
     DateTime _fastReopenAt = DateTime.MinValue;
     readonly List<string> _diagnoses = new();
     // telemetria do caminho de mídia (Telemetria/CaminhoMidia.cs): só observa; nada daqui muda a escolha, a prioridade ou a recuperação
@@ -269,7 +270,7 @@ public sealed class StreamSender : IDisposable
         _session = new FrameStats(s.Preset.Fps);
         _lowCaptureWarned = false;
         _preferDda = rememberedWindow ? false : null; _restarts = 0; _backoff = TimeSpan.FromSeconds(10); _nextDiagnosisAt = DateTime.MinValue;
-        _staleConfirmed = false; _fastReopenAt = DateTime.MinValue;
+        _staleConfirmed = false; _fastReopenAt = DateTime.MinValue; _inutil.Reiniciar();
         _testStuckCount = 0;
         _reconfigure = null;
         _droppedByRemovedPipes = 0;
@@ -1097,6 +1098,10 @@ public sealed class StreamSender : IDisposable
         // jogo fora da frente: ele pode desenhar menos ou parar (minimizado); isso não é captura travada
         // (campo 18:49: o vigia reabriu a captura com o Bloodborne atrás e a transmissão caiu)
         if (_paused || _wantPause) { _stuckSeconds = 0; _lowSeconds = 0; return; }
+        if (_inutil.Observar(Environment.TickCount64 / 1000.0, unique))
+            Log.Info(_inutil.Desistiu
+                ? $"[captura] reabrir não aumentou os quadros ({unique}/s depois); o PC está no limite, não a captura travada. Paro de reabrir e de trocar a captura nesta live. Para ficar liso, escolha 30 FPS."
+                : $"[captura] a captura nova também ficou em ~{unique} quadros/s: reabrir não ajudou.");
         if (unique >= fps * 0.75)
         {
             _stuckSeconds = 0; _lowSeconds = 0;
@@ -1104,6 +1109,7 @@ public sealed class StreamSender : IDisposable
             return;
         }
         _healthySeconds = 0;
+        if (_inutil.Desistiu) return; // duas reaberturas sem ganho: o limite é do PC, e cada reabertura ainda congela a imagem de quem assiste
         // abaixo de 75%: conta como "ruim" até de 30% para cima. Antes só abaixo de 30% contava, e uma captura entregando 20–40 de 60 (a da janela num
         // jogo em tela cheia dá ~17–37/s, campo 2026-11-08 e capture-test de um PC do grupo) nunca passava pela sonda: quem assistia via a live engasgada até o fim
         _lowSeconds++;
@@ -1115,6 +1121,7 @@ public sealed class StreamSender : IDisposable
             string msg = $"a captura caiu de novo para ~{unique} quadros novos/s; nesta live ela já travou e voltou reabrindo, então reabro direto, sem o teste de ~4 s.";
             Log.Info("[captura] " + msg);
             lock (_diagnoses) { _diagnoses.Add($"{now:HH:mm:ss} {msg}"); if (_diagnoses.Count > 20) _diagnoses.RemoveAt(0); }
+            _inutil.Reabriu(Environment.TickCount64 / 1000.0, LiveMedianSince(now.AddSeconds(-20)), fps);
             _restartPending = "captura travada de novo";
             return;
         }
@@ -1262,6 +1269,7 @@ public sealed class StreamSender : IDisposable
         // 12/11, depois de duas reaberturas a sonda seguinte disse "confiro de novo em 40 s" e a live ficou ruim até o fim, 35 s depois)
         _nextDiagnosisAt = DateTime.Now + _backoff;
         _backoff = TimeSpan.FromSeconds(Math.Min(20, _backoff.TotalSeconds * 2));
+        _inutil.Reabriu(Environment.TickCount64 / 1000.0, LiveMedianSince(DateTime.Now.AddSeconds(-20)), Current?.Preset.Fps ?? 60);
         _restartPending = reason;
     }
 

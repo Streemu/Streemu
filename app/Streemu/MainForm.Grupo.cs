@@ -92,6 +92,7 @@ public sealed partial class MainForm
             });
         }
         InitThumbnails();
+        LigarSugestao30Fps();
         _sender.Reconfigured += () => Ui(() =>
         {
             if (_sender.Current is { } c)

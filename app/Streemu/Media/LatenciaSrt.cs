@@ -12,10 +12,17 @@ public static class LatenciaSrt
     /// <summary>Ida e volta presumida quando o túnel ainda não mediu nenhuma (a latência não pode esperar a medida: o player abre agora).</summary>
     public const double RttPresumidoMs = 120;
 
+    /// <summary>
+    /// Sem ida e volta medida, o tempo que a ligação levou para conectar limita a presunção (conectar leva pelo menos uma ida e volta): campo 2026-11-22, notebook e PC na
+    /// mesma rede, conexão em 10 ms e ida e volta real de 6 ms, mas o player abriu com 380 ms (presunção de 120) e a live ficou ~300 ms mais atrasada que o necessário.
+    /// Nunca passa de <see cref="RttPresumidoMs"/>: conexão lenta (furo de NAT) não diz nada sobre a ida e volta.
+    /// </summary>
+    internal static double RttPresumido(long conectouEmMs) => conectouEmMs > 0 ? Math.Min(RttPresumidoMs, conectouEmMs) : RttPresumidoMs;
+
     /// <summary>3 idas e voltas + 20 ms, entre 80 e 600 ms; pelo relay, no mínimo 200 ms. Em rede local dá 80 ms, como o padrão antigo.</summary>
-    public static int Calcular(double rttMs, bool pelaRelay)
+    public static int Calcular(double rttMs, bool pelaRelay, long conectouEmMs = -1)
     {
-        double rtt = rttMs > 0 ? rttMs : RttPresumidoMs;
+        double rtt = rttMs > 0 ? rttMs : RttPresumido(conectouEmMs);
         int ms = (int)Math.Clamp(Math.Round(3 * rtt + 20), MinimoMs, MaximoMs);
         return pelaRelay ? Math.Max(ms, PisoRelayMs) : ms;
     }

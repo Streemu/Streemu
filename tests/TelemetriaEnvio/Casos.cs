@@ -50,6 +50,8 @@ static class Casos
         Caso("rede-trocas-de-caminho-tempo-no-relay-e-perda-da-volta-do-transmissor", RedeCaminhoEVolta);
         Caso("latencia-srt-calculo-por-ida-e-volta-piso-do-relay-e-teto", LatenciaCalculo);
         Caso("latencia-srt-escalada-so-com-perda-sustentada-e-no-maximo-4-vezes", LatenciaEscalada);
+        Caso("vigia-para-de-reabrir-captura-quando-reabrir-nao-ganha-quadros", ReaberturaInutilReplay);
+        Caso("oferta-de-30-fps-so-quando-a-live-em-60-fica-abaixo-e-a-pessoa-decide", SugestaoDe30FpsRegra);
         Caso("anonimo-troca-nomes-por-pessoa-n-e-tira-identidade-do-evento", AnonimizadorTroca);
         Caso("anonimo-sessao-grava-log-e-series-mas-nao-o-texto-livre", ReduzidaGrava);
         Caso("anonimo-envio-sem-nome-sem-identidade-e-so-depois-da-sala", ReduzidaEnvio);
@@ -938,6 +940,71 @@ static class Casos
         Exigir(Streemu.Media.LatenciaSrt.Calcular(900, false) == 600, "teto de 600");
         Exigir(Streemu.Media.LatenciaSrt.Calcular(-1, false) == 380, "sem medida presume 120 ms: " + Streemu.Media.LatenciaSrt.Calcular(-1, false));
         Exigir(Streemu.Media.LatenciaSrt.Subir(400) == 600 && Streemu.Media.LatenciaSrt.Subir(800) == 1000 && Streemu.Media.LatenciaSrt.Subir(1000) == 1000, "subir x1,5 até 1000");
+        // campo 2026-11-22 (notebook): conexão em 10 ms e ida e volta ainda não medida -> 80 ms, não os 380 que atrasavam a live
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(-1, false, 10) == 80, "conexão rápida sem medida: " + Streemu.Media.LatenciaSrt.Calcular(-1, false, 10));
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(-1, false, 169) == 380, "conexão lenta não baixa a presunção: " + Streemu.Media.LatenciaSrt.Calcular(-1, false, 169));
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(-1, true, 10) == 200, "pelo relay mantém o piso de 200 ms");
+        Exigir(Streemu.Media.LatenciaSrt.Calcular(-1, false, -1) == 380, "sem tempo de conexão presume 120 ms");
+    }
+
+    /// <summary>Oferta de 30 FPS: o notebook em 60 (~35/s) recebe; o mesmo notebook com um jogo leve (~58/s) e a live em 30 FPS nunca recebem.</summary>
+    static void SugestaoDe30FpsRegra()
+    {
+        var r = new Streemu.Media.SugestaoDe30Fps();
+        int Segundos(int n, int fps, int quadros, string medida = "sensor") { int mudou = 0; for (int i = 0; i < n; i++) if (r.Observar(fps, quadros, medida)) mudou++; return mudou; }
+        Segundos(24, 60, 35);
+        Exigir(!r.Visivel, "10 s de abertura + 14 s abaixo ainda não bastam");
+        Exigir(Segundos(1, 60, 35) == 1 && r.Visivel && r.Tipico == 35, "o 15º segundo abaixo mostra o card: " + r.Tipico);
+        Segundos(9, 60, 58);
+        Exigir(r.Visivel, "9 s bons não escondem");
+        Exigir(Segundos(1, 60, 58) == 1 && !r.Visivel, "10 s bons seguidos escondem sozinho");
+        r.Reiniciar();
+        Segundos(200, 60, 58);
+        Exigir(!r.Visivel, "jogo leve a 58/s nunca mostra");
+        Segundos(200, 30, 12);
+        Exigir(!r.Visivel, "em 30 FPS nunca mostra, nem com poucos quadros");
+        r.Reiniciar();
+        Segundos(10, 60, 35, "pausa"); Segundos(10, 60, 0, "sem_medida"); Segundos(10, 60, 175);
+        Exigir(!r.Visivel, "pausa, sem medida e despejo do contador são neutros");
+        Segundos(26, 60, 35);
+        Exigir(r.Visivel, "depois dos neutros o card ainda aparece");
+        r.Recusar();
+        Segundos(100, 60, 20);
+        Exigir(!r.Visivel, "recusou: não volta nesta live");
+        r.Reiniciar();
+        Segundos(40, 60, 20);
+        Exigir(r.Visivel, "nova live recomeça e a oferta volta");
+        // engasgos isolados (3 s a cada ~12 s, como no notebook) não acumulam
+        r.Reiniciar(); Segundos(10, 60, 50);
+        for (int i = 0; i < 10; i++) { Segundos(3, 60, 20); Segundos(9, 60, 50); }
+        Exigir(!r.Visivel, "engasgos curtos com patamar bom não mostram");
+        r.Reiniciar();
+        Segundos(200, 90, 40); Segundos(200, 120, 40);
+        Exigir(!r.Visivel, "90 e 120 FPS (beta) não recebem a oferta de 30");
+        Exigir(Streemu.Media.Preset.Pick(0, 60).WithFps(30).Name == "Fonte30" && Streemu.Media.Preset.Pick(1080, 60).WithFps(30).Name == "1080p30", "Fonte e 1080p mantêm a altura");
+        Exigir(Streemu.Media.Preset.All.First(x => x.Name == "2160p60").WithFps(30).Name == "2160p30", "2160p60 vira 2160p30");
+        Exigir(Streemu.Media.Preset.All.First(x => x.Name == "1440p60 ultrawide").WithFps(30).Name == "1440p30 ultrawide", "ultrawide é mantido");
+    }
+
+    /// <summary>Replay do notebook de 2026-11-22: engasgos de 2–3 s que voltam ao mesmo ~35/s depois de reabrir.</summary>
+    static void ReaberturaInutilReplay()
+    {
+        var r = new Streemu.Media.ReaberturaInutil();
+        double t = 0;
+        bool Passar(int segundos, int quadros) { bool inutil = false; for (int i = 0; i < segundos; i++) { t++; inutil |= r.Observar(t, quadros); } return inutil; }
+        r.Reabriu(t, 35, 60);
+        Exigir(!Passar(8, 5) && !r.Desistiu, "ainda dentro da janela de abertura");
+        Exigir(Passar(8, 36) && !r.Desistiu, "1ª reabertura voltou ao mesmo patamar: inútil, mas ainda não desiste");
+        r.Reabriu(t, 35, 60);
+        Passar(20, 36);
+        Exigir(r.Desistiu, "2 inúteis seguidas: o vigia para de reabrir nesta live");
+        r.Reiniciar();
+        Exigir(!r.Desistiu, "nova live recomeça");
+        r.Reabriu(t, 3, 60); // captura realmente travada (~3/s) e a nova pega 58/s: ganho de verdade
+        Exigir(!Passar(20, 58) && !r.Desistiu, "reabertura que resolve não conta");
+        r.Reabriu(t, 17, 60);
+        Passar(20, 40); // 17 -> 40 (>= 1,25x) mas ainda abaixo de 75%: ganhou
+        Exigir(!r.Desistiu, "ganho de 1,25x ou mais conta como útil");
     }
 
     static void LatenciaEscalada()

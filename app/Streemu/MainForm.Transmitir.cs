@@ -74,7 +74,7 @@ public sealed partial class MainForm
         _preparationChanging = changing;
         var current = changing ? _sender.Current : null;
         var view = new GoLiveView(current?.Source, _state.GoLiveProcess, current?.Preset.IsSource == true ? 0 : current?.Preset.Height ?? _state.GoLiveHeight,
-            current?.Preset.Fps ?? _state.GoLiveFps, current != null ? (int)current.Audio : _state.GoLiveAudio, changing, _room?.Friends.ToList() ?? []);
+            current != null ? _sender.RequestedFps : _state.GoLiveFps, current != null ? (int)current.Audio : _state.GoLiveAudio, changing, _room?.Friends.ToList() ?? []);
         _preparation = view;
         view.BackRequested += ReturnFromPreparation;
         view.SubmitRequested += async () => await SubmitPreparationAsync(view);
@@ -123,7 +123,7 @@ public sealed partial class MainForm
         var finished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void Changed() => finished.TrySetResult(_sender.Running && _sender.Current is { } actual
             && actual.Source.Handle == next.Source.Handle && actual.Source.IsWindow == next.Source.IsWindow
-            && actual.Preset.Fps == next.Preset.Fps && actual.Preset.Height == next.Preset.Height && actual.Audio == next.Audio);
+            && _sender.RequestedFps == next.Preset.Fps && actual.Preset.Height == next.Preset.Height && actual.Audio == next.Audio);
         void Stopped() => finished.TrySetResult(false);
         _sender.Reconfigured += Changed; _sender.Stopped += Stopped;
         try { _sender.Reconfigure(next); return await finished.Task.WaitAsync(_closing.Token); }

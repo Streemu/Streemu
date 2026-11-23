@@ -39,6 +39,21 @@ List<(string Tipo, JsonObject Dados)> Esvaziar(List<(string Tipo, JsonObject Dad
 }
 string S(JsonObject o, string k) => o[k]?.GetValue<string>() ?? "";
 
+// 90/120 FPS (beta): Preset.Pick normaliza e limita a 1440p; 30/60 continuam como eram; o limite pela taxa do monitor
+Caso("preset-fps-beta", () =>
+{
+    Exigir(Streemu.Media.Preset.Pick(1080, 60).Name == "1080p60" && Streemu.Media.Preset.Pick(720, 30).Name == "720p30" && Streemu.Media.Preset.Pick(0, 60).Name == "Fonte60", "30/60 mudaram");
+    Exigir(Streemu.Media.Preset.Pick(1080, 45).Name == "1080p30" && Streemu.Media.Preset.Pick(1080, 75).Name == "1080p60", "normalização para baixo");
+    Exigir(Streemu.Media.Preset.Pick(720, 90).Name == "720p90" && Streemu.Media.Preset.Pick(1440, 120).Name == "1440p120" && Streemu.Media.Preset.Pick(1080, 100).Name == "1080p90", "90/120");
+    Exigir(Streemu.Media.Preset.Pick(2160, 120).Name == "1440p120" && Streemu.Media.Preset.Pick(0, 120).Height == 1440 && Streemu.Media.Preset.Pick(0, 90).Name == "Fonte90", "limite de 1440p");
+    Exigir(Streemu.Media.Preset.Pick(2160, 60).Name == "2160p60" && Streemu.Media.Preset.Pick(0, 60).Height == 2160, "60 não é limitado a 1440p");
+    Exigir(Streemu.Media.Preset.Pick(1080, 90).Beta && !Streemu.Media.Preset.Pick(1080, 60).Beta, "beta só acima de 60");
+    Exigir(Streemu.Media.Preset.FpsForRefresh(120, 60) == 60 && Streemu.Media.Preset.FpsForRefresh(120, 59) == 60 && Streemu.Media.Preset.FpsForRefresh(120, 100) == 90
+        && Streemu.Media.Preset.FpsForRefresh(120, 144) == 120 && Streemu.Media.Preset.FpsForRefresh(60, 30) == 30 && Streemu.Media.Preset.FpsForRefresh(90, 20) == 30
+        && Streemu.Media.Preset.FpsForRefresh(120, null) == 120 && Streemu.Media.Preset.FpsForRefresh(30, 60) == 30, "limite pela taxa do monitor");
+    Exigir(Streemu.Media.Preset.Pick(0, 120).WithFps(60).Name == "Fonte60" && Streemu.Media.Preset.Pick(1080, 90).WithFps(60).Name == "1080p60", "WithFps");
+});
+
 Caso("codigos-fechados", () =>
 {
     // a lista que está no docs/TELEMETRIA.md ("Caminho de mídia"): mudou aqui, muda lá

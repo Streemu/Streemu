@@ -83,7 +83,7 @@ TRANSMITIR
 - Mais rápido: botão direito no ícone da bandeja > "Transmitir <nome do jogo>" (usa a última
   qualidade que você escolheu).
 - Ou "Transmitir" (na barra lateral ou na bandeja): escolha o jogo em "Aplicativos" (ou um
-  monitor em "Telas"), a resolução (720p, 1080p, 1440p ou Fonte), 30 ou 60 FPS e o áudio, e
+  monitor em "Telas"), a resolução (720p, 1080p, 1440p ou Fonte), 30, 60, 90 ou 120 FPS (90 e 120 são beta, até 1440p) e o áudio, e
   clique em "Ao vivo". A janela lembra a sua última escolha.
 - Transmitindo, o botão direito na bandeja tem "Qualidade" (trocar FPS e resolução),
   "Trocar janela..." e "Parar transmissão". Quem assiste vê alguns segundos parado e o player

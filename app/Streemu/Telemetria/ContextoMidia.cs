@@ -99,7 +99,7 @@ public static class ContextoMidia
     /// <paramref name="placaDda"/>: o adaptador do ddagrab (-1 no gfxcapture, que usa a placa dona do <paramref name="monitor"/>).
     /// </summary>
     public static Func<JsonObject?> Envio(string capturaNome, int placaDda, IntPtr monitor, string encoderFfmpeg, string caminho,
-        (int W, int H) fonte, (int W, int H) saida, int fps, int kbps, string? preset, string escolha, bool lembrado) => () =>
+        (int W, int H) fonte, (int W, int H) saida, int fps, int kbps, string? preset, string escolha, bool lembrado, int fpsPedido = 0, int? monitorHz = null) => () =>
     {
         string encoder = CaminhoMidia.Encoder(encoderFfmpeg);
         var gpus = SystemInfo.GpusLidas;
@@ -114,6 +114,9 @@ public static class ContextoMidia
             ["captura"] = CaminhoMidia.Captura(capturaNome), ["encoder"] = encoder, ["caminho"] = caminho, ["codec"] = CaminhoMidia.Codec(encoderFfmpeg),
             ["escala"] = fonte != saida, ["fonte"] = CaminhoMidia.Resolucao(fonte.W, fonte.H), ["resolucao"] = CaminhoMidia.Resolucao(saida.W, saida.H),
             ["fps"] = Math.Clamp(fps, 0, 1000), ["kbps"] = Math.Clamp(kbps, 0, 1_000_000), ["preset"] = Preset(preset), ["escolha"] = escolha, ["lembrado"] = lembrado,
+            // 90/120 FPS é beta: o pedido, o que saiu e a taxa do monitor mostram se o limite pelo monitor agiu ("fps" é o efetivo)
+            ["fps_pedido"] = Math.Clamp(fpsPedido > 0 ? fpsPedido : fps, 0, 1000), ["fps_efetivo"] = Math.Clamp(fps, 0, 1000),
+            ["monitor_hz"] = monitorHz is { } hz ? Math.Clamp(hz, 0, 1000) : null, ["beta"] = Streemu.Media.Preset.IsBeta(fpsPedido > 0 ? fpsPedido : fps),
             ["adaptador"] = adEncoder, ["adaptador_captura"] = adCaptura,
         };
     };

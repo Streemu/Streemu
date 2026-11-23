@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "66b2cf1815c491fdfcef6c314ed812e7f849eed3",
-    "notas":  "- Latência do SRT automática no espectador e telemetria de rede",
+    "privado":  "9e729ec7ba3e98a80b5d7cf7f85e03ceb652b632",
+    "notas":  "- Troca de qualidade compara o FPS pedido, não o limitado pelo monitor\n- 90 e 120 FPS (beta), limitados a 1440p",
     "obrigatoria":  false
 }

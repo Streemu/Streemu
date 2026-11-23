@@ -112,6 +112,8 @@ public sealed class StreamSender : IDisposable
     bool _testStuckDone => _testStuckCount >= TestStuckTimes;
 
     public Settings? Current { get; private set; }
+    int _fpsRequested;          // o FPS que o usuário escolheu; o efetivo (Current.Preset.Fps) pode ser menor, limitado pela taxa do monitor
+    int? _monitorHz;            // taxa do monitor da fonte quando a live (re)começou; nulo = não deu para ler
     Preset? _requestedPreset;   // o preset escolhido pelo usuário, antes de FitBitrateToOutput reduzir o bitrate
     public Pipeline? Chosen { get; private set; }
     public CaptureSpec? CaptureUsed { get; private set; }
@@ -140,6 +142,26 @@ public sealed class StreamSender : IDisposable
     public event Action? Stopped;
     /// <summary>A troca de qualidade/janela durante a transmissão terminou (com sucesso ou não); a tela atualiza o que mostra.</summary>
     public event Action? Reconfigured;
+
+    /// <summary>O FPS escolhido pelo usuário (a tela mostra este), mesmo que a live saia com menos por causa do monitor.</summary>
+    public int RequestedFps => _fpsRequested > 0 ? _fpsRequested : Current?.Preset.Fps ?? 0;
+
+    /// <summary>Taxa de atualização (Hz) do monitor da fonte, ou nulo.</summary>
+    public int? MonitorHz => _monitorHz;
+
+    /// <summary>
+    /// Ponto único do limite pela taxa do monitor: pedir 120 quadros a um monitor de 60 Hz só gasta encoder e banda, a captura nunca tem quadros novos
+    /// para isso. Usa o maior FPS do seletor que cabe (mínimo 30) e registra pedido e efetivo no log. Sem a taxa, não limita. Chamado ao começar e a cada troca.
+    /// </summary>
+    Settings LimitFpsToMonitor(Settings s)
+    {
+        _fpsRequested = s.Preset.Fps;
+        var mon = s.Source.IsWindow ? Display.MonitorOf(s.Source.Handle) : s.Source.Handle;
+        _monitorHz = Display.RefreshHz(mon);
+        int effective = Preset.FpsForRefresh(s.Preset.Fps, _monitorHz);
+        Log.Info($"FPS: pedido {s.Preset.Fps}, monitor {(_monitorHz is { } hz ? hz + " Hz" : "taxa desconhecida")}, efetivo {effective}" + (effective != s.Preset.Fps ? " (limitado pela taxa do monitor)." : "."));
+        return effective == s.Preset.Fps ? s : s with { Preset = s.Preset.WithFps(effective) };
+    }
     /// <summary>
     /// Um segundo medido (quadros novos da captura, quadros que o encoder soltou). A telemetria guarda a série com a hora:
     /// o resumo do fim da live (mín/mediana/máx) não dizia QUANDO a captura caiu (live num PC do grupo no Hookshot, 10/11).
@@ -221,6 +243,7 @@ public sealed class StreamSender : IDisposable
             if (!await Task.Run(s.Source.RestoreIfMinimized))
                 throw new InvalidOperationException($"não consegui restaurar a janela minimizada \"{s.Source.Label}\"; abra o jogo na frente e tente de novo");
         }
+        s = LimitFpsToMonitor(s);
         var (cap, rememberedWindow) = await Task.Run(() => InitialCapture(s));
         CaptureUsed = cap;
         SourceSize = (cap.Width, cap.Height);
@@ -314,11 +337,11 @@ public sealed class StreamSender : IDisposable
     static string CodigoDoCaminho(Path p) => p switch { Path.Gpu => "gpu", Path.AmfMap => "amf_map", Path.AmfVpp => "amf_vpp", _ => "cpu" };
 
     /// <summary>O caminho para a telemetria: só números e códigos aqui (thread do laço); a placa é resolvida na fila do CaminhoMidia.</summary>
-    static Func<System.Text.Json.Nodes.JsonObject?> CaminhoParaTelemetria(Settings s, CaptureSpec cap, Pipeline p, (int W, int H) src, (int W, int H) dst, bool lembrado)
+    Func<System.Text.Json.Nodes.JsonObject?> CaminhoParaTelemetria(Settings s, CaptureSpec cap, Pipeline p, (int W, int H) src, (int W, int H) dst, bool lembrado)
     {
         var mon = cap.Dda ? IntPtr.Zero : s.Source.IsWindow ? Display.MonitorOf(s.Source.Handle) : s.Source.Handle;
         return Telemetria.ContextoMidia.Envio(cap.Name, cap.Dda ? cap.Adapter : -1, mon, p.Encoder, CodigoDoCaminho(p.Path), src, dst,
-            s.Preset.Fps, s.Preset.Kbps, s.Preset.Name, s.Encoder.ToString().ToLowerInvariant(), lembrado);
+            s.Preset.Fps, s.Preset.Kbps, s.Preset.Name, s.Encoder.ToString().ToLowerInvariant(), lembrado, _fpsRequested, _monitorHz);
     }
 
     /// <summary>Um candidato reprovou no teste de 3 quadros (ou nenhum passou: <paramref name="cand"/> nulo). Fatal só no começo da live, que não abre.</summary>
@@ -387,6 +410,7 @@ public sealed class StreamSender : IDisposable
         var o = _session?.Summary();
         if (o == null) return null;
         o["reinicios_da_captura"] = _restarts;
+        o["fps_pedido"] = RequestedFps; o["fps_efetivo"] = Current?.Preset.Fps; o["monitor_hz"] = _monitorHz; o["beta"] = Preset.IsBeta(RequestedFps);
         lock (_diagnoses) o["diagnosticos"] = new System.Text.Json.Nodes.JsonArray(_diagnoses.Select(d => (System.Text.Json.Nodes.JsonNode)d!).ToArray());
         o["pacotes_descartados_para_nao_atrasar"] = Interlocked.Read(ref _droppedByRemovedPipes) + Outputs().Sum(x => x.Pipe?.DroppedPackets ?? 0);
         o["espectadores"] = OutputCount;
@@ -790,6 +814,7 @@ public sealed class StreamSender : IDisposable
         try
         {
             if (!next.Source.StillExists()) throw new InvalidOperationException("a janela escolhida não existe mais");
+            next = LimitFpsToMonitor(next);
             var (cap, rememberedWindow) = InitialCapture(next);
             SourceSize = (cap.Width, cap.Height);
             OutSize = next.Preset.OutputSize(cap.Width, cap.Height);

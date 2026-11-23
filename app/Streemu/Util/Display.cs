@@ -173,6 +173,17 @@ internal static class Display
         catch { return null; }
     }
 
+    /// <summary>Taxa de atualização (Hz) do monitor <paramref name="hmonitor"/>, ou nulo se não der para ler (aí ninguém limita o FPS por ela).</summary>
+    public static int? RefreshHz(IntPtr hmonitor)
+    {
+        try
+        {
+            var info = new Native.MONITORINFOEX { cbSize = Marshal.SizeOf<Native.MONITORINFOEX>() };
+            return hmonitor != IntPtr.Zero && Native.GetMonitorInfo(hmonitor, ref info) ? RefreshHz(info.szDevice) : null;
+        }
+        catch { return null; }
+    }
+
     /// <summary>Uso da GPU NVIDIA (%), pelo nvidia-smi. Nulo se não houver (AMD/Intel ou sem driver).</summary>
     public static int? NvidiaUtilization()
     {

@@ -37,7 +37,7 @@ public sealed class GoLiveView : UserControl
     readonly Panel _grid = new() { AutoScroll = false };
     readonly Segmented _tabs = new("Aplicativos", "Telas");
     readonly Segmented _resSeg = new("720p", "1080p", "1440p", "Original");
-    readonly Segmented _fpsSeg = new("30", "60"); // o rótulo "FPS" já está no título da seção, como no desenho
+    readonly Segmented _fpsSeg = new("30", "60", "90", "120"); // 90/120 levam selo beta (abaixo); o rótulo "FPS" já está no título da seção, como no desenho
     // a ordem na tela é a do desenho (PC sem Discord primeiro); o valor é o AudioMode de sempre (0 = só o app, 1 = PC sem Discord, 2 = sem som)
     readonly OptionList _audioSeg = new(("PC sem Discord", UiIcon.Monitor, 1), ("Só o app escolhido", UiIcon.Gamepad, 0), ("Sem som", UiIcon.SpeakerOff, 2)) { CenterContent = true };
     readonly Segmented _privacySeg = new("Aberta ao grupo", "Só convidados");
@@ -67,7 +67,9 @@ public sealed class GoLiveView : UserControl
         Dock = DockStyle.Fill;
         _grid.Dock = DockStyle.None;
         Font = new Font(UiTypography.Family, UiTypography.Body);
-        _height = height; _fps = fps;
+        _height = height;
+        int fpsIndex = Math.Max(0, Array.IndexOf(Preset.PickerFps, Preset.Pick(height, fps).Fps)); // valores salvos antigos/intermediários caem no mais próximo para baixo
+        _fps = Preset.PickerFps[fpsIndex];
 
         _title.Text = changing ? "Trocar o que transmitir" : "Transmitir";
         _title.Font = UiTypography.TitleFont();
@@ -78,10 +80,11 @@ public sealed class GoLiveView : UserControl
         _summary.Visible = false;
         _resSeg.StretchColumns = 2; _fpsSeg.StretchColumns = 2; _privacySeg.StretchColumns = 2;
         _resSeg.Selected = Math.Max(0, Array.IndexOf(Preset.PickerHeights, height));
-        _fpsSeg.Selected = fps >= 60 ? 1 : 0;
+        _fpsSeg.Selected = fpsIndex;
+        for (int i = 0; i < Preset.PickerFps.Length; i++) if (Preset.IsBeta(Preset.PickerFps[i])) _fpsSeg.SetBadge(i, "BETA"); // só o selo, sem frase de aviso
         _audioSeg.Selected = audio is >= 0 and <= 2 ? audio : 0;
         _resSeg.SelectedChanged += i => { _height = Preset.PickerHeights[i]; UpdateSummary(); };
-        _fpsSeg.SelectedChanged += i => { _fps = i == 1 ? 60 : 30; UpdateSummary(); };
+        _fpsSeg.SelectedChanged += i => { _fps = Preset.PickerFps[i]; UpdateSummary(); };
 
         AddOption(_options, 0, "Qualidade", _resSeg);
         AddOption(_options, 1, "FPS", _fpsSeg);

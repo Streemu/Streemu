@@ -17,6 +17,7 @@ public sealed class Segmented : Control
     int _columns;
     readonly UiMotion _selectionMotion;
     int _previous;
+    readonly string?[] _badges;
 
     public event Action<int>? SelectedChanged;
 
@@ -34,6 +35,7 @@ public sealed class Segmented : Control
     {
         _items = items.Length > 0 ? items : throw new ArgumentException("um seletor precisa de pelo menos 1 item (recebi 0)", nameof(items));
         _columns = _items.Length;
+        _badges = new string?[_items.Length];
         _selectionMotion = new(this, Invalidate);
         _selectionMotion.Snap(1);
         SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
@@ -62,10 +64,61 @@ public sealed class Segmented : Control
         }
     }
 
+    /// <summary>Marca um item com um selo curto (ex.: "BETA"), uma pílula à direita do texto. Entra na largura preferida e no nome acessível; nulo remove.</summary>
+    public void SetBadge(int index, string? badge)
+    {
+        if ((uint)index >= (uint)_items.Length) return;
+        _badges[index] = string.IsNullOrEmpty(badge) ? null : badge;
+        // leitor de tela: o nome (a legenda da seção) é de quem usa o controle; o selo vai na descrição
+        var beta = _items.Where((_, k) => _badges[k] != null).ToArray();
+        AccessibleDescription = beta.Length == 0 ? null : $"{string.Join(" e ", beta)}: {_badges.First(x => x != null)!.ToLowerInvariant()}";
+        Size = GetPreferredSize(Size.Empty);
+        Invalidate();
+    }
+
+    // O selo é menor e em negrito para não competir com o rótulo.
+    Font BadgeFont() => new(Font.FontFamily, Math.Max(6f, Font.Size * 0.72f), FontStyle.Bold);
+
+    /// <summary>Largura da pílula (texto + folga) mais o espaço que a separa do rótulo; 0 sem selo.</summary>
+    int BadgeExtra(int i)
+    {
+        if (_badges[i] is not { } b) return 0;
+        using var f = BadgeFont();
+        return TextRenderer.MeasureText(b, f, Size.Empty, TextFormatFlags.NoPadding).Width + Dp(10) + Dp(6);
+    }
+
+    /// <summary>Desenha a pílula à direita do rótulo centralizado; o conjunto rótulo+selo fica centralizado na célula.</summary>
+    Rectangle TextAndBadge(int i, Rectangle cell, out Rectangle pill, bool centered, int left)
+    {
+        int extra = BadgeExtra(i);
+        int textW = TextRenderer.MeasureText(_items[i], Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+        int total = Math.Min(cell.Width, textW + extra);
+        int x = centered ? cell.X + (cell.Width - total) / 2 : left;
+        var text = new Rectangle(x, cell.Y, Math.Max(1, total - extra), cell.Height);
+        pill = Rectangle.Empty;
+        if (extra > 0)
+        {
+            using var f = BadgeFont();
+            int pw = extra - Dp(6), ph = f.Height + Dp(2);
+            pill = new Rectangle(text.Right + Dp(6), cell.Y + (cell.Height - ph) / 2, pw, ph);
+        }
+        return text;
+    }
+
+    void DrawBadge(Graphics g, int i, Rectangle pill, bool on)
+    {
+        if (pill.IsEmpty || _badges[i] is not { } b) return;
+        using var f = BadgeFont();
+        using var path = RoundedRect(pill, pill.Height / 2);
+        // sobre o item escolhido (fundo Accent) a pílula inverte as cores para continuar visível
+        using (var fill = new SolidBrush(on ? Theme.AccentText : Theme.AccentSoft)) g.FillPath(fill, path);
+        TextRenderer.DrawText(g, b, f, pill, Theme.Accent, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+    }
+
     int Dp(int at96) => UiScale.Dp(this, at96);
 
     /// <summary>Todos os itens têm a largura do maior texto (mais folga), nunca menos que o mínimo: o conjunto fica simétrico.</summary>
-    int ItemWidth => Math.Max(Dp(MinItemAt96), _items.Max(i => TextRenderer.MeasureText(i, Font).Width) + 2 * Dp(PadAt96));
+    int ItemWidth => Math.Max(Dp(MinItemAt96), _items.Select((t, i) => TextRenderer.MeasureText(t, Font).Width + BadgeExtra(i)).Max() + 2 * Dp(PadAt96));
 
     public override Size GetPreferredSize(Size proposedSize) => new(ItemWidth * _items.Length, Dp(HeightAt96));
 
@@ -124,8 +177,10 @@ public sealed class Segmented : Control
                 g.FillPath(fill, path);
             }
             if (on && Focused) ControlPaint.DrawFocusRectangle(g, cell);
-            TextRenderer.DrawText(g, _items[i], Font, cell, on ? Theme.AccentText : i == _hover ? Theme.Text : Theme.TextMuted,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            var textRect = TextAndBadge(i, cell, out var pill, true, 0);
+            TextRenderer.DrawText(g, _items[i], Font, textRect, on ? Theme.AccentText : i == _hover ? Theme.Text : Theme.TextMuted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            DrawBadge(g, i, pill, on);
         }
     }
 
@@ -146,8 +201,11 @@ public sealed class Segmented : Control
             int ring = Dp(18), ringX = cell.X + Dp(16), ringY = cell.Y + (cell.Height - ring) / 2;
             using (var pen = new Pen(on ? Theme.CardSelectedBorder : Theme.TextMuted, Math.Max(1.5f, Dp(2) * 0.75f))) g.DrawEllipse(pen, ringX, ringY, ring, ring);
             if (on) using (var dot = new SolidBrush(Theme.CardSelectedBorder)) g.FillEllipse(dot, ringX + Dp(5), ringY + Dp(5), ring - Dp(10), ring - Dp(10));
-            TextRenderer.DrawText(g, _items[i], Font, new Rectangle(ringX + ring + Dp(12), cell.Y, Math.Max(1, cell.Right - ringX - ring - Dp(20)), cell.Height), Theme.Text,
+            var avail = new Rectangle(ringX + ring + Dp(12), cell.Y, Math.Max(1, cell.Right - ringX - ring - Dp(20)), cell.Height);
+            var textRect = TextAndBadge(i, avail, out var pill, false, avail.X);
+            TextRenderer.DrawText(g, _items[i], Font, textRect, Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            DrawBadge(g, i, pill, false);
         }
     }
 

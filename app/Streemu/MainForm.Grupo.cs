@@ -763,17 +763,17 @@ public sealed partial class MainForm
             var quality = new ToolStripMenuItem("Qualidade");
             int curH = cur.Preset.IsSource ? 0 : cur.Preset.Height;
             quality.DropDownItems.Add(new ToolStripMenuItem("TAXA DE QUADROS") { Enabled = false });
-            foreach (int f in new[] { 30, 60 })
+            foreach (int f in Preset.PickerFps)
             {
                 int ff = f;
-                quality.DropDownItems.Add(new ToolStripMenuItem($"{f} FPS", null, (_, _) => ChangeQuality(curH, ff)) { Checked = cur.Preset.Fps == f });
+                quality.DropDownItems.Add(new ToolStripMenuItem(Preset.IsBeta(f) ? $"{f} FPS  · beta" : $"{f} FPS", null, (_, _) => ChangeQuality(curH, ff)) { Checked = _sender.RequestedFps == f });
             }
             quality.DropDownItems.Add(new ToolStripSeparator());
             quality.DropDownItems.Add(new ToolStripMenuItem("RESOLUÇÃO") { Enabled = false });
             foreach (int h in Preset.PickerHeights)
             {
                 int hh = h;
-                quality.DropDownItems.Add(new ToolStripMenuItem(h == 0 ? "Fonte" : $"{h}p", null, (_, _) => ChangeQuality(hh, cur.Preset.Fps)) { Checked = curH == h });
+                quality.DropDownItems.Add(new ToolStripMenuItem(h == 0 ? "Fonte" : $"{h}p", null, (_, _) => ChangeQuality(hh, _sender.RequestedFps)) { Checked = curH == h });
             }
             if (quality.DropDown is ToolStripDropDownMenu qd) { qd.Renderer = menu.Renderer; qd.BackColor = menu.BackColor; qd.ForeColor = menu.ForeColor; qd.ShowImageMargin = false; qd.ShowCheckMargin = true; }
             menu.Items.Add(quality);

@@ -438,7 +438,7 @@ public static class CaminhoMidia
         void Resumo(JsonObject o)
         {
             if (_caminho == null) return;
-            foreach (var k in new[] { "captura", "encoder", "caminho", "decodificador", "renderizador", "resolucao", "fps" })
+            foreach (var k in new[] { "captura", "encoder", "caminho", "decodificador", "renderizador", "resolucao", "fps", "fps_pedido", "monitor_hz", "beta" })
                 if (_caminho[k] is { } v) o[k] = v.DeepClone();
         }
     }

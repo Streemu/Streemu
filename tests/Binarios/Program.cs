@@ -44,7 +44,7 @@ Caso("path-com-ffmpeg-falso-nunca-e-usado", dir =>
         var r = new ConferidorDeBinario(Path.Combine(app, def.Pasta), Pin(def.Exe, "certo"), def.Exe).Conferir();
         Exige(r.Motivo == MotivoBinario.Falta, $"{b}: com o exe só no PATH devia faltar, deu {r.Motivo}");
         Exige(Path.GetDirectoryName(r.Exe)!.StartsWith(app, StringComparison.OrdinalIgnoreCase), $"{b}: o exe devolvido não é o da pasta do app");
-        Exige(Binarios.Substituto(b, false, _ => falsoDir) == null, $"{b}: substituto devia ser nulo sem permissão");
+        Exige(Binarios.Substituto(b, false, _ => falsoDir, Pin(def.Exe, "certo")) == null, $"{b}: substituto devia ser nulo sem permissão");
     }
     // nome solto nunca vira processo: o Windows o procuraria no PATH
     bool recusou = false;
@@ -149,20 +149,90 @@ Caso("substituicao-so-em-teste-ou-debug", dir =>
 {
     string ff = Path.Combine(dir, "ff"); Directory.CreateDirectory(ff);
     File.WriteAllText(Path.Combine(ff, "ffmpeg.exe"), "x"); File.WriteAllText(Path.Combine(ff, "ffplay.exe"), "x");
-    string mpv = Path.Combine(dir, "meu-mpv.exe"); File.WriteAllText(mpv, "x");
+    string mpvDir = Path.Combine(dir, "mpv"); Directory.CreateDirectory(mpvDir);
+    string mpv = Path.Combine(mpvDir, "mpv.exe"); File.WriteAllText(mpv, "x");
     string? Env(string k) => k switch { "STREEMU_FFMPEG_DIR" => ff, "STREEMU_MPV" => mpv, _ => null };
+    PinBinario PinX(Binario b) => Pin(Binarios.Def(b).Exe, "x");   // o pin bate com os arquivos: só a permissão decide
     Exige(!Binarios.SubstituicaoPermitida(debug: false, emTeste: false), "Release fora de teste não pode permitir a substituição");
     Exige(Binarios.SubstituicaoPermitida(debug: true, emTeste: false), "Debug devia permitir");
     Exige(Binarios.SubstituicaoPermitida(debug: false, emTeste: true), "teste automático devia permitir");
     foreach (var b in new[] { Binario.Ffmpeg, Binario.Ffplay, Binario.Mpv })
     {
-        bool negada = Binarios.Substituto(b, Binarios.SubstituicaoPermitida(false, false), Env) == null;
+        bool negada = Binarios.Substituto(b, Binarios.SubstituicaoPermitida(false, false), Env, PinX(b)) == null;
         Exige(negada, $"{b}: a variável foi obedecida no Release fora de teste");
-        Exige(Binarios.Substituto(b, Binarios.SubstituicaoPermitida(false, true), Env) != null, $"{b}: em teste a variável devia valer");
-        Exige(Binarios.Substituto(b, Binarios.SubstituicaoPermitida(true, false), Env) != null, $"{b}: em Debug a variável devia valer");
+        Exige(Binarios.Substituto(b, Binarios.SubstituicaoPermitida(false, true), Env, PinX(b)) != null, $"{b}: em teste a variável devia valer");
+        Exige(Binarios.Substituto(b, Binarios.SubstituicaoPermitida(true, false), Env, PinX(b)) != null, $"{b}: em Debug a variável devia valer");
     }
-    Exige(Binarios.Substituto(Binario.Ffmpeg, true, _ => Path.Combine(dir, "nao-existe")) == null, "pasta sem ffmpeg.exe não vale");
-    Exige(Binarios.Substituto(Binario.Ffmpeg, true, _ => null) == null && Binarios.Substituto(Binario.Mpv, true, _ => "") == null, "variável vazia não vale");
+    Exige(Binarios.Substituto(Binario.Ffmpeg, true, _ => Path.Combine(dir, "nao-existe"), PinX(Binario.Ffmpeg)) == null, "pasta sem ffmpeg.exe não vale");
+    Exige(Binarios.Substituto(Binario.Ffmpeg, true, _ => null, PinX(Binario.Ffmpeg)) == null && Binarios.Substituto(Binario.Mpv, true, _ => "", PinX(Binario.Mpv)) == null, "variável vazia não vale");
+});
+
+// 2026-11-24: os testes locais passavam o ffmpeg e o mpv do PATH por estas variáveis, e o substituto rodava sem conferência. Agora ele também tem que
+// ser o do Streemu: outra versão (ou um exe de outro nome) é ignorada, sem renomear nada na pasta de quem desenvolve.
+Caso("substituto-que-nao-bate-com-o-pin-nao-vale", dir =>
+{
+    string ff = Path.Combine(dir, "ff"); Directory.CreateDirectory(ff);
+    File.WriteAllText(Path.Combine(ff, "ffmpeg.exe"), "outra-versao"); File.WriteAllText(Path.Combine(ff, "ffplay.exe"), "certo");
+    string mpvDir = Path.Combine(dir, "mpv"); Directory.CreateDirectory(mpvDir);
+    File.WriteAllText(Path.Combine(mpvDir, "mpv.exe"), "certo"); File.WriteAllText(Path.Combine(mpvDir, "d3dcompiler_43.dll"), "dll-de-outra-versao");
+    string outroNome = Path.Combine(dir, "meu-mpv.exe"); File.WriteAllText(outroNome, "certo");
+    var recusas = new List<string>();
+    Exige(Binarios.Substituto(Binario.Ffmpeg, true, _ => ff, Pin("ffmpeg.exe", "certo"), recusas.Add) == null, "ffmpeg de outra versão no STREEMU_FFMPEG_DIR foi aceito");
+    Exige(File.Exists(Path.Combine(ff, "ffmpeg.exe")) && !File.Exists(Path.Combine(ff, "ffmpeg.exe.invalido")), "a pasta do substituto não pode ser mexida");
+    Exige(Binarios.Substituto(Binario.Ffplay, true, _ => ff, Pin("ffplay.exe", "certo")) != null, "o ffplay certo da mesma pasta devia valer");
+    var pinMpv = Pin("mpv.exe", "certo", 0, ("d3dcompiler_43.dll", "dll-certa"));
+    Exige(Binarios.Substituto(Binario.Mpv, true, _ => Path.Combine(mpvDir, "mpv.exe"), pinMpv, recusas.Add) == null, "mpv com a DLL de outra versão foi aceito");
+    Exige(File.Exists(Path.Combine(mpvDir, "d3dcompiler_43.dll")), "a DLL do substituto não pode virar .invalido");
+    Exige(Binarios.Substituto(Binario.Mpv, true, _ => outroNome, Pin("mpv.exe", "certo"), recusas.Add) == null, "STREEMU_MPV com outro nome de exe foi aceito");
+    Exige(Binarios.Substituto(Binario.Ffmpeg, true, _ => ff, null, recusas.Add) == null, "sem pin nenhum substituto vale");
+    Exige(recusas.Count == 4 && recusas.All(r => r.StartsWith("STREEMU_")), $"cada recusa devia dizer a variável: {string.Join(" | ", recusas)}");
+});
+
+// A reconferência do substituto a cada uso (o Slot do Binarios usa ConferirComTentativas + LargaSubstituto): arquivo trocado depois larga o substituto;
+// arquivo que só não pôde ser lido (antivírus segurando) NÃO larga, e a leitura que falhou não vira "bom" nem "ruim" no cache.
+Caso("substituto-trocado-depois-e-largado", dir =>
+{
+    string ff = Path.Combine(dir, "ff"); Directory.CreateDirectory(ff);
+    string exe = Path.Combine(ff, "ffmpeg.exe");
+    File.WriteAllText(exe, "certo");
+    var c = Binarios.ConferidorDoSubstituto(Binario.Ffmpeg, true, _ => ff, Pin("ffmpeg.exe", "certo"), null);
+    Exige(c != null, "o ffmpeg certo devia ser aceito como substituto");
+    var r1 = Binarios.ConferirComTentativas(c!);
+    Exige(r1.Ok && !Binarios.LargaSubstituto(r1), $"o substituto certo devia valer, deu {r1.Motivo}");
+    File.WriteAllText(exe, "trocado!");   // trocado depois de aceito
+    var r2 = Binarios.ConferirComTentativas(c!, esperaMs: 1);
+    Exige(!r2.Ok && !r2.Transitorio && r2.Motivo == MotivoBinario.Hash, $"o arquivo trocado devia ser recusado por hash (não transitório), deu {r2.Motivo}/{r2.Transitorio}");
+    Exige(Binarios.LargaSubstituto(r2), "o arquivo trocado devia largar o substituto");
+    Exige(File.Exists(exe) && !File.Exists(exe + ".invalido"), "a pasta do substituto não pode ser mexida");
+});
+
+Caso("substituto-com-leitura-que-falha-nao-e-largado", dir =>
+{
+    string ff = Path.Combine(dir, "ff"); Directory.CreateDirectory(ff);
+    string exe = Path.Combine(ff, "ffmpeg.exe");
+    File.WriteAllText(exe, "certo");
+    var pin = Pin("ffmpeg.exe", "certo");
+    var c = Binarios.ConferidorDoSubstituto(Binario.Ffmpeg, true, _ => ff, pin, null);
+    Exige(c != null && Binarios.ConferirComTentativas(c).Ok && c.HashesCalculados == 1, "o substituto certo devia valer, com um SHA-256");
+    File.SetLastWriteTimeUtc(exe, DateTime.UtcNow.AddMinutes(-3));   // muda a chave do cache: a próxima conferência tem que ler o arquivo
+    ResultadoBinario seguro;
+    using (new FileStream(exe, FileMode.Open, FileAccess.Read, FileShare.None))   // "antivírus" segurando o arquivo
+    {
+        seguro = Binarios.ConferirComTentativas(c!, tentativas: 3, esperaMs: 20);
+        Exige(!seguro.Ok && seguro.Transitorio, $"com o arquivo preso devia dar falha de leitura transitória, deu {seguro.Motivo}/{seguro.Transitorio}");
+        Exige(!Binarios.LargaSubstituto(seguro), "falha de leitura não pode largar o substituto");
+        Exige(c!.HashesCalculados == 4, $"devia tentar 3 vezes (1 + 3 tentativas = 4 contas de hash), contou {c.HashesCalculados}");
+        Exige(File.Exists(exe) && !File.Exists(exe + ".invalido"), "o arquivo preso não pode ser renomeado");
+        // criação do slot com o arquivo preso: o conferidor volta mesmo assim (o Slot o guarda para a próxima chamada), sem dizer "não é o do Streemu"
+        var recusas = new List<string>();
+        var novo = Binarios.ConferidorDoSubstituto(Binario.Ffmpeg, true, _ => ff, pin, recusas.Add);
+        Exige(novo != null && recusas.Count == 0, $"na criação, leitura que falha não pode descartar o substituto ({string.Join(" | ", recusas)})");
+        Exige(Binarios.Substituto(Binario.Ffmpeg, true, _ => ff, pin) == null, "com o arquivo preso a função pura não devolve caminho (só esta chamada não o usa)");
+    }
+    // solto de novo: vale, e como a falha não entrou no cache, o hash é calculado agora
+    int antes = c.HashesCalculados;
+    var depois = Binarios.ConferirComTentativas(c);
+    Exige(depois.Ok && c.HashesCalculados == antes + 1, $"solto o arquivo devia valer calculando o SHA-256 (falha de leitura não pode ir para o cache): {depois.Motivo}, hashes {antes}->{c.HashesCalculados}");
 });
 
 Caso("pins-embutidos-completos", dir =>

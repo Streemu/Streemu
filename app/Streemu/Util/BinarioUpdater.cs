@@ -77,7 +77,7 @@ public sealed class BinarioUpdater
     public PinBinario? Pending()
     {
         var pin = Desired;
-        if (pin == null || Binarios.Substituto(_b, Binarios.SubstituicaoLiberada, Environment.GetEnvironmentVariable) != null) return null;
+        if (pin == null || Binarios.UsaSubstituto(_b)) return null;
         return Binarios.Conferir(_b).Ok ? null : pin;
     }
 

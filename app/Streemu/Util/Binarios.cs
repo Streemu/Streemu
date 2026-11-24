@@ -47,7 +47,10 @@ public sealed record PinBinario(string Versao, string Tag, string ZipSha256, lon
 
 public sealed record DefBinario(Binario Id, string Chave, string Pasta, string Exe, string Recurso, string? VarPin, string Descricao, string Rota);
 
-public sealed record ResultadoBinario(MotivoBinario Motivo, string Exe, string? Arquivo)
+/// <param name="Transitorio">Falha de leitura (IOException: antivírus ou outro programa segurando o arquivo), não "o arquivo não bate". O motivo continua
+/// <see cref="MotivoBinario.Hash"/> (o caminho do embutido o trata como sempre: não usa, não renomeia); só o substituto de teste olha este campo,
+/// para não largar um arquivo que não foi julgado.</param>
+public sealed record ResultadoBinario(MotivoBinario Motivo, string Exe, string? Arquivo, bool Transitorio = false)
 {
     public bool Ok => Motivo == MotivoBinario.Ok;
 }
@@ -81,10 +84,14 @@ public sealed class ConferidorDeBinario
     /// tamanho ou data. Vale 7 dias; mudou o arquivo, o pin (app novo) ou passou o prazo: recalcula. Fica fora da pasta do app (<paramref name="arquivoCache"/>,
     /// em %LOCALAPPDATA%\Streemu); nulo = sem cache (testes e STREEMU_NOSTATE, para ele não vazar entre casos).
     /// </summary>
-    public ConferidorDeBinario(string dir, PinBinario? pin, string exe, string? arquivoCache = null, Func<DateTime>? agora = null)
+    /// <param name="renomear">Falso para a pasta de um substituto de teste (<see cref="Binarios.Substituto"/>): ela é de quem desenvolve, então o arquivo que
+    /// não bate só não é usado, sem virar .invalido.</param>
+    public ConferidorDeBinario(string dir, PinBinario? pin, string exe, string? arquivoCache = null, Func<DateTime>? agora = null, bool renomear = true)
     {
-        _dir = dir; _pin = pin; _exe = exe; _cache = arquivoCache; _agora = agora ?? (() => DateTime.UtcNow);
+        _dir = dir; _pin = pin; _exe = exe; _cache = arquivoCache; _agora = agora ?? (() => DateTime.UtcNow); _renomear = renomear;
     }
+
+    readonly bool _renomear;
 
     public static readonly TimeSpan ValidadeDoCache = TimeSpan.FromDays(7);
 
@@ -149,10 +156,11 @@ public sealed class ConferidorDeBinario
                 {
                     string? sha;
                     try { HashesCalculados++; sha = Sha256(p); }
-                    catch (IOException) { return new(MotivoBinario.Hash, exe, nome); } // antivírus segurando o arquivo: não usa, mas também não renomeia
+                    // antivírus segurando o arquivo: não usa, mas também não renomeia, e o resultado não entra no cache (_ok/Guardar só depois do hash que bate)
+                    catch (IOException) { return new(MotivoBinario.Hash, exe, nome, Transitorio: true); }
                     if (sha != esperado.Sha256) motivo = MotivoBinario.Hash;
                 }
-                if (motivo != MotivoBinario.Ok) { Invalidar(p); return new(motivo, exe, nome); }
+                if (motivo != MotivoBinario.Ok) { if (_renomear) Invalidar(p); return new(motivo, exe, nome); }
                 _ok[nome] = chave;
                 Guardar(nome, chave, esperado.Sha256);
             }
@@ -176,7 +184,8 @@ public sealed class ConferidorDeBinario
 /// <summary>
 /// A única porta de entrada para o caminho de ffmpeg, ffplay e mpv. Só devolve o arquivo que vem com o Streemu (ffmpeg\ e mpv\ ao lado do exe) E
 /// bate com o pin; nunca o PATH, nunca a raiz do app, nunca um nome solto (o Windows resolveria sozinho e rodaria qualquer ffmpeg).
-/// Exceção, só para teste e desenvolvimento (<see cref="SubstituicaoPermitida(bool,bool)"/>): STREEMU_FFMPEG_DIR e STREEMU_MPV.
+/// Exceção, só para teste e desenvolvimento (<see cref="SubstituicaoPermitida(bool,bool)"/>): STREEMU_FFMPEG_DIR e STREEMU_MPV apontam OUTRA PASTA,
+/// mas com os mesmos arquivos do pin (conferidos pelo SHA-256): nem em teste roda um ffmpeg ou mpv que não seja o do Streemu.
 /// </summary>
 public static class Binarios
 {
@@ -201,16 +210,72 @@ public static class Binarios
     public static bool SubstituicaoLiberada => SubstituicaoPermitida(EhDebug, RelayConfig.ModoTeste);
 
     /// <summary>
-    /// O binário de teste que vale no lugar do embutido, ou nulo (substituição não permitida, variável vazia ou arquivo que não existe).
-    /// STREEMU_FFMPEG_DIR é uma pasta com ffmpeg.exe e ffplay.exe; STREEMU_MPV é o caminho do mpv.exe.
+    /// O binário de teste que vale no lugar do embutido, ou nulo (substituição não permitida, variável vazia, arquivo que não existe ou que não bate com o pin).
+    /// STREEMU_FFMPEG_DIR é uma pasta com ffmpeg.exe e ffplay.exe; STREEMU_MPV é o caminho do mpv.exe (com a DLL do pin ao lado).
+    /// Até 2026-11-24 o substituto rodava sem conferência, e os testes locais passavam o ffmpeg e o mpv do PATH por aqui: qualquer versão instalada no PC
+    /// entrava. Agora ele também tem que bater com o pin (o de <see cref="Pin"/>, que STREEMU_FFMPEG_DESEJADO troca para testar uma versão nova).
+    /// <paramref name="recusa"/> recebe o motivo quando a variável existe mas não vale.
     /// </summary>
-    public static string? Substituto(Binario b, bool permitida, Func<string, string?> env)
+    public static string? Substituto(Binario b, bool permitida, Func<string, string?> env, PinBinario? pin, Action<string>? recusa = null)
+    {
+        var r = ConferidorDoSubstituto(b, permitida, env, pin, recusa)?.Conferir();
+        return r is { Ok: true } ? r.Exe : null;
+    }
+
+    /// <summary>
+    /// O conferidor da pasta do substituto, ou nulo se a variável não vale (não permitida, vazia, arquivo que não existe, outro nome ou hash que não bate com o pin).
+    /// O Slot o guarda e confere de novo a cada uso (só recalcula se o arquivo mudar). Falha de LEITURA (antivírus segurando o arquivo) não é "não bate":
+    /// depois de <see cref="ConferirComTentativas"/> o conferidor volta mesmo assim, e quem o usa trata o resultado de <c>Conferir()</c> (não Ok, mas transitório).
+    /// </summary>
+    public static ConferidorDeBinario? ConferidorDoSubstituto(Binario b, bool permitida, Func<string, string?> env, PinBinario? pin, Action<string>? recusa)
     {
         if (!permitida) return null;
-        string? v = b == Binario.Mpv ? env("STREEMU_MPV") : env("STREEMU_FFMPEG_DIR");
+        string var = b == Binario.Mpv ? "STREEMU_MPV" : "STREEMU_FFMPEG_DIR";
+        string? v = env(var);
         if (string.IsNullOrWhiteSpace(v)) return null;
         string p = b == Binario.Mpv ? v : Path.Combine(v, Def(b).Exe);
-        return File.Exists(p) ? p : null;
+        if (!File.Exists(p)) { recusa?.Invoke($"{var}: {Path.GetFileName(p)} não existe em {Path.GetDirectoryName(p)}"); return null; }
+        if (!string.Equals(Path.GetFileName(p), Def(b).Exe, StringComparison.OrdinalIgnoreCase)) { recusa?.Invoke($"{var}: o arquivo tem que se chamar {Def(b).Exe}, como no pin"); return null; }
+        var c = new ConferidorDeBinario(Path.GetDirectoryName(Path.GetFullPath(p))!, pin, Def(b).Exe, renomear: false);
+        var r = ConferirComTentativas(c);
+        if (!r.Ok && !r.Transitorio) { recusa?.Invoke($"{var}: {r.Arquivo ?? Def(b).Exe} não é o do Streemu ({NomeMotivo(r.Motivo)}, pin {pin?.Versao ?? "ausente"})"); return null; }
+        return c;
+    }
+
+    /// <summary>
+    /// Confere e, se a leitura falhar (IOException, resultado <see cref="ResultadoBinario.Transitorio"/>), tenta de novo poucas vezes: o antivírus costuma soltar o
+    /// arquivo em instantes. Resultado de falha de leitura nunca entra no cache do conferidor; só um hash que realmente bate (ou não) é lembrado.
+    /// </summary>
+    public static ResultadoBinario ConferirComTentativas(ConferidorDeBinario c, int tentativas = 3, int esperaMs = 250)
+    {
+        var r = c.Conferir();
+        for (int i = 1; i < tentativas && r.Transitorio; i++) { Thread.Sleep(esperaMs); r = c.Conferir(); }
+        return r;
+    }
+
+    /// <summary>Só um arquivo que foi lido e NÃO bate larga o substituto; falha de leitura o mantém para a próxima chamada.</summary>
+    public static bool LargaSubstituto(ResultadoBinario r) => !r.Ok && !r.Transitorio;
+
+    /// <summary>O binário está vindo de um substituto de teste (conferido pelo pin)? Aí não há o que atualizar na pasta do app.</summary>
+    public static bool UsaSubstituto(Binario b) => SlotDe(b).Substituto != null;
+
+    // O substituto é conferido de novo a cada uso. Se o arquivo mudou e não bate mais, sai de vez e o embutido (conferido) assume (nulo).
+    // Se só não deu para ler agora (antivírus), ele fica e devolve o resultado não Ok: só esta chamada não o usa, e o embutido não é convocado
+    // (ele pode nem existir em Debug, e aí o app avisaria de "binário diferente" e baixaria de novo sem motivo).
+    static ResultadoBinario? ConferirSubstituto(Slot s)
+    {
+        var c = s.Substituto;
+        if (c == null) return null;
+        var r = ConferirComTentativas(c);
+        if (r.Ok) return r;
+        if (!LargaSubstituto(r))
+        {
+            Log.Info($"[binarios] substituto de teste do {Def(s.B).Chave}: não consegui ler {r.Arquivo} agora (arquivo em uso?); não o uso desta vez e confiro de novo na próxima.");
+            return r;
+        }
+        s.Substituto = null;
+        Log.Info($"[binarios] substituto de teste do {Def(s.B).Chave} mudou e não bate mais com o pin ({NomeMotivo(r.Motivo)}, {r.Arquivo}); usando o embutido, conferido.");
+        return null;
     }
 
     /// <summary>Onde o binário embutido mora: &lt;pasta do app&gt;\ffmpeg\ffmpeg.exe, ffmpeg\ffplay.exe e mpv\mpv.exe. Só isso.</summary>
@@ -242,7 +307,7 @@ public static class Binarios
     sealed class Slot
     {
         public required Binario B;
-        public string? Substituto;
+        public volatile ConferidorDeBinario? Substituto; // a pasta de STREEMU_FFMPEG_DIR / STREEMU_MPV, conferida pelo pin
         public ConferidorDeBinario Conf = null!;
         public bool Episodio;           // já avisou deste problema (um aviso, um evento, um reparo por vez)
         public Reparo Reparo;
@@ -250,19 +315,23 @@ public static class Binarios
         public ResultadoBinario? Ultimo;
     }
 
-    static readonly ConcurrentDictionary<Binario, Slot> _slots = new();
+    // Lazy: criar o slot confere o SHA-256 do substituto (~230 MB de ffmpeg) e o GetOrAdd pode rodar a fábrica duas vezes em paralelo; assim só uma roda
+    static readonly ConcurrentDictionary<Binario, Lazy<Slot>> _slots = new();
 
-    static Slot SlotDe(Binario b) => _slots.GetOrAdd(b, k =>
+    static Slot SlotDe(Binario b) => _slots.GetOrAdd(b, k => new Lazy<Slot>(() => CriarSlot(k), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+
+    static Slot CriarSlot(Binario k)
     {
         var s = new Slot { B = k };
-        s.Substituto = Substituto(k, SubstituicaoLiberada, Environment.GetEnvironmentVariable);
-        if (s.Substituto != null) Log.Info($"[binarios] usando {Def(k).Chave} de teste em {Path.GetDirectoryName(s.Substituto)} (sem conferência de SHA-256).");
+        s.Substituto = ConferidorDoSubstituto(k, SubstituicaoLiberada, Environment.GetEnvironmentVariable, Pin(k),
+            m => Log.Info($"[binarios] substituto de teste do {Def(k).Chave} ignorado ({m}); usando o embutido, conferido."));
+        if (s.Substituto?.Conferir() is { Ok: true } conf) Log.Info($"[binarios] usando {Def(k).Chave} de teste em {Path.GetDirectoryName(conf.Exe)} (SHA-256 conferido com o pin).");
         // sem cache entre sessões em teste e com STREEMU_NOSTATE (nada de estado salvo, e ele não pode vazar entre casos)
         string? cache = RelayConfig.ModoTeste || Environment.GetEnvironmentVariable("STREEMU_NOSTATE") == "1" || Environment.GetEnvironmentVariable("STREEMU_TEST_DIR") != null ? null
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Streemu", $"binarios-{Def(k).Chave}.json");
         s.Conf = new ConferidorDeBinario(Path.Combine(AppContext.BaseDirectory, Def(k).Pasta), Pin(k), Def(k).Exe, cache);
         return s;
-    });
+    }
 
     /// <summary>Servidor do grupo, para baixar de novo. Posto pela janela principal; nulo (testes, --capture-test) = não há de onde baixar.</summary>
     public static Func<RelayConfig.Settings?>? Servidor { get; set; }
@@ -306,7 +375,12 @@ public static class Binarios
     public static string? Caminho(Binario b)
     {
         var s = SlotDe(b);
-        if (s.Substituto != null) return s.Substituto;
+        if (ConferirSubstituto(s) is { } rs)
+        {
+            if (rs.Ok) { if (s.Ultimo is { Transitorio: true }) s.Ultimo = null; return rs.Exe; }
+            s.Ultimo = rs; // leitura passageira falhou: sem uso agora, sem reparo (o substituto é da pessoa que desenvolve) e sem cair no embutido
+            return null;
+        }
         var r = s.Conf.Conferir();
         if (!s.Episodio || r.Ok) s.Ultimo = r; // dentro de um problema, o motivo que vale é o primeiro (depois de renomear o arquivo só "falta" aparece)
         if (r.Ok)
@@ -341,6 +415,7 @@ public static class Binarios
         var d = Def(b);
         var r = s.Ultimo;
         string o = $"O {d.Descricao} do Streemu";
+        if (r is { Transitorio: true } && s.Substituto != null) return $"{o} de teste não pôde ser lido agora (arquivo em uso, talvez pelo antivírus). Tente de novo em instantes.";
         string oque = r?.Motivo switch
         {
             MotivoBinario.Falta => $"{o} não está na pasta do programa.",
@@ -439,6 +514,6 @@ public static class Binarios
     public static ResultadoBinario Conferir(Binario b)
     {
         var s = SlotDe(b);
-        return s.Substituto != null ? new(MotivoBinario.Ok, s.Substituto, null) : s.Conf.Conferir();
+        return ConferirSubstituto(s) ?? s.Conf.Conferir();
     }
 }

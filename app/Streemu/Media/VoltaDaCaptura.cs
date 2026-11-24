@@ -31,6 +31,14 @@ static class VoltaDaCaptura
         caiuNoDdagrab && aindaQuerDdagrab && !monitorNoDxgi && esperouMs < EsperaMaximaMs;
 
     /// <summary>
+    /// A abertura que vem precisa do monitor no DXGI (vira o <c>aindaQuerDdagrab</c> de <see cref="EsperaMonitor"/>)? Sim quando abre pelo ddagrab (o
+    /// padrão) e também quando abre o gfxcapture por causa do <c>887a0026</c> (<see cref="TrocaPorAcessoPerdido"/>): logo depois da queda o monitor some
+    /// do DXGI por um instante, e sem o monitor válido o gfxcapture abre 0x0 e a reabertura volta ao ddagrab, com o log já dizendo "passando para o
+    /// gfxcapture". Só a troca que o VIGIA mandou (<paramref name="preferDda"/> falso: o ddagrab estava vivo, só sem quadros) não espera.
+    /// </summary>
+    public static bool AguardaMonitor(bool? preferDda, bool gfxPorAcessoPerdido) => preferDda != false || gfxPorAcessoPerdido;
+
+    /// <summary>
     /// Para de esperar no meio porque o laço da live tem coisa mais urgente: parar, pôr ou tirar a pausa (trava de foco: o UAC rouba o foco no mesmo
     /// instante do ACCESS_LOST) ou trocar a qualidade. Quem assiste vê "Transmissão pausada" em vez da imagem parada.
     /// </summary>

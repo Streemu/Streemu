@@ -102,6 +102,14 @@ public sealed class StreamSender : IDisposable
     bool _lembrado;
     // a última linha do ffmpeg principal que não é de progresso: quando ele sai sozinho, é ela que diz em que etapa caiu (só o código sai do PC)
     volatile string? _ultimoErro;
+    // o ffmpeg principal desta captura escreveu 887a0026 (DXGI_ERROR_ACCESS_LOST): o Windows tirou a tela do ddagrab. A última linha (_ultimoErro) não basta:
+    // depois dela o ffmpeg ainda escreve a falha do filtro. Volta a falso a cada abertura da captura.
+    volatile bool _acessoPerdido;
+    // quedas do ddagrab do monitor por 887a0026: na 3ª em 120 s a live passa para o gfxcapture; se ele render quase nada e o ddagrab muito mais,
+    // volta ao ddagrab uma vez (LIV-151, 2026-11-24). A regra vale para um monitor só.
+    readonly TrocaPorAcessoPerdido _acesso = new();
+    // número da abertura do ffmpeg principal: o stderr de um processo antigo que chega depois de o novo abrir é ignorado (ver ParseStats)
+    int _geracaoCaptura;
     /// <summary>Teste: finge que a captura travou N s depois de abrir (-1 = nunca). Padrão: STREEMU_TEST_STUCK_AFTER.</summary>
     internal int TestStuckAfter { get; set; } = int.TryParse(Environment.GetEnvironmentVariable("STREEMU_TEST_STUCK_AFTER"), out var t) ? t : -1;
     /// <summary>Teste (--capture-test h): fecha o ffmpeg do sensor N s depois de a captura abrir, uma vez, para conferir a batida de 1 s e a reabertura do sensor.</summary>
@@ -240,6 +248,7 @@ public sealed class StreamSender : IDisposable
     public async Task StartAsync(Settings s)
     {
         if (_running) return;
+        _acesso.Reiniciar(); // live nova: o ddagrab volta a ser o padrão do monitor
         // fora da janela e antes de qualquer coisa: o ffmpeg tem que ser o conferido (SHA-256), e a conferência pode ainda estar rodando (BinarioIndisponivelException diz o que fazer)
         await Task.Run(() => Binarios.Exigir(Binario.Ffmpeg));
         if (!s.Source.StillExists()) throw new InvalidOperationException("a janela escolhida não existe mais; atualize a lista");
@@ -328,11 +337,18 @@ public sealed class StreamSender : IDisposable
     /// A captura do começo da live (e de uma troca de janela/qualidade). Jogo em tela cheia vai pelo monitor (ddagrab), a não ser que o vigia já tenha
     /// visto, com ESSE jogo, a captura do monitor quase não receber quadros e trocado para a da janela. Motivo (num PC do grupo, recomp do Ocarina of Time
     /// "Hookshot", 10/11): o ddagrab, até numa captura nova, recebia ~1 quadro/s com o jogo a ~51/s; a cada live (e a cada volta do Alt+Tab) o app
-    /// abria pelo monitor de novo e quem assistia via ~24 s de slideshow até o vigia trocar. Devolve true quando abriu pela janela por causa da memória.
+    /// abria pelo monitor de novo e quem assistia via ~24 s de slideshow até o vigia trocar. Devolve true quando abriu pela janela por causa da memória
+    /// (ou pelo gfxcapture do monitor porque o ddagrab já perdeu o acesso várias vezes nesta live): quem chama passa a respeitar o método (<c>_preferDda = false</c>).
     /// </summary>
     (CaptureSpec Cap, bool RememberedWindow) InitialCapture(Settings s)
     {
         var src = s.Source;
+        // troca de qualidade no mesmo monitor depois da troca por ACCESS_LOST: o monitor segue pelo gfxcapture (outro monitor ou uma janela não: a regra é de um monitor só)
+        if (!src.IsWindow && _acesso.QuerGfxcapture(ChaveDaFonte(src, Display.DeviceNameOf(src.Handle))) && Environment.GetEnvironmentVariable("STREEMU_CAPTURE") == null)
+        {
+            Log.Info("[captura] o ddagrab já perdeu o acesso à tela várias vezes neste monitor; ele continua pelo gfxcapture.");
+            return (Capture.Monitor(src.Handle, s.Preset.Fps, src.Label), true);
+        }
         if (src.IsWindow && Environment.GetEnvironmentVariable("STREEMU_CAPTURE") == null && Capture.PreferDda(src)
             && RememberedWindowSince(_memory?.Recall(CaptureMemoryKey(src)), DateTime.Now) is DateTime since)
         {
@@ -344,6 +360,9 @@ public sealed class StreamSender : IDisposable
     }
 
     static string CaptureMemoryKey(CaptureSource src) => "captura|" + src.ProcessName.ToLowerInvariant();
+
+    /// <summary>A fonte onde a regra do <c>887a0026</c> vale: o monitor pelo nome do dispositivo (o identificador pode mudar), ou "janela".</summary>
+    static string ChaveDaFonte(CaptureSource src, string? nomeDoMonitor) => TrocaPorAcessoPerdido.Chave(src.IsWindow, nomeDoMonitor);
 
     /// <summary>Quanto tempo vale a memória "esse jogo vai pela janela": driver e jogo mudam, e a captura do monitor costuma ser a melhor para jogo em tela cheia.</summary>
     internal static readonly TimeSpan CaptureMemoryLife = TimeSpan.FromDays(14);
@@ -819,6 +838,7 @@ public sealed class StreamSender : IDisposable
                     // reabrir agora só testaria os encoders com uma fonte de 144x20 (campo 2026-11-23, LIV-138)
                     bool hidden = WindowHidden(Current);
                     if (hidden) { captureFailures = 0; continue; }
+                    RegistraQuedaPorAcessoPerdido();
                     // a captura caiu com amigos conectados: reabre só ela (os players não fecham)
                     // com a tela ainda sem voltar (reset do driver, LIV-141 22:18), a queda do ddagrab antigo não conta por até 10 s
                     captureFailures = VoltaDaCaptura.ContaQueda(JanelaMinimizada.ContaQueda(hidden, (DateTime.Now - _captureStartedAt).TotalSeconds), VaziaHaMs)
@@ -935,6 +955,9 @@ public sealed class StreamSender : IDisposable
                 (_audio, AudioDescription) = CreateAudioAsync(next).GetAwaiter().GetResult();
             }
             Current = next;
+            // outro monitor ou uma janela: a regra do 887a0026 recomeça (a troca era do monitor anterior); a mesma fonte com outra qualidade mantém o estado
+            if (_acesso.Fonte(ChaveDaFonte(next.Source, next.Source.IsWindow ? null : Display.DeviceNameOf(next.Source.Handle))))
+                Log.Info("[captura] a fonte mudou: a regra de trocar o ddagrab pelo gfxcapture por 887a0026 recomeça nesta fonte.");
             _preferDda = rememberedWindow ? false : null;
             _staleConfirmed = false;
             _session = new FrameStats(next.Preset.Fps);
@@ -958,8 +981,12 @@ public sealed class StreamSender : IDisposable
     }
 
     /// <summary>Lê a linha de progresso do ffmpeg e calcula quantos quadros por segundo a captura entrega de verdade.</summary>
-    void ParseStats(string line)
+    void ParseStats(string line, int geracao)
     {
+        // o fim do stderr de um ffmpeg antigo pode chegar depois de o novo abrir: um 887a0026 dele marcaria a captura nova como "tela perdida"
+        // (e contaria uma queda que não houve), e as linhas dele também sujariam o _ultimoErro e os quadros da sessão
+        if (!TrocaPorAcessoPerdido.LinhaDoProcessoAtual(geracao, Volatile.Read(ref _geracaoCaptura))) return;
+        if (line.Contains("887a0026", StringComparison.OrdinalIgnoreCase)) _acessoPerdido = true;
         var r = _session?.Feed(line);
         if (r == null) { if (!line.Contains("frame=")) _ultimoErro = line; return; }
         long encoded = (long)Math.Round(r.Value.Out);
@@ -1097,12 +1124,14 @@ public sealed class StreamSender : IDisposable
     void StartCapture(bool novaTentativa = true)
     {
         var args = CaptureArgs(Current!, CaptureUsed!, Chosen!, _audio != null);
-        _ultimoErro = null;
+        // a geração sobe ANTES de zerar o que o stderr marca: o que um processo antigo ainda escrever já é descartado em ParseStats
+        int geracao = Interlocked.Increment(ref _geracaoCaptura);
+        _ultimoErro = null; _acessoPerdido = false;
         var fonte = Current!.Source;
         _monitorNome = Display.DeviceNameOf(fonte.IsWindow ? Display.MonitorOf(fonte.Handle) : fonte.Handle) ?? _monitorNome;
         ContinueMediaClock(args);
         var p = Tools.Start(Tools.Ffmpeg, args, "ffmpeg",
-            redirectStdin: true, onStderr: ParseStats, binaryStdout: true);
+            redirectStdin: true, onStderr: linha => ParseStats(linha, geracao), binaryStdout: true);
         _captureStartedAt = DateTime.Now;
         _stuckSeconds = 0; _lowSeconds = 0; _healthySeconds = 0; _lowCaptureSeconds = 0; _lastUnique = -1;
         _lastSecondAt = _captureStartedAt; _silentStreak = 0;
@@ -1160,20 +1189,26 @@ public sealed class StreamSender : IDisposable
         var s = Current!;
         // a troca do vigia para o monitor não vale mais se a janela deixou de cobrir o monitor (mostraria a área de trabalho)
         if (_preferDda == true && s.Source.IsWindow && !WantMonitor(_preferDda, Capture.PreferDda(s.Source), s.Source.CoversMonitorNow())) _preferDda = null;
+        // a troca por 887a0026 vale para o monitor onde aconteceu e continua PENDENTE até o gfxcapture abrir de verdade: se esta reabertura
+        // ficar no ddagrab (fonte 0x0, teste do encoder falhou), a próxima queda tenta o gfxcapture de novo, sem depender de nova contagem
+        bool gfxPorAcesso = QuerGfxcapturePorAcessoPerdido(s.Source);
+        string? gfxNaoAbriu = null;
         try
         {
-            var (mon, interrompida) = EsperaMonitorVoltar(ref s);
+            var (mon, interrompida) = EsperaMonitorVoltar(ref s, gfxPorAcesso);
             // parar, pausar ou trocar a qualidade no meio da espera: o laço cuida disso agora e abre a captura (ou a pausa) do jeito certo
             if (interrompida) return;
-            var cap = _preferDda switch
+            var cap = TrocaPorAcessoPerdido.ProximaCaptura(_preferDda, s.Source.IsWindow, s.Source.IsWindow && s.Source.StillExists(), gfxPorAcesso) switch
             {
-                true => Capture.Dda(mon, s.Preset.Fps, s.Source.Label) ?? Capture.For(s.Source, s.Preset.Fps),
-                false when s.Source.IsWindow && s.Source.StillExists() => Capture.Window(s.Source, s.Preset.Fps),
-                // monitor: o vigia viu o ddagrab quase sem quadros e o gfxcapture do mesmo monitor pegando bem mais
-                false when !s.Source.IsWindow => Capture.Monitor(s.Source.Handle, s.Preset.Fps, s.Source.Label),
+                MetodoDaCaptura.Ddagrab => Capture.Dda(mon, s.Preset.Fps, s.Source.Label) ?? Capture.For(s.Source, s.Preset.Fps),
+                MetodoDaCaptura.Janela => Capture.Window(s.Source, s.Preset.Fps),
+                // monitor (o monitor que a espera devolveu, já com o identificador novo se o Windows o recriou): o vigia viu o ddagrab quase sem
+                // quadros e o gfxcapture do mesmo monitor pegando bem mais, ou o Windows tirou o acesso do ddagrab várias vezes (887a0026)
+                MetodoDaCaptura.GfxcaptureMonitor => Capture.Monitor(mon, s.Preset.Fps, s.Source.Label),
                 _ => Capture.For(s.Source, s.Preset.Fps)
             };
-            bool changed = (cap.Width, cap.Height) != SourceSize || cap.Dda != CaptureUsed!.Dda;
+            bool eraDdagrab = CaptureUsed!.Dda;
+            bool changed = (cap.Width, cap.Height) != SourceSize || cap.Dda != eraDdagrab;
             // a janela minimizou no meio da reabertura (a captura vê 144x20): fica com a captura e o encoder que funcionavam, e a pausa
             // espera a janela voltar. Testar os 9 encoders aqui gastava ~2,8 s por rodada e encerrava a live (campo 2026-11-23, LIV-138)
             bool hidden = s.Source.IsWindow && JanelaMinimizada.Sumiu(WindowHidden(s), cap.Width, cap.Height);
@@ -1210,30 +1245,82 @@ public sealed class StreamSender : IDisposable
                 SourceSize = src; OutSize = dst;
             }
             if (!keepOld) { CaptureUsed = cap; Log.Info($"Captura: {cap}"); }
+            // só na passagem do ddagrab para o gfxcapture: depois dela, reabrir o gfxcapture que já estava aberto não é novidade
+            if (gfxPorAcesso && eraDdagrab)
+            {
+                if (!keepOld && cap.Name == "gfxcapture-monitor")
+                    Log.Info($"[captura] gfxcapture aberto no monitor {_monitorNome ?? "?"} ({cap.Width}x{cap.Height}): a troca por 887a0026 está feita. Se ele render quase nada e o ddagrab muito mais, o vigia volta ao ddagrab uma vez.");
+                else gfxNaoAbriu = keepOld && empty
+                    ? $"a tela ainda não voltou (a fonte veio {cap.Width}x{cap.Height})"
+                    : keepOld ? $"a captura viu um tamanho pequeno ({cap.Width}x{cap.Height})" : $"a captura escolhida foi {cap.Name}";
+            }
         }
-        catch (Exception e) { Log.Info("Não consegui refazer a captura com outra configuração; reabrindo a mesma: " + e.Message); }
+        catch (Exception e)
+        {
+            Log.Info("Não consegui refazer a captura com outra configuração; reabrindo a mesma: " + e.Message);
+            if (gfxPorAcesso && CaptureUsed is { Dda: true }) gfxNaoAbriu = "deu erro ao refazer a captura: " + e.Message;
+        }
+        if (gfxNaoAbriu != null)
+            Log.Info($"[captura] o gfxcapture ainda não abriu ({gfxNaoAbriu}); reabro a captura anterior e tento o gfxcapture de novo na próxima queda.");
         if (!_running) return; // parou durante o teste do encoder: o Stop já fechou a captura, não abre outra
         StartCapture();
     }
 
     /// <summary>
+    /// A captura do monitor pelo ddagrab acabou de sair sozinha: se foi por <c>887a0026</c> pela 3ª vez em 120 s (regra em <see cref="TrocaPorAcessoPerdido"/>),
+    /// a regra decide pelo gfxcapture do mesmo monitor. A decisão vale até a abertura dar certo: <see cref="RestartCapture"/> pergunta a ela
+    /// (<see cref="QuerGfxcapturePorAcessoPerdido"/>) a cada reabertura, então uma abertura que ficou no ddagrab (fonte 0x0, encoder) tenta de novo na queda
+    /// seguinte. Conta a queda de um ddagrab mesmo que o vigia tenha pedido o gfxcapture: o ddagrab que caiu é o fato. Fora do monitor com ddagrab
+    /// (janela, gfxcapture) ou com STREEMU_CAPTURE forçando o método, não faz nada.
+    /// </summary>
+    void RegistraQuedaPorAcessoPerdido()
+    {
+        bool monitorNoDdagrab = CaptureUsed?.Dda == true && Current is { Source.IsWindow: false }
+            && Environment.GetEnvironmentVariable("STREEMU_CAPTURE") == null;
+        bool acessoPerdido = false;
+        if (monitorNoDdagrab)
+        {
+            // o fim do stderr pode chegar um instante depois de o processo sair: sem esperar, a linha do 887a0026 às vezes ainda não foi lida
+            try { var p = _ffmpeg; if (p != null) Task.Run(() => p.WaitForExit()).Wait(300); } catch { }
+            acessoPerdido = _acessoPerdido;
+        }
+        if (!_acesso.Registra(DateTime.Now, monitorNoDdagrab, acessoPerdido, ChaveDoMonitorAberto(Current!.Source))) return;
+        var (quedas, segundos) = _acesso.UltimaTroca;
+        string msg = $"A captura da tela caiu {quedas} vezes em {segundos:0} s (o Windows tirou o acesso do ddagrab, 887a0026). Passando a capturar este monitor pelo gfxcapture; " +
+                     "se ele render quase nada e o ddagrab muito mais, volto ao ddagrab uma vez.";
+        Log.Info("[captura] " + msg);
+        lock (_diagnoses) { _diagnoses.Add($"{DateTime.Now:HH:mm:ss} {msg}"); if (_diagnoses.Count > 20) _diagnoses.RemoveAt(0); }
+        _staleConfirmed = false;
+    }
+
+    /// <summary>A fonte da regra do <c>887a0026</c>: o monitor pelo nome que a última abertura da captura viu (o identificador pode mudar), ou "janela".</summary>
+    string ChaveDoMonitorAberto(CaptureSource src) => ChaveDaFonte(src, _monitorNome);
+
+    /// <summary>A próxima abertura desta fonte é pelo gfxcapture por causa do <c>887a0026</c>? Só no monitor onde a troca aconteceu e sem STREEMU_CAPTURE.</summary>
+    bool QuerGfxcapturePorAcessoPerdido(CaptureSource src) =>
+        !src.IsWindow && _acesso.QuerGfxcapture(ChaveDoMonitorAberto(src)) && Environment.GetEnvironmentVariable("STREEMU_CAPTURE") == null;
+
+    /// <summary>
     /// Devolve o monitor da fonte, esperando até <see cref="VoltaDaCaptura.EsperaMaximaMs"/> o DXGI listá-lo de novo quando o ddagrab acabou de cair
     /// (regra em <see cref="VoltaDaCaptura.EsperaMonitor"/>). Sem isso a reabertura imediata depois de um ACCESS_LOST caía para o gfxcapture 0x0.
     /// </summary>
-    (IntPtr Monitor, bool Interrompida) EsperaMonitorVoltar(ref Settings s)
+    (IntPtr Monitor, bool Interrompida) EsperaMonitorVoltar(ref Settings s, bool gfxPorAcessoPerdido)
     {
         var src = s.Source;
         IntPtr Mon() => src.IsWindow ? Display.MonitorOf(src.Handle) : src.Handle;
         (bool Achou, IntPtr Monitor, bool PorNome) Olha(bool registrarFalha) =>
             VoltaDaCaptura.Acha(Display.Outputs(registrarFalha).Select(o => (o.DeviceName, o.Monitor)).ToList(), Mon(), _monitorNome);
-        bool caiuNoDdagrab = CaptureUsed?.Dda == true, querDdagrab = _preferDda != false;
+        // a troca por 887a0026 também espera: o gfxcapture precisa do monitor válido, e logo depois da queda ele some do DXGI por um instante
+        bool caiuNoDdagrab = CaptureUsed?.Dda == true, querDdagrab = VoltaDaCaptura.AguardaMonitor(_preferDda, gfxPorAcessoPerdido);
         var r = Olha(true);
         bool repetindo = _vaziaDesde != 0; // a tela já não voltou numa reabertura anterior: não repete as mesmas linhas no log a cada 1,7 s
         var sw = Stopwatch.StartNew();
         if (VoltaDaCaptura.EsperaMonitor(caiuNoDdagrab, querDdagrab, r.Achou, 0))
         {
             if (!repetindo)
-                Log.Info($"[captura] o monitor ainda não aparece na placa de vídeo; espero até {VoltaDaCaptura.EsperaMaximaMs / 1000.0:0.0} s antes de trocar para a captura do Windows (gfxcapture).");
+                Log.Info(gfxPorAcessoPerdido
+                    ? $"[captura] o monitor ainda não aparece na placa de vídeo; espero até {VoltaDaCaptura.EsperaMaximaMs / 1000.0:0.0} s antes de abrir o gfxcapture (ele precisa do monitor)."
+                    : $"[captura] o monitor ainda não aparece na placa de vídeo; espero até {VoltaDaCaptura.EsperaMaximaMs / 1000.0:0.0} s antes de trocar para a captura do Windows (gfxcapture).");
             do
             {
                 Thread.Sleep(VoltaDaCaptura.PassoMs);
@@ -1246,8 +1333,10 @@ public sealed class StreamSender : IDisposable
                 r = Olha(false); // a janela pode ter ido para outro monitor, e o monitor pode voltar com outro identificador
             }
             while (VoltaDaCaptura.EsperaMonitor(caiuNoDdagrab, querDdagrab, r.Achou, sw.ElapsedMilliseconds));
-            if (r.Achou) Log.Info($"[captura] o monitor voltou depois de {sw.ElapsedMilliseconds} ms; reabro pelo ddagrab.");
-            else if (!repetindo) Log.Info($"[captura] o monitor não voltou em {sw.ElapsedMilliseconds} ms; sigo para a captura do Windows (gfxcapture).");
+            if (r.Achou) Log.Info($"[captura] o monitor voltou depois de {sw.ElapsedMilliseconds} ms; reabro pelo {(gfxPorAcessoPerdido ? "gfxcapture" : "ddagrab")}.");
+            else if (!repetindo) Log.Info(gfxPorAcessoPerdido
+                ? $"[captura] o monitor não voltou em {sw.ElapsedMilliseconds} ms; tento o gfxcapture mesmo assim (se vier 0x0, reabro o ddagrab e tento de novo na próxima queda)."
+                : $"[captura] o monitor não voltou em {sw.ElapsedMilliseconds} ms; sigo para a captura do Windows (gfxcapture).");
         }
         if (r.Achou) _vaziaDesde = 0;
         if (r.PorNome && !src.IsWindow)
@@ -1336,6 +1425,8 @@ public sealed class StreamSender : IDisposable
         // trocava para o ddagrab e quem assistia via a ÁREA DE TRABALHO inteira. Num jogo em tela cheia/sem bordas a janela cobre o monitor e a troca segue.
         CaptureSpec? alt = null;
         string note = "";
+        // a captura da live é o gfxcapture do monitor que a troca por 887a0026 abriu: é nela que a regra da volta ao ddagrab olha
+        bool capturaDaTroca = !s.Source.IsWindow && cap.Name == "gfxcapture-monitor" && _acesso.NoGfxcapture;
         if (s.Source.IsWindow && s.Source.StillExists())
         {
             if (cap.CapturesMonitor) alt = Capture.Window(s.Source, fps);
@@ -1348,6 +1439,14 @@ public sealed class StreamSender : IDisposable
             // Antes não havia alternativa e o vigia concluía "o jogo manda pouco" com o RoR2 rodando liso (2026-11-12: gfxcapture do monitor a ~1/s).
             alt = cap.Dda ? Capture.Monitor(s.Source.Handle, fps, s.Source.Label) : Capture.Dda(s.Source.Handle, fps, s.Source.Label);
             if (alt != null && alt.Name == cap.Name) alt = null; // cor avançada: o Dda devolve o próprio gfxcapture
+            // o Windows já tirou a tela do ddagrab várias vezes (LIV-151) e a live está no gfxcapture por causa disso: o ddagrab só volta pela regra de
+            // PodeVoltar (gfxcapture quase parado e ddagrab bem melhor, uma vez só); senão a live vai e volta e cada troca congela a imagem.
+            // Com a troca ainda pendente (a captura é o ddagrab) não há o que medir no gfxcapture e a sonda do vigia nem testa o ddagrab.
+            if (alt is { Dda: true } && !_acesso.PermiteDdagrab && !capturaDaTroca)
+            {
+                alt = null;
+                note = " Não volto ao ddagrab: o Windows já tirou o acesso a ele várias vezes (887a0026).";
+            }
         }
         var probeStart = DateTime.Now;
         var altProbe = alt != null ? Task.Run(() => Capture.Probe(alt, ProbeSeconds)) : null;
@@ -1371,14 +1470,34 @@ public sealed class StreamSender : IDisposable
             // as sondas levam ~3 s: confere de novo se a janela ainda cobre o monitor (o jogo pode ter saído da tela cheia no meio)
             // fonte monitor: as duas capturas são do monitor inteiro, então "a janela cobre o monitor" não se aplica
             bool sameImage = !s.Source.IsWindow || (alt?.CapturesMonitor == true && s.Source.CoversMonitorNow());
-            if (alt != null && ShouldSwitchMethod(fps, probe, altFps, alt.CapturesMonitor, sameImage))
+            bool trocar = alt != null && ShouldSwitchMethod(fps, probe, altFps, alt.CapturesMonitor, sameImage);
+            // gfxcapture da troca por 887a0026 → ddagrab: só abaixo do piso (e uma vez só); acima dele o gfxcapture, mesmo ruim, fica
+            bool voltaAoDdagrab = trocar && alt!.Dda && capturaDaTroca;
+            bool fica = voltaAoDdagrab && !_acesso.PodeVoltar(true, fps, probe, now, altFps);
+            if (trocar && !fica)
             {
-                msg = $"pelo {cap.Name} chegam só ~{probe:0} quadros/s, mas pelo {alt.Name} chegam ~{altFps:0}/s. Trocando a captura para {alt.Name}" +
-                      (s.Source.IsWindow ? $" (e da próxima vez {s.Source.ProcessName} já abre por ela)." : ".");
-                _preferDda = alt.Dda;
+                if (voltaAoDdagrab)
+                {
+                    _acesso.Volta();
+                    msg = $"o gfxcapture (que entrou no lugar do ddagrab por causa do 887a0026) entrega só ~{Math.Max(probe, now):0} quadros/s e o ddagrab ~{altFps:0}/s. " +
+                          "Volto ao ddagrab, uma vez só: se o Windows tirar a tela dele de novo, reabro pelo ddagrab e não troco mais por esse motivo nesta live.";
+                }
+                else
+                    msg = $"pelo {cap.Name} chegam só ~{probe:0} quadros/s, mas pelo {alt!.Name} chegam ~{altFps:0}/s. Trocando a captura para {alt.Name}" +
+                          (s.Source.IsWindow ? $" (e da próxima vez {s.Source.ProcessName} já abre por ela)." : ".");
+                _preferDda = alt!.Dda;
                 _staleConfirmed = false;
                 RememberCaptureMethod(s.Source, monitor: alt.Dda);
                 Schedule($"trocando para {alt.Name}");
+            }
+            else if (fica)
+            {
+                // o ddagrab pega mais, mas o gfxcapture não está tão ruim a ponto de valer a volta (e o ddagrab que cai com 887a0026 congela ~2,3 s a cada queda)
+                _staleConfirmed = false;
+                msg = $"o gfxcapture entrega ~{Math.Max(probe, now):0} quadros/s e o ddagrab ~{altFps:0}/s, mas só volto ao ddagrab abaixo de " +
+                      $"{Math.Min(TrocaPorAcessoPerdido.PisoGfxcapture, fps * 0.3):0}/s (ele perdeu o acesso à tela várias vezes, 887a0026). A transmissão segue e confiro de novo em {_backoff.TotalSeconds:0} s.";
+                _nextDiagnosisAt = DateTime.Now + _backoff;
+                _backoff = NextBackoff(_backoff, probe, fps);
             }
             else
             {
@@ -1436,7 +1555,7 @@ public sealed class StreamSender : IDisposable
     }
 
     internal static bool ShouldSwitchMethod(int fps, double probe, double altFps, bool altCapturesMonitor, bool windowCoversMonitor) =>
-        (!altCapturesMonitor || windowCoversMonitor) && altFps >= fps * 0.6 && altFps > probe * 1.5;
+        (!altCapturesMonitor || windowCoversMonitor) && TrocaPorAcessoPerdido.OutroPegaBemMais(fps, probe, altFps);
 
     /// <summary>
     /// Reabre na hora, sem sonda? Só depois de o diagnóstico já ter visto, NESTA live e neste método, a captura travar enquanto uma nova pegava (o jogo

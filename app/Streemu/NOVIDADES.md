@@ -16,6 +16,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias
+- **A live não congela quando o Windows tira a tela da captura:** se isso acontecer várias vezes seguidas (comum com jogo em tela cheia), a live passa para outro modo de captura em vez de congelar a cada poucos segundos. Se o novo ficar bem mais lento, ela volta ao anterior uma vez.
 - **A imagem volta mais rápido quando a tela pisca:** se o jogo troca de resolução, aparece um aviso do Windows ou o driver de vídeo reinicia durante a live, a captura do monitor volta mais rápido. Se a tela demorar alguns segundos para voltar, a live espera em vez de cair.
 - **Janela minimizada pausa a live em vez de derrubar:** se a janela que você transmite minimizar, os amigos veem "Transmissão pausada" e a live volta sozinha quando ela reaparece. O app avisa o que fazer: abrir a janela na frente ou transmitir o monitor.
 - **Prévia das janelas em Transmitir:** em "O que mostrar", telas e janelas aparecem com uma imagem atual, em grade de 3 colunas, para achar mais rápido o que transmitir.

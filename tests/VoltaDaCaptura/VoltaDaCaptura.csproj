@@ -10,5 +10,7 @@
     <Compile Include="../../app/Streemu/Media/VoltaDaCaptura.cs" Link="VoltaDaCaptura.cs" />
     <!-- a decisão da reabertura junta as duas regras: fonte vazia (esta) e janela sumida (LIV-138) -->
     <Compile Include="../../app/Streemu/Media/JanelaMinimizada.cs" Link="JanelaMinimizada.cs" />
+    <!-- a troca do ddagrab pelo gfxcapture depois de várias quedas por 887a0026 (LIV-151, 2026-11-24) -->
+    <Compile Include="../../app/Streemu/Media/TrocaPorAcessoPerdido.cs" Link="TrocaPorAcessoPerdido.cs" />
   </ItemGroup>
 </Project>

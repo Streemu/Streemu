@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "2a71967e219e20d80976088a30395c0737fed9d6",
-    "notas":  "- Tenta o Direct3D 11 de novo depois do reset do driver e encurta a janela do reset\n- Adianta o mpv em qualquer placa e trata o reset do driver no player",
+    "privado":  "cb0195a3495d19018fe864f5c3f252d020835dec",
+    "notas":  "- Corrige os achados da revisão da troca por ACCESS_LOST\n- Troca o ddagrab pelo gfxcapture quando o Windows tira a tela várias vezes",
     "obrigatoria":  false
 }

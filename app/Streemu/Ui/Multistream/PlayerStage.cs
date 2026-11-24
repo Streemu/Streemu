@@ -303,6 +303,8 @@ public sealed class PlayerStage : IDisposable
         bool late = DateTime.UtcNow - _addedAt.GetValueOrDefault(viewer, DateTime.UtcNow) > LoadingGrace;
         // a legenda ("Amigo · Jogo · ao vivo há 12 min") começa pelo nome
         string who = (_captions.GetValueOrDefault(viewer)?.Invoke() ?? "").Split(" · ")[0].Trim();
+        // esperando o mpv (Direct3D 11) ficar pronto depois de o Vulkan falhar na placa: sem janela nem botão, só a frase no lugar do vídeo
+        if (viewer.IsPreparingDirect3D) return new StageLoading(video, "Ajustando o player para a sua placa de vídeo...", false);
         string text = viewer.IsPreview
             ? (late ? "A prévia não chegou. A live pode ter pausado ou o encoder travou: feche a prévia e abra de novo." : "Abrindo sua prévia...")
             : who.Length == 0

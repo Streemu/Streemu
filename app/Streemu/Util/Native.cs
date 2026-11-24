@@ -43,6 +43,8 @@ internal static partial class Native
     [DllImport("user32.dll")] public static extern bool AdjustWindowRectEx(ref RECT rect, uint style, bool menu, uint exStyle);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] public static extern int GetWindowLong32(IntPtr hWnd, int index);
     public const int SW_RESTORE = 9;
+    /// <summary>Mostra a janela no tamanho anterior sem ativá-la (não tira o foco de quem está jogando).</summary>
+    public const int SW_SHOWNOACTIVATE = 4;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct WINDOWPLACEMENT { public int length, flags, showCmd; public POINT ptMinPosition, ptMaxPosition; public RECT rcNormalPosition; }

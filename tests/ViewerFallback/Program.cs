@@ -19,12 +19,23 @@ static class Program
         string executable = Path.GetFileNameWithoutExtension(Environment.ProcessPath)!;
         if (executable == "mpv") return await FakeDirect3D(args);
         if (executable == "ffplay") return await FakePlayer(args);
+        // Os prazos de verdade (5 s na abertura direta, 12 s na recuperação, 30 s para o Vulkan valer como funcionou, 300 ms para o aviso "Ajustando o
+        // player..." e 300 ms de espera da linha get_buffer() depois da falta de memória) ficam conferidos aqui e trocados por valores curtos: o teste não
+        // espera 12 s. A recuperação tem que ser maior que a abertura, senão o caso d3d11-install-late não prova nada.
+        if (Viewer.Direct3DPreparationTimeout != TimeSpan.FromSeconds(5) || Viewer.Direct3DRecoveryPreparationTimeout != TimeSpan.FromSeconds(12)
+            || Viewer.VulkanWorkedAfter != TimeSpan.FromSeconds(30) || Viewer.Direct3DPreparingNoticeAfter != TimeSpan.FromMilliseconds(300)
+            || Viewer.MemoryFailureKillDelay != TimeSpan.FromMilliseconds(300))
+        { Console.WriteLine("FALHA player-prazos: os prazos do Viewer mudaram (5 s, 12 s, 30 s, 300 ms e 300 ms)."); return 1; }
+        Viewer.Direct3DPreparationTimeout = TimeSpan.FromMilliseconds(300);
+        Viewer.Direct3DRecoveryPreparationTimeout = TimeSpan.FromMilliseconds(1500);
+        Viewer.VulkanWorkedAfter = TimeSpan.FromMilliseconds(400);
+        Viewer.Direct3DPreparingNoticeAfter = TimeSpan.FromMilliseconds(100);
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "ffplay.exe"), true);
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "mpv.exe"), true);
         var results = new List<string>();
         int failed = 0;
         CaminhoMidia.Ligar((tipo, dados) => { lock (Midia) Midia.Add((tipo, dados)); });
-        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-install", "d3d11-install-timeout", "d3d11-install-stop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview" })
+        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-install", "d3d11-install-late", "d3d11-install-timeout", "d3d11-install-stop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview", "preview-vram", "vram-get-buffer", "vram-slab", "vulkan-worked", "vulkan-no-hwaccel", "vulkan-video-then-vram" })
         {
             if (Environment.GetEnvironmentVariable("VIEWER_CASE_FILTER") is { } filter && name != filter) continue;
             try { CaminhoMidia.Descarregar(TimeSpan.FromSeconds(15)); lock (Midia) Midia.Clear(); await Check(name); ConferirMidia(name); results.Add($"OK    player-{name}"); }
@@ -47,6 +58,48 @@ static class Program
             await Task.Delay(20000);
             return 0;
         }
+        if (name == "vulkan-worked")
+        {
+            // o Vulkan que funciona: confirma o vídeo e segue rodando
+            Console.Error.WriteLine(VideoLine);
+            Console.Error.WriteLine(StatusLine);
+            await Task.Delay(20000);
+            return 0;
+        }
+        if (name == "vulkan-no-hwaccel")
+        {
+            // o ffplay avisa que o hwaccel não iniciou e segue sozinho decodificando na CPU: o vídeo roda, mas não é o Vulkan que funcionou
+            Console.Error.WriteLine("[warning] Failed setup for format vulkan: hwaccel initialisation returned error.");
+            Console.Error.WriteLine(VideoLine);
+            Console.Error.WriteLine(StatusLine);
+            await Task.Delay(20000);
+            return 0;
+        }
+        if (name == "vram-get-buffer")
+        {
+            // a assinatura das RDNA3: a falta de memória e, logo depois, o decodificador sem conseguir quadro (a VRAM está livre)
+            Console.Error.WriteLine("[error] VK_ERROR_OUT_OF_DEVICE_MEMORY");
+            Console.Error.WriteLine("[h264 @ 0000020a1b2c3d40] get_buffer() failed");
+            await Task.Delay(20000);
+            return 0;
+        }
+        if (name == "vram-slab")
+        {
+            // VRAM cheia de verdade: o renderizador fica sem memória, sem o get_buffer do decodificador
+            Console.Error.WriteLine("[error] Failed creating LUT texture");
+            Console.Error.WriteLine("[error] No slab to serve request for 1048576 bytes in pool 1");
+            await Task.Delay(20000);
+            return 0;
+        }
+        if (name == "vulkan-video-then-vram")
+        {
+            // o que as placas AMD RDNA3 faziam: o primeiro quadro aparece e logo depois falta memória
+            Console.Error.WriteLine(VideoLine);
+            Console.Error.WriteLine(StatusLine);
+            Console.Error.WriteLine("[error] VK_ERROR_OUT_OF_DEVICE_MEMORY");
+            await Task.Delay(20000);
+            return 0;
+        }
         if (name == "normal-close") { await Task.Delay(100); return 0; }
         if (name is "stop-early" or "resize") { await Task.Delay(20000); return 0; }
         if (name == "network-close") { Console.Error.WriteLine("Connection to srt://127.0.0.1 failed: I/O error"); return 0; }
@@ -58,8 +111,8 @@ static class Program
             return 0;
         }
         if (name == "d3d11-surface") { Console.Error.WriteLine(SurfaceError); return 0; }
-        Console.Error.WriteLine(name == "vram-loop" || name.StartsWith("d3d11-") ? "[error] VK_ERROR_OUT_OF_DEVICE_MEMORY" : SurfaceError);
-        if (name == "vram-loop" || name.StartsWith("d3d11-")) await Task.Delay(20000);
+        Console.Error.WriteLine(name is "vram-loop" or "preview-vram" || name.StartsWith("d3d11-") ? "[error] VK_ERROR_OUT_OF_DEVICE_MEMORY" : SurfaceError);
+        if (name is "vram-loop" or "preview-vram" || name.StartsWith("d3d11-")) await Task.Delay(20000);
         return 0;
     }
 
@@ -95,8 +148,13 @@ static class Program
                 return name.StartsWith("d3d11-install") ? installation.Task : Task.FromResult<string?>(mpv);
             } : null,
         };
-        int vulkanFailures = 0, rejected = 0;
-        viewer.VulkanFailed += () => Interlocked.Increment(ref vulkanFailures);
+        int vulkanFailures = 0, rejected = 0, worked = 0;
+        var motivos = new List<MotivoMidia>();
+        var decodificacoes = new List<bool>();
+        var preparando = new List<bool>();
+        viewer.VulkanFailed += (motivo, decodificacao) => { lock (motivos) { motivos.Add(motivo); decodificacoes.Add(decodificacao); } Interlocked.Increment(ref vulkanFailures); };
+        viewer.PreparingDirect3D += ligado => { lock (preparando) preparando.Add(ligado); };
+        viewer.VulkanWorked += () => Interlocked.Increment(ref worked);
         viewer.Direct3DRejected += () => Interlocked.Increment(ref rejected);
         int restarts = 0, exits = 0;
         using var exited = new ManualResetEventSlim();
@@ -108,7 +166,7 @@ static class Program
         viewer.Exited += () => { Interlocked.Increment(ref exits); exited.Set(); };
         try
         {
-            if (name == "preview") viewer.StartLocal(_ => new Tap(), "teste");
+            if (name.StartsWith("preview")) viewer.StartLocal(_ => new Tap(), "teste");
             else viewer.Start(12345, "somente-teste", 80, "teste");
             if (direct3D)
             {
@@ -124,6 +182,12 @@ static class Program
                     await Until(() => Volatile.Read(ref preparations) == 1);
                     Require(ReadTrace(trace) == "gpu" && restarts == 0, "Reabriu antes de o mpv estar pronto.");
                     if (name == "d3d11-install-stop") viewer.Stop();
+                    // o mpv ainda baixava e termina depois do prazo da abertura direta e antes do da recuperação: a live NÃO pode cair na CPU
+                    if (name == "d3d11-install-late")
+                    {
+                        await Task.Delay(700);
+                        Require(viewer.IsPreparingDirect3D, "A espera longa pelo mpv não avisou o palco (\"Ajustando o player...\").");
+                    }
                     if (name == "d3d11-install-timeout")
                         await Until(() => ReadTrace(trace) == "gpu,cpu");
                     installation.SetResult(mpv);
@@ -139,7 +203,15 @@ static class Program
                 string expected = name == "d3d11-cooldown" ? "d3d11" : name == "d3d11-fails" ? "gpu,d3d11,cpu" : "gpu,d3d11";
                 await Until(() => ReadTrace(trace) == expected && viewer.Running
                     && viewer.Decoder == (name == "d3d11-fails" ? "cpu" : "d3d11va"));
-                Require(vulkanFailures == (name == "d3d11-cooldown" ? 0 : 1), "Registro da falha do Vulkan incorreto.");
+                Require(vulkanFailures == (name == "d3d11-cooldown" ? 0 : 1) && worked == 0, "Registro da falha do Vulkan incorreto.");
+                if (name == "d3d11-install-late")
+                {
+                    // o aviso liga com a espera longa e desliga quando a espera acaba; mpv já pronto (os outros casos) não pisca texto nenhum
+                    await Until(() => { lock (preparando) return preparando.Count == 2; });
+                    Require(preparando[0] && !preparando[1] && !viewer.IsPreparingDirect3D, "O aviso de preparo do Direct3D 11 não ligou e desligou uma vez.");
+                }
+                else if (!name.StartsWith("d3d11-install"))
+                    Require(preparando.Count == 0 && !viewer.IsPreparingDirect3D, "O aviso de preparo apareceu com o mpv já pronto.");
                 Require(rejected == (name == "d3d11-fails" ? 1 : 0), "Registro da rejeição do Direct3D 11 incorreto.");
                 Require(restarts == expected.Count(c => c == ',') && exits == 0, "Avisou o transmissor em uma hora errada.");
                 if (name != "d3d11-fails")
@@ -162,6 +234,33 @@ static class Program
                     await Until(() => ReadTrace(trace) == "gpu,d3d11,d3d11" && viewer.Decoder == "d3d11va" && !viewer.Reopening);
                     Require(exits == 0 && restarts == 2, "Redimensionar desligou o player ou trocou de decoder.");
                 }
+                return;
+            }
+            if (name == "vulkan-worked")
+            {
+                await Until(() => Volatile.Read(ref worked) == 1);
+                Require(viewer.Running && viewer.UsingHardware && vulkanFailures == 0 && restarts == 0 && ReadTrace(trace) == "gpu",
+                    "O Vulkan que funcionou foi tratado como falha ou reaberto.");
+                await Task.Delay(900);
+                Require(Volatile.Read(ref worked) == 1, "VulkanWorked disparou mais de uma vez na mesma abertura.");
+                return;
+            }
+            if (name == "vulkan-no-hwaccel")
+            {
+                // o vídeo roda além do VulkanWorkedAfter, mas o hwaccel não iniciou: nunca vale como "funcionou"
+                await Until(() => viewer.VideoSize != null);
+                await Task.Delay(900);
+                Require(Volatile.Read(ref worked) == 0, "VulkanWorked disparou com o hwaccel que não iniciou.");
+                Require(viewer.Running && vulkanFailures == 0 && restarts == 0 && ReadTrace(trace) == "gpu", "O ffplay que caiu sozinho para a CPU foi derrubado ou reaberto.");
+                return;
+            }
+            if (name == "vulkan-video-then-vram")
+            {
+                // vídeo confirmado e falha logo depois: nunca vale como "funcionou", nem passado o tempo do VulkanWorkedAfter
+                await Until(() => ReadTrace(trace) == "gpu,cpu");
+                await Task.Delay(900);
+                Require(Volatile.Read(ref worked) == 0, "VulkanWorked disparou numa abertura que falhou depois do primeiro quadro.");
+                Require(vulkanFailures == 1 && motivos[0] == MotivoMidia.SemMemoria && viewer.Running && !viewer.UsingHardware, "A falha depois do primeiro quadro não foi tratada.");
                 return;
             }
             bool shouldRetry = name is not ("normal-close" or "cpu-error" or "network-close");
@@ -207,6 +306,15 @@ static class Program
             Require(viewer.FellBackToCpu != null, "Não registrou o motivo da recuperação.");
             if (name is "surface-zero" or "surface-late" or "preview")
                 Require(viewer.ErrorCounts()["vulkan_outro"]?.GetValue<int>() == 1, "Perdeu a última linha do stderr.");
+            // a falha do Vulkan chega com o motivo (também na prévia da própria live, que cai na CPU sem o Direct3D 11)
+            if (name is "vram-loop" or "preview-vram" or "vram-get-buffer" or "vram-slab" or "preview" or "surface-zero")
+            {
+                var esperado = name is "vram-loop" or "preview-vram" or "vram-get-buffer" or "vram-slab" ? MotivoMidia.SemMemoria : MotivoMidia.JanelaNaoAbriu;
+                Require(vulkanFailures == 1 && motivos[0] == esperado, $"VulkanFailed com o motivo errado: {string.Join(",", motivos)} (esperava {esperado}).");
+                // só a falta de memória seguida de get_buffer() failed é a assinatura da decodificação (RDNA3); o OOM do renderizador (VRAM cheia) não é
+                Require(decodificacoes[0] == (name == "vram-get-buffer"), $"VulkanFailed com a assinatura da decodificação errada ({decodificacoes[0]}) no caso {name}.");
+            }
+            Require(worked == 0, "VulkanWorked disparou numa abertura que falhou.");
         }
         finally
         {

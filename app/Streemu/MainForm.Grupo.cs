@@ -105,11 +105,16 @@ public sealed partial class MainForm
         });
         _sender.FocusHeld += held => Ui(() =>
         {
+            // janela minimizada (captura pela janela) tem texto próprio: "volte para o jogo" não ajuda quem minimizou a janela
             _groupStatus.Text = held
-                ? "Transmissão pausada: o jogo não está na frente e os amigos veem a tela \"Transmissão pausada\". Volte para o jogo e a stream continua."
+                ? _sender.HeldByHiddenWindow && _sender.Current is { } cur
+                    ? JanelaMinimizada.TextoDaBarra(GameName.Of(cur.Source))
+                    : "Transmissão pausada: o jogo não está na frente e os amigos veem a tela \"Transmissão pausada\". Volte para o jogo e a stream continua."
                 : DefaultStatus();
             _groupStatus.ForeColor = held ? Theme.Warn : Theme.TextMuted;
         });
+        // a janela transmitida ficou minimizada: diz o que fazer na barra de status (e no balão da bandeja, com o app escondido)
+        _sender.WindowHiddenWarning += msg => Ui(() => { Notify(msg); _groupStatus.ForeColor = Theme.Warn; });
 
         if (!Automated)
         {
@@ -534,7 +539,66 @@ public sealed partial class MainForm
 
     // Uma falha observada não deve atrasar a abertura de todas as lives.
     long _vulkanRetryAt, _direct3DRetryAt;
-    readonly object _playerPreparationLock = new();
+    bool _vulkanEvitadoAvisado;
+    readonly object _playerPreparationLock = new(), _vulkanFalhaLock = new();
+
+    /// <summary>
+    /// A live (ou a prévia da própria) deve abrir sem o Vulkan do ffplay? Sim na RTX série 50, nos 20 min depois de uma falha (memória, nesta sessão) e,
+    /// nas placas que já falharam duas vezes (<see cref="VulkanMemoria"/>, em estado.json), até o reteste de 30 dias ou a troca de placa ou driver.
+    /// Sem a memória em disco, cada live depois dos 20 min pagava 3-4 s e uma janela que fecha e reabre (RX 7600 e RX 7800 XT, 2026-11).
+    /// </summary>
+    bool EvitarVulkan()
+    {
+        if (SystemInfo.HasRtx50 || Environment.TickCount64 < Interlocked.Read(ref _vulkanRetryAt)) return true;
+        if (!VulkanMemoria.Evitar(_state.VulkanBloqueio, VulkanMemoria.Chave(SystemInfo.Gpus()), DateTimeOffset.UtcNow)) return false;
+        if (!_vulkanEvitadoAvisado)
+        {
+            _vulkanEvitadoAvisado = true; // uma linha por abertura do app, não por live nem por reabertura de janela
+            Log.Info("Player: o Vulkan falhou nesta placa de vídeo nas últimas aberturas; as lives abrem direto pelo Direct3D 11. O app testa o Vulkan de novo se o driver ou a placa mudar, ou em 30 dias.");
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// O ffplay com Vulkan falhou. A decisão (janela de 20 min, o que vai para o disco, quando passa a evitar) é da regra pura
+    /// <see cref="VulkanMemoria.DecidirFalha"/>; aqui só se aplica: a janela agora, na thread de quem falhou (a próxima live já abre sem o Vulkan), e o
+    /// registro e o log na thread da tela. Vários players falhando juntos na mesma abertura contam uma vez.
+    /// </summary>
+    void VulkanFalhou(Telemetria.MotivoMidia motivo, bool decodificacao)
+    {
+        long agora = Environment.TickCount64;
+        DecisaoDeFalha d;
+        lock (_vulkanFalhaLock)
+        {
+            d = VulkanMemoria.DecidirFalha(Interlocked.Read(ref _vulkanRetryAt), agora, motivo, decodificacao,
+                _state.VulkanBloqueio, VulkanMemoria.Chave(SystemInfo.Gpus()), DateTimeOffset.UtcNow);
+            Interlocked.Exchange(ref _vulkanRetryAt, d.JanelaAteTicks);
+        }
+        if (!d.Registrou) return;
+        Ui(() =>
+        {
+            if (d.Salvar)
+            {
+                _state.VulkanBloqueio = d.Registro;
+                if (!Automated) _state.Save();
+            }
+            if (d.PassouAEvitar)
+                Log.Info(decodificacao
+                    ? "Player: o Vulkan falhou na decodificação desta placa de vídeo; as próximas lives abrem direto pelo Direct3D 11. O app volta a testar o Vulkan se o driver ou a placa mudar, ou em 30 dias."
+                    : "Player: o Vulkan falhou de novo nesta placa de vídeo; as próximas lives abrem direto pelo Direct3D 11. O app volta a testar o Vulkan se o driver ou a placa mudar, ou em 30 dias.");
+            // a prévia da própria live não passa pela recuperação do Viewer, e nas lives de amigo o mpv pode estar baixando: começar já (sem duplicar) é
+            // o que faz a próxima live abrir sem espera
+            if (!Automated && _hwDecode.Checked) _ = PrepararPlayerDirect3D();
+        });
+    }
+
+    /// <summary>O Vulkan deu vídeo e seguiu sem falha: apaga a falha lembrada (a próxima vez o Vulkan volta a ser tentado normalmente).</summary>
+    void VulkanFuncionou() => Ui(() =>
+    {
+        if (_state.VulkanBloqueio == null) return;
+        _state.VulkanBloqueio = VulkanMemoria.RegistrarSucesso(_state.VulkanBloqueio, VulkanMemoria.Chave(SystemInfo.Gpus()));
+        if (!Automated) _state.Save();
+    });
     Task<string?>? _preparandoPlayerDirect3D;
 
     /// <summary>A janela de streams (spec 006): organiza o painel "Ao vivo agora" e os vídeos de todas as streams que o usuário assiste.</summary>
@@ -546,7 +610,7 @@ public sealed partial class MainForm
         {
             UseHardware = _hwDecode.Checked,
             // O Vulkan já deixou a imagem borrada na RTX série 50. Tentamos Direct3D 11 nesse caso.
-            AvoidVulkan = SystemInfo.HasRtx50 || Environment.TickCount64 < Interlocked.Read(ref _vulkanRetryAt),
+            AvoidVulkan = EvitarVulkan(),
             PrepareDirect3D = _hwDecode.Checked && !Automated ? PrepararPlayerDirect3D : null,
         };
         if (TestDir != null) v.ExtraArgs = new[] { "-volume", "0" };
@@ -555,7 +619,8 @@ public sealed partial class MainForm
             v.Audio.Changed += () => { _state.PlayerVolumePercent = v.Audio.Percent; _state.PlayerMuted = v.Audio.Muted; _state.Save(); };
         string sid = link.SessionId;
         v.Exited += () => Ui(() => EndLink(sid, tellPeer: true, why: null));
-        v.VulkanFailed += () => Interlocked.Exchange(ref _vulkanRetryAt, Environment.TickCount64 + 20 * 60_000);
+        v.VulkanFailed += VulkanFalhou;
+        v.VulkanWorked += VulkanFuncionou;
         v.Direct3DRejected += () => Interlocked.Exchange(ref _direct3DRetryAt, Environment.TickCount64 + 2 * 60_000);
         v.Restarting += () =>
         {
@@ -569,6 +634,27 @@ public sealed partial class MainForm
         _groupStatus.Text = DefaultStatus();
         AtualizarIconeAtividade(); // passou a assistir (o fim sai pelo EndLink, que chama o UpdateLive)
         AvisarSomDoAmigoNaLive(); // MainForm.AvisoSom.cs
+    }
+
+    /// <summary>
+    /// Ao abrir o app, baixa o mpv (Direct3D 11) em segundo plano se este PC pode precisar dele na primeira live (<see cref="VulkanMemoria.PodePrecisarDoMpv"/>).
+    /// Antes ele só vinha depois da primeira falha do Vulkan: num PC AMD RDNA3 o mpv de 47 MB terminou 1 s depois do prazo e a live ficou na CPU.
+    /// Nunca na thread da tela (o WMI e a conferência do SHA-256 do mpv demoram) e nunca em teste automático.
+    /// </summary>
+    void PrepararDirect3DAoAbrir()
+    {
+        if (Automated || !_hwDecode.Checked) return;
+        var estado = _state.VulkanBloqueio;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (!VulkanMemoria.PodePrecisarDoMpv(estado, SystemInfo.HasRtx50, SystemInfo.Gpus()) || Filme.Mpv.Find() != null) return;
+                Log.Info("Player: baixando o mpv agora, em segundo plano, porque esta placa de vídeo pode precisar do Direct3D 11 na primeira live.");
+                await PrepararPlayerDirect3D().ConfigureAwait(false);
+            }
+            catch (Exception e) { Log.Info($"Player: não consegui adiantar o mpv ({e.Message})."); }
+        });
     }
 
     Task<string?> PrepararPlayerDirect3D()

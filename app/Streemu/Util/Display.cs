@@ -58,8 +58,11 @@ internal static class Display
 
     static void Release(IntPtr obj) { if (obj != IntPtr.Zero) Slot<ReleaseFn>(obj, 2)(obj); }
 
-    /// <summary>Todas as saídas de todos os adaptadores. Lista vazia se o DXGI falhar.</summary>
-    public static List<Output> Outputs()
+    /// <summary>
+    /// Todas as saídas de todos os adaptadores. Lista vazia se o DXGI falhar. <paramref name="registrarFalha"/> falso: quem chama de 250 em 250 ms
+    /// esperando o monitor voltar (reset do driver) registra a falha uma vez só, em vez de uma linha por olhada.
+    /// </summary>
+    public static List<Output> Outputs(bool registrarFalha = true)
     {
         var list = new List<Output>();
         var iid = new Guid("770aae78-f26f-4dba-a829-253c83d1b387"); // IDXGIFactory1
@@ -96,7 +99,7 @@ internal static class Display
                 finally { Release(adapter); }
             }
         }
-        catch (Exception e) { Log.Info("DXGI: não consegui listar as saídas de vídeo: " + e.Message); }
+        catch (Exception e) { if (registrarFalha) Log.Info("DXGI: não consegui listar as saídas de vídeo: " + e.Message); }
         finally
         {
             Marshal.FreeHGlobal(adapterDesc);
@@ -110,6 +113,13 @@ internal static class Display
     public static IntPtr MonitorOf(IntPtr hwnd) => MonitorFromWindow(hwnd, 2 /* MONITOR_DEFAULTTONEAREST */);
 
     public static Output? OutputFor(IntPtr hmonitor) => Outputs().FirstOrDefault(o => o.Monitor == hmonitor);
+
+    /// <summary>Nome GDI do monitor (<c>\\.\DISPLAY1</c>), ou nulo se o Windows não reconhece mais esse identificador.</summary>
+    public static string? DeviceNameOf(IntPtr hmonitor)
+    {
+        var info = new Native.MONITORINFOEX { cbSize = Marshal.SizeOf<Native.MONITORINFOEX>() };
+        return Native.GetMonitorInfo(hmonitor, ref info) && !string.IsNullOrEmpty(info.szDevice) ? info.szDevice : null;
+    }
 
     /// <summary>Como o Windows vê o jogo: tela cheia exclusiva (D3D), sem bordas, ou janela.</summary>
     public static string GameMode(IntPtr hwnd, bool coversMonitor)

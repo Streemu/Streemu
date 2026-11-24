@@ -174,6 +174,11 @@ public sealed class StreamSender : IDisposable
     public bool GameInFront { get; private set; } = true;
     /// <summary>Trava de foco: true = o jogo saiu da frente e a imagem está parada para quem assiste.</summary>
     public event Action<bool>? FocusHeld;
+    /// <summary>
+    /// A pausa de agora é porque a janela transmitida sumiu (minimizou ou foi para a bandeja) com a captura pela janela, e não porque o jogo saiu da frente.
+    /// Definida ANTES do <see cref="FocusHeld"/>, para a barra de status dizer o motivo certo na hora.
+    /// </summary>
+    public bool HeldByHiddenWindow { get; private set; }
 
     /// <summary>Saiu uma miniatura nova da transmissão (JPEG 192x108, thread de fundo). Só acontece enquanto alguém pede (<see cref="WantThumbnail"/>).</summary>
     public event Action<byte[]>? ThumbnailReady;
@@ -238,12 +243,16 @@ public sealed class StreamSender : IDisposable
         // fora da janela e antes de qualquer coisa: o ffmpeg tem que ser o conferido (SHA-256), e a conferência pode ainda estar rodando (BinarioIndisponivelException diz o que fazer)
         await Task.Run(() => Binarios.Exigir(Binario.Ffmpeg));
         if (!s.Source.StillExists()) throw new InvalidOperationException("a janela escolhida não existe mais; atualize a lista");
+        _appRestoredWindow = false;
         if (s.Source.IsMinimized)
         {
             Log.Info($"[captura] a janela escolhida está minimizada: restaurando ({s.Source.Label})");
             if (!await Task.Run(s.Source.RestoreIfMinimized))
                 throw new InvalidOperationException($"não consegui restaurar a janela minimizada \"{s.Source.Label}\"; abra o jogo na frente e tente de novo");
+            _appRestoredWindow = true;
         }
+        // a janela pode minimizar de novo entre a restauração e a captura (o Discord faz isso): sem ela visível o tamanho da captura sairia errado
+        await ExigirJanelaVisivelAsync(s);
         s = LimitFpsToMonitor(s);
         var (cap, rememberedWindow) = await Task.Run(() => InitialCapture(s));
         CaptureUsed = cap;
@@ -265,7 +274,19 @@ public sealed class StreamSender : IDisposable
         Status?.Invoke($"Testando o encoder para {OutSize.W}x{OutSize.H}@{s.Preset.Fps} (fonte {SourceSize.W}x{SourceSize.H})...");
         _midia.NovaLive();
         _midia.Preparar(Telemetria.GatilhoMidia.Inicio);
-        Chosen = await Task.Run(() => ChooseAndRemember(s, cap, fatal: true));
+        await ExigirJanelaVisivelAsync(s); // de novo, logo antes do teste: ele leva alguns segundos e o encoder não recebe quadro de janela minimizada
+        for (int tentativa = 1; ; tentativa++)
+        {
+            try { Chosen = await Task.Run(() => ChooseAndRemember(s, cap, fatal: true)); break; }
+            // o teste falhou com a janela sumida: a falha é dela, não do encoder. Restaura e refaz uma vez; ChooseAndRemember só grava o
+            // pipeline na memória depois de um teste que passou, então a falha não entra para a lista de encoders ruins
+            catch (InvalidOperationException) when (WindowHidden(s))
+            {
+                if (tentativa >= 2) throw JanelaMinimizouAbrindo(s);
+                Log.Info("[captura] o teste do encoder falhou com a janela minimizada; restaurando e testando de novo.");
+                await ExigirJanelaVisivelAsync(s);
+            }
+        }
         Log.Info($"Pipeline escolhido: {Chosen}, fonte {SourceSize.W}x{SourceSize.H} -> saída {OutSize.W}x{OutSize.H}@{s.Preset.Fps}, {s.Preset.Kbps} kbps");
         _session = new FrameStats(s.Preset.Fps);
         _lowCaptureWarned = false;
@@ -278,9 +299,30 @@ public sealed class StreamSender : IDisposable
 
         (_audio, AudioDescription) = await CreateAudioAsync(s);
 
+        _liveOpenedAt = DateTime.Now;
         _running = true;
         new Thread(Loop) { IsBackground = true, Name = "sender-loop" }.Start();
     }
+
+    /// <summary>O app restaurou a janela minimizada ao abrir esta live, e quando a live abriu. Base da segunda restauração (<see cref="JanelaMinimizada.RestauraDeNovo"/>).</summary>
+    bool _appRestoredWindow;
+    DateTime _liveOpenedAt = DateTime.MinValue;
+
+    /// <summary>
+    /// Janela sumida no começo da live (minimizou de novo depois de o app restaurar): restaura mais uma vez e, se continuar sumida, falha com o motivo.
+    /// Não faz nada com monitor ou janela visível.
+    /// </summary>
+    async Task ExigirJanelaVisivelAsync(Settings s)
+    {
+        if (!WindowHidden(s)) return;
+        Log.Info($"[captura] a janela escolhida sumiu de novo antes da live abrir: restaurando outra vez ({s.Source.Label})");
+        await Task.Run(s.Source.RestoreIfMinimized);
+        _appRestoredWindow = true;
+        if (WindowHidden(s)) throw JanelaMinimizouAbrindo(s);
+    }
+
+    static InvalidOperationException JanelaMinimizouAbrindo(Settings s) =>
+        new($"a janela \"{GameName.Of(s.Source)}\" minimizou de novo enquanto a live abria; abra ela na frente e tente de novo, ou transmita o monitor");
 
     /// <summary>
     /// A captura do começo da live (e de uma troca de janela/qualidade). Jogo em tela cheia vai pelo monitor (ddagrab), a não ser que o vigia já tenha
@@ -349,6 +391,8 @@ public sealed class StreamSender : IDisposable
     void FalhaNoTeste(Settings s, CaptureSpec cap, (int W, int H) src, (int W, int H) dst, Pipeline? cand, string? linha, bool demorou, bool fatal)
     {
         if (!Telemetria.CaminhoMidia.Ligado || _midia.PreparadaOuAtual is not { } t) return;
+        // janela minimizada não entrega quadro: a falha é dela, não do encoder, e não pode sujar a telemetria do caminho de mídia
+        if (WindowHidden(s)) return;
         if (cand == null) { t.Falhou(Telemetria.EtapaMidia.Encoder, Telemetria.MotivoMidia.NenhumEncoder, fatal: fatal, teste: !fatal); return; }
         var (etapa, motivo) = Telemetria.CaminhoMidia.ClassificarFfmpeg(linha, demorou, Telemetria.EtapaMidia.Encoder, Telemetria.MotivoMidia.SaiuComErro);
         t.Falhou(etapa, motivo, teste: true, caminho: CaminhoParaTelemetria(s, cap, cand, src, dst, lembrado: false));
@@ -453,6 +497,23 @@ public sealed class StreamSender : IDisposable
     readonly AutoResetEvent _loopWake = new(false);
     /// <summary>Texto da tela de pausa (ex.: "Ana saiu do jogo por um instante").</summary>
     public string PauseCaption { get; set; } = "Volta já.";
+    /// <summary>
+    /// A janela transmitida ficou minimizada por mais de <see cref="JanelaMinimizada.AvisoDepois"/>: o texto diz o que fazer (uma vez por sumiço).
+    /// Chamado na thread do foco.
+    /// </summary>
+    public event Action<string>? WindowHiddenWarning;
+
+    /// <summary>
+    /// A janela escolhida sumiu agora (minimizada, na bandeja ou com área absurda)? Falso para tela inteira. A captura de janela não recebe quadro
+    /// nesse estado, então a live pausa em vez de testar encoder (ver <see cref="JanelaMinimizada"/>).
+    /// </summary>
+    static bool WindowHidden(Settings? s)
+    {
+        if (s is not { Source.IsWindow: true } || !Native.IsWindow(s.Source.Handle)) return false;
+        var h = s.Source.Handle;
+        var (w, hh) = s.Source.CurrentSize();
+        return JanelaMinimizada.Sumiu(Native.IsIconic(h) || !Native.IsWindowVisible(h), w, hh);
+    }
 
     /// <summary>
     /// Jogo em tela cheia/sem bordas é capturado pelo MONITOR (ddagrab: 60 quadros/s, contra 5–40 da captura da janela
@@ -471,6 +532,9 @@ public sealed class StreamSender : IDisposable
         int logged = 0, unlogged = 0;
         DateTime frontSince = DateTime.MinValue;
         bool seenFront = true; DateTime seenSince = DateTime.Now;
+        // hiddenWarned e reRestored são por live (este laço nasce com ela): o aviso e a segunda restauração saem no máximo uma vez
+        DateTime hiddenSince = DateTime.MinValue; bool hiddenWarned = false, reRestored = false;
+        HeldByHiddenWindow = false;
         while (_running)
         {
             Thread.Sleep(40);
@@ -481,24 +545,52 @@ public sealed class StreamSender : IDisposable
             // Capturando pela JANELA a live não pausa, mas o Alt+Tab ainda importa: num jogo em tela cheia ele recria a imagem do
             // jogo e a captura aberta pode parar de receber quadros (PC do grupo, Hookshot, 10/11: travou 3 vezes e não havia registro
             // de foco para cruzar). Só registra, depois de 0,4 s estável (o Alt+Tab passa por várias janelas).
+            // janela sumida pausa mesmo capturando pela janela: minimizada ela não entrega quadro, e a captura caía e testava todos os
+            // encoders até encerrar a live (campo 2026-11-23, LIV-138: janela do Discord que voltava a minimizar)
+            bool hidden = WindowHidden(s);
             if (inFront != seenFront && !guard)
             {
                 if (DateTime.Now - seenSince > TimeSpan.FromMilliseconds(400))
                 {
                     seenFront = inFront;
-                    if (DateTime.Now - minute > TimeSpan.FromMinutes(1)) { minute = DateTime.Now; logged = 0; }
-                    if (++logged > 6) unlogged++;
-                    else
+                    // com a janela sumida a linha da pausa já explica; esta diria "a captura continua", e não continua
+                    if (!hidden)
                     {
-                        Log.Info((inFront ? "[foco] O jogo voltou para a frente" : $"[foco] O jogo saiu da frente ({ForegroundName()} ficou na frente)")
-                            + $"; a captura pela janela continua{(unlogged > 0 ? $" ({unlogged} trocas sem registro antes desta)" : "")}.");
-                        unlogged = 0;
+                        if (DateTime.Now - minute > TimeSpan.FromMinutes(1)) { minute = DateTime.Now; logged = 0; }
+                        if (++logged > 6) unlogged++;
+                        else
+                        {
+                            Log.Info((inFront ? "[foco] O jogo voltou para a frente" : $"[foco] O jogo saiu da frente ({ForegroundName()} ficou na frente)")
+                                + $"; a captura pela janela continua{(unlogged > 0 ? $" ({unlogged} trocas sem registro antes desta)" : "")}.");
+                            unlogged = 0;
+                        }
                     }
                 }
             }
             else seenSince = DateTime.Now;
             if (guard) seenFront = inFront;
-            bool front = !guard || inFront;
+            if (!hidden) hiddenSince = DateTime.MinValue;
+            else
+            {
+                if (hiddenSince == DateTime.MinValue) hiddenSince = DateTime.Now;
+                // o Discord (campo 2026-11-23) minimizou ~0,4 s depois de o app restaurar a janela: restaura mais uma vez, sem ativar
+                // (não rouba o foco de quem joga), e só nos primeiros segundos da live. Fora da thread da tela, e a pausa não espera por ela.
+                if (JanelaMinimizada.RestauraDeNovo(_appRestoredWindow, DateTime.Now - _liveOpenedAt, reRestored))
+                {
+                    reRestored = true;
+                    var h = s!.Source.Handle;
+                    Log.Info($"[captura] a janela {GameName.Of(s.Source)} minimizou de novo logo depois de o app restaurar; restaurando mais uma vez, sem tirar o foco.");
+                    _ = Task.Run(() => Native.ShowWindow(h, Native.SW_SHOWNOACTIVATE));
+                }
+                if (JanelaMinimizada.Avisa(!guard, DateTime.Now - hiddenSince, hiddenWarned))
+                {
+                    hiddenWarned = true;
+                    string nome = GameName.Of(s!.Source);
+                    Log.Info($"[captura] a janela {nome} está minimizada há {JanelaMinimizada.AvisoDepois.TotalSeconds:0} s; avisando para abrir ela na frente.");
+                    WindowHiddenWarning?.Invoke(JanelaMinimizada.Aviso(nome));
+                }
+            }
+            bool front = !JanelaMinimizada.Pausa(guard, inFront, hidden);
             if (front && frontSince == DateTime.MinValue) frontSince = DateTime.Now;
             if (!front) frontSince = DateTime.MinValue;
             // pausa na hora; só volta depois de 0,4 s com o jogo na frente (o Alt+Tab passa por várias janelas)
@@ -509,6 +601,7 @@ public sealed class StreamSender : IDisposable
             if (hold && _splitter is { } split) split.HoldVideo = true;
             _wantPause = hold;
             _loopWake.Set();
+            HeldByHiddenWindow = hold && !guard && hidden; // antes do evento: o handler lê para escolher o texto da barra de status
             FocusHeld?.Invoke(hold);
             if (hold) { _focusHolds++; _focusHeldSince = DateTime.Now; }
             else { _focusHeldSeconds += (DateTime.Now - _focusHeldSince).TotalSeconds; _focusHeldSince = DateTime.MinValue; }
@@ -516,7 +609,9 @@ public sealed class StreamSender : IDisposable
             if (DateTime.Now - minute > TimeSpan.FromMinutes(1)) { minute = DateTime.Now; logged = 0; }
             if (++logged > 6) { unlogged++; continue; }
             Log.Info((hold
-                ? $"O jogo saiu da frente ({ForegroundName()} ficou na frente): quem assiste vê \"Transmissão pausada\"; o áudio do jogo continua."
+                ? hidden
+                    ? "A janela transmitida minimizou (ou foi para a bandeja): quem assiste vê \"Transmissão pausada\" até ela voltar; não testo encoder com ela minimizada."
+                    : $"O jogo saiu da frente ({ForegroundName()} ficou na frente): quem assiste vê \"Transmissão pausada\"; o áudio do jogo continua."
                 : "O jogo voltou para a frente: voltando a captura.") + (unlogged > 0 ? $" ({unlogged} trocas sem registro antes desta)" : ""));
             unlogged = 0;
         }
@@ -710,6 +805,8 @@ public sealed class StreamSender : IDisposable
                 if (_reconfigure is Settings next) { _reconfigure = null; ApplyReconfigure(next); continue; }
                 CheckSync();
                 if (_restartPending is string why) { _restartPending = null; if (!_paused) RestartCapture(why); continue; }
+                // a captura anterior reaberta durou: a tela voltou, e a próxima piscada ganha de novo os 10 s sem contar queda
+                if (_vaziaDesde != 0 && _ffmpeg is { HasExited: false } && (DateTime.Now - _captureStartedAt).TotalSeconds >= 5) _vaziaDesde = 0;
                 if (_ffmpeg is null or { HasExited: true })
                 {
                     if (_paused)
@@ -718,14 +815,21 @@ public sealed class StreamSender : IDisposable
                         StartPause();
                         continue;
                     }
+                    // a janela minimizou e a captura caiu junto: não é falha do ffmpeg nem do encoder. O laço do foco põe a pausa em até 40 ms;
+                    // reabrir agora só testaria os encoders com uma fonte de 144x20 (campo 2026-11-23, LIV-138)
+                    bool hidden = WindowHidden(Current);
+                    if (hidden) { captureFailures = 0; continue; }
                     // a captura caiu com amigos conectados: reabre só ela (os players não fecham)
-                    bool quick = (DateTime.Now - _captureStartedAt).TotalSeconds < 5;
-                    captureFailures = quick ? captureFailures + 1 : 0;
+                    // com a tela ainda sem voltar (reset do driver, LIV-141 22:18), a queda do ddagrab antigo não conta por até 10 s
+                    captureFailures = VoltaDaCaptura.ContaQueda(JanelaMinimizada.ContaQueda(hidden, (DateTime.Now - _captureStartedAt).TotalSeconds), VaziaHaMs)
+                        ? captureFailures + 1 : 0;
                     if (captureFailures >= 5)
                     {
-                        Log.Info("A captura caiu 5 vezes seguidas logo ao abrir. Parando a transmissão; veja o log acima.");
+                        Log.Info("A captura caiu 5 vezes seguidas logo ao abrir. Parando a transmissão: o ffmpeg não consegue capturar essa fonte (detalhes nas linhas acima).");
                         _midia.Atual?.Falhou(Telemetria.EtapaMidia.Captura, Telemetria.MotivoMidia.CaiuRepetidas, fatal: true, medidas: MedidasDaFalha());
-                        Status?.Invoke("Erro: o ffmpeg não consegue capturar (veja o log).");
+                        Status?.Invoke(Current is { Source.IsWindow: true }
+                            ? "A captura dessa janela caiu 5 vezes seguidas. Deixe a janela aberta na frente, ou transmita o monitor (aba Telas)."
+                            : "A captura desse monitor caiu 5 vezes seguidas. Tente de novo ou escolha outro monitor.");
                         _running = false;
                         break;
                     }
@@ -994,6 +1098,8 @@ public sealed class StreamSender : IDisposable
     {
         var args = CaptureArgs(Current!, CaptureUsed!, Chosen!, _audio != null);
         _ultimoErro = null;
+        var fonte = Current!.Source;
+        _monitorNome = Display.DeviceNameOf(fonte.IsWindow ? Display.MonitorOf(fonte.Handle) : fonte.Handle) ?? _monitorNome;
         ContinueMediaClock(args);
         var p = Tools.Start(Tools.Ffmpeg, args, "ffmpeg",
             redirectStdin: true, onStderr: ParseStats, binaryStdout: true);
@@ -1056,7 +1162,9 @@ public sealed class StreamSender : IDisposable
         if (_preferDda == true && s.Source.IsWindow && !WantMonitor(_preferDda, Capture.PreferDda(s.Source), s.Source.CoversMonitorNow())) _preferDda = null;
         try
         {
-            var mon = s.Source.IsWindow ? Display.MonitorOf(s.Source.Handle) : s.Source.Handle;
+            var (mon, interrompida) = EsperaMonitorVoltar(ref s);
+            // parar, pausar ou trocar a qualidade no meio da espera: o laço cuida disso agora e abre a captura (ou a pausa) do jeito certo
+            if (interrompida) return;
             var cap = _preferDda switch
             {
                 true => Capture.Dda(mon, s.Preset.Fps, s.Source.Label) ?? Capture.For(s.Source, s.Preset.Fps),
@@ -1066,7 +1174,30 @@ public sealed class StreamSender : IDisposable
                 _ => Capture.For(s.Source, s.Preset.Fps)
             };
             bool changed = (cap.Width, cap.Height) != SourceSize || cap.Dda != CaptureUsed!.Dda;
-            if (changed)
+            // a janela minimizou no meio da reabertura (a captura vê 144x20): fica com a captura e o encoder que funcionavam, e a pausa
+            // espera a janela voltar. Testar os 9 encoders aqui gastava ~2,8 s por rodada e encerrava a live (campo 2026-11-23, LIV-138)
+            bool hidden = s.Source.IsWindow && JanelaMinimizada.Sumiu(WindowHidden(s), cap.Width, cap.Height);
+            // fonte 0x0 (o monitor ainda não voltou mesmo depois da espera): testar os encoders contra ela só gastava ~1,6 s (LIV-141, 2026-11-23)
+            bool empty = VoltaDaCaptura.FonteVazia(cap.Width, cap.Height);
+            bool keepOld = VoltaDaCaptura.MantemAnterior(changed, s.Source.IsWindow, hidden, cap.Width, cap.Height);
+            if (!empty) _vaziaDesde = 0;
+            if (keepOld && empty && !hidden)
+            {
+                // a queda seguinte (o ddagrab antigo com o monitor ainda fora) não conta para "caiu 5 vezes seguidas" por até 10 s: reset do driver
+                if (_vaziaDesde == 0)
+                {
+                    _vaziaDesde = Stopwatch.GetTimestamp();
+                    Log.Info($"[captura] a fonte nova veio sem tamanho ({cap.Width}x{cap.Height}, {cap.Name}): a tela ainda não voltou. Não testo o encoder; reabro a captura anterior e espero a tela voltar por até {VoltaDaCaptura.EsperaTotalMs / 1000} s.");
+                }
+            }
+            else if (keepOld)
+            {
+                // reabre a captura anterior: com a janela minimizada ela cai, e o Loop entrega para a pausa sem contar como queda
+                Log.Info(WindowHidden(s)
+                    ? $"[captura] a janela está minimizada ({cap.Width}x{cap.Height}); não testo o encoder com ela. A live pausa até a janela voltar."
+                    : $"[captura] a captura viu um tamanho pequeno ({cap.Width}x{cap.Height}) com a janela ainda visível; não testo o encoder com ele e reabro a captura anterior.");
+            }
+            else if (changed)
             {
                 var src = (cap.Width, cap.Height);
                 var dst = s.Preset.OutputSize(cap.Width, cap.Height);
@@ -1078,12 +1209,65 @@ public sealed class StreamSender : IDisposable
                 _lembrado = Chosen == antes;
                 SourceSize = src; OutSize = dst;
             }
-            CaptureUsed = cap;
-            Log.Info($"Captura: {cap}");
+            if (!keepOld) { CaptureUsed = cap; Log.Info($"Captura: {cap}"); }
         }
         catch (Exception e) { Log.Info("Não consegui refazer a captura com outra configuração; reabrindo a mesma: " + e.Message); }
+        if (!_running) return; // parou durante o teste do encoder: o Stop já fechou a captura, não abre outra
         StartCapture();
     }
+
+    /// <summary>
+    /// Devolve o monitor da fonte, esperando até <see cref="VoltaDaCaptura.EsperaMaximaMs"/> o DXGI listá-lo de novo quando o ddagrab acabou de cair
+    /// (regra em <see cref="VoltaDaCaptura.EsperaMonitor"/>). Sem isso a reabertura imediata depois de um ACCESS_LOST caía para o gfxcapture 0x0.
+    /// </summary>
+    (IntPtr Monitor, bool Interrompida) EsperaMonitorVoltar(ref Settings s)
+    {
+        var src = s.Source;
+        IntPtr Mon() => src.IsWindow ? Display.MonitorOf(src.Handle) : src.Handle;
+        (bool Achou, IntPtr Monitor, bool PorNome) Olha(bool registrarFalha) =>
+            VoltaDaCaptura.Acha(Display.Outputs(registrarFalha).Select(o => (o.DeviceName, o.Monitor)).ToList(), Mon(), _monitorNome);
+        bool caiuNoDdagrab = CaptureUsed?.Dda == true, querDdagrab = _preferDda != false;
+        var r = Olha(true);
+        bool repetindo = _vaziaDesde != 0; // a tela já não voltou numa reabertura anterior: não repete as mesmas linhas no log a cada 1,7 s
+        var sw = Stopwatch.StartNew();
+        if (VoltaDaCaptura.EsperaMonitor(caiuNoDdagrab, querDdagrab, r.Achou, 0))
+        {
+            if (!repetindo)
+                Log.Info($"[captura] o monitor ainda não aparece na placa de vídeo; espero até {VoltaDaCaptura.EsperaMaximaMs / 1000.0:0.0} s antes de trocar para a captura do Windows (gfxcapture).");
+            do
+            {
+                Thread.Sleep(VoltaDaCaptura.PassoMs);
+                if (VoltaDaCaptura.Interrompe(_running, _wantPause != _paused, _reconfigure != null))
+                {
+                    Log.Info($"[captura] parei de esperar o monitor depois de {sw.ElapsedMilliseconds} ms: " +
+                             (!_running ? "a live parou." : _reconfigure != null ? "a qualidade mudou." : "a live entrou ou saiu da pausa."));
+                    return (Mon(), true);
+                }
+                r = Olha(false); // a janela pode ter ido para outro monitor, e o monitor pode voltar com outro identificador
+            }
+            while (VoltaDaCaptura.EsperaMonitor(caiuNoDdagrab, querDdagrab, r.Achou, sw.ElapsedMilliseconds));
+            if (r.Achou) Log.Info($"[captura] o monitor voltou depois de {sw.ElapsedMilliseconds} ms; reabro pelo ddagrab.");
+            else if (!repetindo) Log.Info($"[captura] o monitor não voltou em {sw.ElapsedMilliseconds} ms; sigo para a captura do Windows (gfxcapture).");
+        }
+        if (r.Achou) _vaziaDesde = 0;
+        if (r.PorNome && !src.IsWindow)
+        {
+            // fonte "monitor": o Windows recriou o monitor com outro identificador. A fonte passa a usar o novo, senão toda reabertura seguinte
+            // desta live esperaria 1,5 s por um identificador que não existe mais (e a trava de foco compararia com o monitor errado)
+            Log.Info($"[captura] o monitor {_monitorNome} voltou com outro identificador ({src.Handle.ToInt64()} → {r.Monitor.ToInt64()}); a live passa a usar o novo.");
+            s = s with { Source = src.WithHandle(r.Monitor) };
+            Current = s;
+        }
+        return (r.Monitor, false);
+    }
+
+    /// <summary>Nome do monitor (<c>\\.\DISPLAY1</c>) na última abertura da captura: reencontra o monitor se o Windows trocar o identificador dele.</summary>
+    string? _monitorNome;
+
+    /// <summary>Desde quando (Stopwatch) a reabertura só acha fonte sem tamanho; 0 quando a tela está de volta. Ver <see cref="VoltaDaCaptura.ContaQueda"/>.</summary>
+    long _vaziaDesde;
+
+    long? VaziaHaMs => _vaziaDesde == 0 ? null : (long)Stopwatch.GetElapsedTime(_vaziaDesde).TotalMilliseconds;
 
     /// <summary>
     /// Vigia (teste 0.1.9, num PC do grupo no Cyberpunk): depois de um load a captura do monitor passou a entregar ~2 quadros

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- O CaminhoMidia.cs usa Rectangle (System.Drawing.Primitives, que já vem no net10.0; o app tem esse using pelo WinForms). -->
+    <Using Include="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Só a regra pura de quando evitar o Vulkan: sem Win32, WMI nem janela. -->
+    <Compile Include="../../app/Streemu/Media/VulkanMemoria.cs" Link="VulkanMemoria.cs" />
+    <!-- O motivo da falha (MotivoMidia) entra na decisão; o CaminhoMidia.cs só precisa do CargaRecente.cs, não do resto do app. -->
+    <Compile Include="../../app/Streemu/Telemetria/CaminhoMidia.cs" Link="CaminhoMidia.cs" />
+    <Compile Include="../../app/Streemu/Telemetria/CargaRecente.cs" Link="CargaRecente.cs" />
+  </ItemGroup>
+</Project>

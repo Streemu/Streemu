@@ -10,7 +10,22 @@ namespace Streemu.Media;
 /// </summary>
 public sealed class Viewer
 {
-    static readonly TimeSpan Direct3DPreparationTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>Quanto esperar pelo mpv ao abrir a live direto pelo Direct3D 11 (o teste troca por um valor curto).</summary>
+    internal static TimeSpan Direct3DPreparationTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// Quanto esperar pelo mpv na RECUPERAÇÃO de uma falha do Vulkan. Maior que o da abertura porque a live já está aberta e sem imagem, e cair na CPU
+    /// custa mais que esperar: num PC AMD RDNA3 (2026-11-19) o mpv ainda baixava, terminou 1 s depois dos 5 s e a live inteira ficou na CPU.
+    /// </summary>
+    internal static TimeSpan Direct3DRecoveryPreparationTimeout = TimeSpan.FromSeconds(12);
+    /// <summary>Quanto o ffplay com hardware precisa rodar sem falha, depois do vídeo confirmado, para <see cref="VulkanWorked"/> valer (o teste troca por um valor curto).</summary>
+    internal static TimeSpan VulkanWorkedAfter = TimeSpan.FromSeconds(30);
+    /// <summary>Quanto a espera pelo mpv precisa passar para o palco avisar "Ajustando o player..." (esperas curtas, com o mpv já instalado, não piscam texto).</summary>
+    internal static TimeSpan Direct3DPreparingNoticeAfter = TimeSpan.FromMilliseconds(300);
+    /// <summary>
+    /// Depois da falta de memória do Vulkan o ffplay só é encerrado depois deste tempo: a linha <c>get_buffer() failed</c> (a assinatura das RDNA3) chega
+    /// logo depois da do OUT_OF_DEVICE_MEMORY, e matar o ffplay na primeira a perderia.
+    /// </summary>
+    internal static TimeSpan MemoryFailureKillDelay = TimeSpan.FromMilliseconds(300);
     static readonly TimeSpan Direct3DPlaybackTimeout = TimeSpan.FromSeconds(8);
     Process? _player;
     volatile bool _stopRequested, _reopening;
@@ -81,7 +96,28 @@ public sealed class Viewer
     public Func<Task<string?>>? PrepareDirect3D { get; init; }
     string? _direct3DExecutable;
     public string Decoder => _direct3DActive ? (UsingHardware ? "d3d11va" : "inicializando_d3d11") : (UsingHardware ? "vulkan_solicitado" : "cpu");
-    public event Action? VulkanFailed;
+    /// <summary>
+    /// O ffplay com Vulkan falhou de forma explícita (também na prévia da própria live). Leva o motivo (quem decide lembrar a falha só conta memória e
+    /// Vulkan, não janela) e se a falha tem a assinatura da decodificação: falta de memória seguida de <c>get_buffer() failed</c> no mesmo ffplay. VRAM cheia
+    /// de verdade dá falta de memória no renderizador, sem essa linha.
+    /// </summary>
+    public event Action<Telemetria.MotivoMidia, bool>? VulkanFailed;
+    /// <summary>
+    /// O app está esperando o mpv (Direct3D 11) ficar pronto, por mais que <see cref="Direct3DPreparingNoticeAfter"/>: liga ao passar do tempo e desliga
+    /// quando a espera acaba (o palco mostra "Ajustando o player para a sua placa de vídeo..." no lugar do vídeo, que ainda não abriu).
+    /// </summary>
+    public event Action<bool>? PreparingDirect3D;
+    volatile bool _preparingDirect3D;
+    /// <summary>Verdadeiro enquanto <see cref="PreparingDirect3D"/> está ligado (o palco lê a cada 250 ms).</summary>
+    public bool IsPreparingDirect3D => _preparingDirect3D;
+    void SetPreparingDirect3D(bool on)
+    {
+        if (_preparingDirect3D == on) return;
+        _preparingDirect3D = on;
+        PreparingDirect3D?.Invoke(on);
+    }
+    /// <summary>O Vulkan deu vídeo e seguiu rodando sem falha por <see cref="VulkanWorkedAfter"/>: nesta placa ele funciona. Dispara uma vez por abertura do ffplay.</summary>
+    public event Action? VulkanWorked;
     public event Action? Direct3DRejected;
     /// <summary>Janela do ffplay para mover e fixar no topo.</summary>
     public PlayerWindow Window { get; }
@@ -286,6 +322,23 @@ public sealed class Viewer
         var tentativa = _midia.Comecar(Telemetria.GatilhoMidia.Outro,
             Telemetria.CaminhoMidia.CaminhoDoPlayer(hardware ? "vulkan" : "cpu", hardware ? "vulkan" : "sdl", IsPreview, OpenAt));
         Size? achado = null;
+        // Duas marcas deste ffplay com hardware, lidas só depois do WaitForExitAsync (que drena o stderr): o ffplay é encerrado na primeira falha e as
+        // linhas seguintes ainda chegam a tempo (ver MemoryFailureKillDelay).
+        // decodificacao: "get_buffer() failed" depois da falta de memória é a assinatura das RDNA3 (alocação dos quadros da decodificação, com a VRAM
+        // livre); a VRAM cheia de verdade dá falta de memória no renderizador (Failed creating LUT texture, No slab to serve), sem essa linha.
+        // semHardware: o ffplay escreve que o hwaccel não iniciou e segue sozinho na CPU, sem sair; é decodificação de software, não "o Vulkan funcionou".
+        int decodificacao = 0, semHardware = 0;
+        // As placas AMD RDNA3 com falha mostravam o primeiro quadro e só então davam OUT_OF_DEVICE_MEMORY: o vídeo confirmado sozinho não prova nada,
+        // por isso o Vulkan só vale como "funcionou" se este ffplay segue rodando, sem falha nem reabertura, depois de um tempo.
+        async Task ConfirmVulkanWorkedAsync()
+        {
+            await Task.Delay(VulkanWorkedAfter).ConfigureAwait(false);
+            var atual = p;
+            if (atual == null || _stopRequested || _reopening || fallback != null || Volatile.Read(ref semHardware) != 0 || !ReferenceEquals(_player, atual)) return;
+            try { if (atual.HasExited) return; }
+            catch (InvalidOperationException) { return; }
+            VulkanWorked?.Invoke();
+        }
         p = Tools.Start(Tools.Ffplay, args, "ffplay", redirectStdin: _localTap != null, hideWindow: true, onStderr: l =>
         {
             // vídeo confirmado no ffplay: a descrição do vídeo e depois a linha de estado com vídeo (A-V/M-V), que só vem com o laço de exibição rodando
@@ -293,16 +346,31 @@ public sealed class Viewer
             {
                 if (achado == null && ParseVideoLine(l) is { } v) achado = v.Size;
                 else if (achado is { } t && l.Contains(" aq=") && (l.Contains("A-V") || l.Contains("M-V")))
+                {
                     tentativa.VideoOk(() => new JsonObject { ["resolucao"] = Telemetria.CaminhoMidia.Resolucao(t.Width, t.Height) });
+                    if (hardware) _ = ConfirmVulkanWorkedAsync();
+                }
+            }
+            if (hardware)
+            {
+                if (l.Contains("get_buffer() failed", StringComparison.OrdinalIgnoreCase)) Volatile.Write(ref decodificacao, 1);
+                if (l.Contains("Failed setup for format vulkan", StringComparison.OrdinalIgnoreCase)
+                    || l.Contains("hwaccel initialisation returned error", StringComparison.OrdinalIgnoreCase)) Volatile.Write(ref semHardware, 1);
             }
             var failure = OnStderr(l);
             if (hardware && !_stopRequested && failure != null && Interlocked.CompareExchange(ref fallback, failure, null) == null)
-                Tools.KillQuietly(p);
+                KillAfterFailure(failure);
         });
+        // Falta de memória: dá um instante para a linha get_buffer() failed (a assinatura da decodificação) chegar antes de matar o ffplay.
+        void KillAfterFailure(PlayerFailure f)
+        {
+            if (f.Motivo == Telemetria.MotivoMidia.SemMemoria) _ = Task.Delay(MemoryFailureKillDelay).ContinueWith(_ => Tools.KillQuietly(p), TaskScheduler.Default);
+            else Tools.KillQuietly(p);
+        }
         _player = p;
         if (_stopRequested) Tools.KillQuietly(p);
         // O stderr pode chegar antes de Tools.Start devolver o processo: não perder nem o erro nem a ordem de encerramento.
-        if (fallback != null) Tools.KillQuietly(p);
+        if (fallback != null) KillAfterFailure(fallback);
         _tap?.Dispose();
         _tap = _localTap?.Invoke(p.StandardInput.BaseStream);
         if (_localTap != null && _tap == null) { Log.Info("Prévia da própria live: a transmissão não está rodando; fechando o player."); Tools.KillQuietly(p); }
@@ -321,10 +389,13 @@ public sealed class Viewer
                 // o Vulkan do ffplay decodifica e desenha: o erro que derruba (memória, superfície, janela) é do lado que desenha
                 var erros = ErrorCounts();
                 tentativa.Falhou(Telemetria.EtapaMidia.Renderizacao, fallback?.Motivo ?? Telemetria.MotivoMidia.SaiuCedo, medidas: () => new JsonObject { ["erros"] = erros });
-                if (fallback != null && !IsPreview)
+                if (fallback != null)
                 {
-                    VulkanFailed?.Invoke();
-                    if (PrepareDirect3D != null)
+                    // também na prévia da própria live: a falha dela vale como a de uma live de amigo (mesma placa, mesmo driver)
+                    // lido aqui, depois do WaitForExitAsync: o get_buffer() failed chega logo depois da linha da falta de memória
+                    VulkanFailed?.Invoke(fallback.Motivo, Volatile.Read(ref decodificacao) != 0);
+                    // o Direct3D 11 só abre live de amigo: a prévia lê o vídeo pelo pipe e o mpv do app só aceita SRT
+                    if (!IsPreview && PrepareDirect3D != null)
                     {
                         _midia.Preparar(Telemetria.GatilhoMidia.Recuperacao);
                         await TryDirect3DAsync(fallback.Reason, restartSender: true).ConfigureAwait(false);
@@ -343,10 +414,26 @@ public sealed class Viewer
 
     async Task TryDirect3DAsync(string? vulkanFailure, bool restartSender)
     {
+        try { await TryDirect3DCoreAsync(vulkanFailure, restartSender).ConfigureAwait(false); }
+        finally { SetPreparingDirect3D(false); } // o aviso do palco some quando o vídeo abre (Direct3D 11 ou CPU), a live fecha ou a espera falha
+    }
+
+    async Task TryDirect3DCoreAsync(string? vulkanFailure, bool restartSender)
+    {
         try
         {
             // A instalação pode terminar para a próxima live mesmo se esta precisar seguir na CPU.
-            _direct3DExecutable = await PrepareDirect3D!().WaitAsync(Direct3DPreparationTimeout).ConfigureAwait(false);
+            // na recuperação (o Vulkan acabou de falhar) a espera é maior que na abertura direta
+            var timeout = vulkanFailure != null ? Direct3DRecoveryPreparationTimeout : Direct3DPreparationTimeout;
+            var preparo = PrepareDirect3D!();
+            // mpv já instalado: a tarefa termina na hora e nada pisca. Se a espera passa do aviso, o palco diz o que está acontecendo.
+            if (!preparo.IsCompleted && Direct3DPreparingNoticeAfter < timeout
+                && await Task.WhenAny(preparo, Task.Delay(Direct3DPreparingNoticeAfter)).ConfigureAwait(false) != preparo && !_stopRequested)
+            {
+                SetPreparingDirect3D(true);
+                timeout -= Direct3DPreparingNoticeAfter; // o prazo total continua sendo o mesmo
+            }
+            _direct3DExecutable = await preparo.WaitAsync(timeout).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -544,6 +631,7 @@ public sealed class Viewer
     public void Stop()
     {
         _stopRequested = true;
+        SetPreparingDirect3D(false);
         _midia.Encerrar();
         Tools.KillQuietly(_player);
         _tap?.Dispose();

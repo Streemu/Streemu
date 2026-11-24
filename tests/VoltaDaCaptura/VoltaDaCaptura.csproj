@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Só a regra pura da volta da captura: o StreamSender olha o DXGI (Win32) e pergunta a ela. -->
+    <Compile Include="../../app/Streemu/Media/VoltaDaCaptura.cs" Link="VoltaDaCaptura.cs" />
+    <!-- a decisão da reabertura junta as duas regras: fonte vazia (esta) e janela sumida (LIV-138) -->
+    <Compile Include="../../app/Streemu/Media/JanelaMinimizada.cs" Link="JanelaMinimizada.cs" />
+  </ItemGroup>
+</Project>

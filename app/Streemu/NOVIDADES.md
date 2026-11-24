@@ -16,6 +16,8 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias
+- **A imagem volta mais rápido quando a tela pisca:** se o jogo troca de resolução, aparece um aviso do Windows ou o driver de vídeo reinicia durante a live, a captura do monitor volta mais rápido. Se a tela demorar alguns segundos para voltar, a live espera em vez de cair.
+- **Janela minimizada pausa a live em vez de derrubar:** se a janela que você transmite minimizar, os amigos veem "Transmissão pausada" e a live volta sozinha quando ela reaparece. O app avisa o que fazer: abrir a janela na frente ou transmitir o monitor.
 - **Prévia das janelas em Transmitir:** em "O que mostrar", telas e janelas aparecem com uma imagem atual, em grade de 3 colunas, para achar mais rápido o que transmitir.
 - **Oferta de 30 FPS quando o PC não chega a 60:** se a live em 60 FPS chega com poucos quadros, um aviso aparece por cima do jogo, sem tirar o foco. Aceite no botão ou com Ctrl+Alt+3. Nada muda sozinho e ele não aparece na live.
 - **Menos travadas ao transmitir de um PC fraco:** se reabrir a captura não aumenta os quadros, o Streemu para de reabrir e a imagem deixa de congelar a cada poucos segundos. Em PC limitado, escolha 30 FPS.
@@ -26,6 +28,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Som da live mais contínuo:** o som da sua live sai num ritmo constante, sem pausas curtas a cada 2 segundos. Quem assiste pelo celular deixa de ouvir estalos.
 
 ### Correções
+- **Lives abrem mais rápido em placas AMD RX 7000:** quando o player da placa falha no seu PC, o Streemu lembra e as próximas lives abrem direto pelo outro modo, sem a janela fechar e reabrir. Se você atualizar o driver, ele testa de novo.
 - **Live de celular que gira:** quando quem transmite pelo celular vira o aparelho, a janela da live acompanha, e a imagem não fica mais espremida.
 - **Texto atrás de uma live em pé:** o aviso "Nenhuma stream à vista" não aparece mais dos lados de uma live estreita.
 - **Som na tela de pausa:** quando o jogo sai da frente e quem assiste vê "Transmissão pausada", o som continua contínuo, sem cortes de meio segundo.

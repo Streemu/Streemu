@@ -67,6 +67,8 @@ public sealed class AppState
     public int MiniHeight { get; set; }
     /// <summary>Pipeline de encoder que funcionou da última vez, por GPU e tamanho de fonte (ver <see cref="PipelineMemory"/>).</summary>
     public Dictionary<string, string> PipelineMemory { get; set; } = new();
+    /// <summary>Placa (com o driver) em que o Vulkan do ffplay falhou e quantas vezes; com duas falhas o app abre as lives direto pelo Direct3D 11 até o reteste de 30 dias (ver <see cref="Media.VulkanMemoria"/>). Nulo = sem falha lembrada.</summary>
+    public Media.VulkanBloqueio? VulkanBloqueio { get; set; }
     /// <summary>Id desta instalação na sala do grupo (não expira: é como os amigos acham você).</summary>
     public string? InstallId { get; set; }
     /// <summary>Última escolha da janela Transmitir: altura (0 = Fonte), FPS, modo de áudio e o processo da janela.</summary>

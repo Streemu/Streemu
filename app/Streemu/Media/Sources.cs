@@ -17,6 +17,12 @@ public sealed class CaptureSource
     public string ProcessName { get; init; } = "";
     public override string ToString() => Label;
 
+    /// <summary>A mesma fonte com outro identificador: o Windows pode recriar o monitor com outro HMONITOR depois de uma troca de modo (ver VoltaDaCaptura).</summary>
+    public CaptureSource WithHandle(IntPtr handle) => new()
+    {
+        Label = Label, IsWindow = IsWindow, Handle = handle, ProcessId = ProcessId, IsFullScreen = IsFullScreen, IsPrimary = IsPrimary, ProcessName = ProcessName,
+    };
+
     /// <summary>Tamanho atual em pixels físicos (área da janela ou do monitor).</summary>
     public (int Width, int Height) CurrentSize()
     {

@@ -24,6 +24,7 @@ public sealed partial class MainForm
         IniciarBinarios();
         Log.Info($"Windows: {SystemInfo.Windows}; GPU: {string.Join(" | ", SystemInfo.Gpus())}");
         if (!SystemInfo.ProcessAudioSupported) Log.Info("Aviso: este Windows não suporta áudio por processo (precisa do 10 2004+).");
+        PrepararDirect3DAoAbrir(); // MainForm.Grupo.cs: antes do UPnP abaixo, que pode levar 15 s
         try { _alt = await DiscoverAltAsync(); }
         catch (Exception e) { Log.Info("Não consegui descobrir o endereço do roteador dentro da operadora: " + e.Message + ". Só afeta amigos da mesma operadora; feche e abra o app para tentar de novo."); }
 

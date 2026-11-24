@@ -208,8 +208,12 @@ public sealed partial class MainForm
 
     void StartMyLive()
     {
-        bool hw = _hwDecode.Checked && Environment.TickCount64 >= Interlocked.Read(ref _vulkanRetryAt) && !SystemInfo.HasRtx50;
+        // A prévia lê pelo pipe e o mpv do app só aceita SRT: sem Direct3D 11, então onde o Vulkan não funciona ela decodifica na CPU.
+        // A falha dela alimenta a mesma regra das lives de amigos (e o sucesso também): é a mesma placa e o mesmo driver.
+        bool hw = _hwDecode.Checked && !EvitarVulkan();
         var v = new Viewer { UseHardware = hw, SmallWindowGuard = SmallWindowGuard };
+        v.VulkanFailed += VulkanFalhou;
+        v.VulkanWorked += VulkanFuncionou;
         v.Exited += () => Ui(() => { if (ReferenceEquals(_myLive, v)) _myLive = null; RefreshSide(); });
         _myLive = v;
         var stage = _playerStage ??= new PlayerStage(this);

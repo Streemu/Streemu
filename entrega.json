@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "d055c1f73ca5ce4039f55dc7ccf6384dc2550d6f",
-    "notas":  "- Corrige os achados da revisão da denúncia (spec 029, E3)\n- Adiciona a bandeira de denúncia no player do app (spec 029, E3)",
+    "privado":  "888ae511e0824cee1fcb92cdc4cee1f833c3d856",
+    "notas":  "- Corrige os achados da revisão da volta da captura\n- Espera o monitor voltar depois de o ddagrab cair e nunca testa encoder com fonte 0x0\n- Corrige os achados da revisão da janela minimizada\n- Pausa a live quando a janela transmitida minimiza\n- Corrige os achados da revisão do Vulkan nas AMD RX 7000\n- Lembra por placa e driver quando o Vulkan do player falha",
     "obrigatoria":  false
 }

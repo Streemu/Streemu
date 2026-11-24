@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "888ae511e0824cee1fcb92cdc4cee1f833c3d856",
-    "notas":  "- Corrige os achados da revisão da volta da captura\n- Espera o monitor voltar depois de o ddagrab cair e nunca testa encoder com fonte 0x0\n- Corrige os achados da revisão da janela minimizada\n- Pausa a live quando a janela transmitida minimiza\n- Corrige os achados da revisão do Vulkan nas AMD RX 7000\n- Lembra por placa e driver quando o Vulkan do player falha",
+    "privado":  "4a467a6d73a136be3061a2dff0125cd5820400af",
+    "notas":  "- Recomeça o resumo da live num lock só\n- Corrige os achados da revisão do resumo da pausa\n- Separa os segundos de pausa no live_resumo e no painel de lives\n- Corrige os achados de revisao do PR dos binarios de teste\n- Confere pelo pin também o ffmpeg e o mpv de teste no app",
     "obrigatoria":  false
 }

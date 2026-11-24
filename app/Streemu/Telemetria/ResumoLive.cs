@@ -35,7 +35,7 @@ public sealed class ResumoLive
     }
 
     /// <summary>Marca o começo da live (host: ligação ""; viewer: o id da ligação). Recomeça se já havia.</summary>
-    public void Iniciar(string lig = "") { lock (_g) _lig.Remove(lig); lock (_g) Pegar(lig); }
+    public void Iniciar(string lig = "") { lock (_g) { _lig.Remove(lig); Pegar(lig); } } // num lock só: um Marcar da captura no meio recriaria a ligação velha
 
     /// <summary>Soma um segundo com amostra no minuto atual.</summary>
     public void Marcar(string lig = "") { lock (_g) { var m = Minuto_(Pegar(lig)); if (m != null) m.Segundos++; } }

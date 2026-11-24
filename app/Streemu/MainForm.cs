@@ -242,6 +242,7 @@ public sealed partial class MainForm : Form
         try
         {
             await _sender.StartAsync(settings);
+            _avisoAoParar = null; // um "Sua live foi encerrada." que sobrou de uma parada sem Stopped não pode aparecer no fim desta live (MainForm.MinhaLive.cs)
             OnLiveStarted(GameName.Of(src));
             AvisarSomDoAmigoNaLive(); // MainForm.AvisoSom.cs
         }

@@ -157,6 +157,8 @@ public sealed partial class MainForm
         room.Changed += () => Ui(OnRoomChanged);
         room.Message += (from, nick, msg) => Ui(() => OnRoomMessage(from, nick, msg));
         room.Undeliverable += (to, msg) => Ui(() => OnUndeliverable(to, msg));
+        room.EncerrarLive += () => Ui(AoServidorEncerrarLive); // MainForm.MinhaLive.cs
+        room.LiveEncerrada += conta => Ui(() => AoServidorLiveEncerrada(conta));
     }
 
     void InitTray()
@@ -665,6 +667,7 @@ public sealed partial class MainForm
         _stopLive.Visible = false;
         UpdateLive(force: true);
         if (wasLive) TocarSom(Sons.Som.LiveFechou);
+        if (_avisoAoParar is { } aviso) { _avisoAoParar = null; Notify(aviso); } // por último: o EndLink acima troca o texto da linha de status
     }
 
     string LiveQuality

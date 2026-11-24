@@ -141,6 +141,35 @@ public sealed partial class MainForm
         _sender.Stop();
     }
 
+    /// <summary>Aviso para mostrar quando a transmissão acabar de parar (o Stopped chega depois, em outra thread, e o EndLink trocaria o texto antes).</summary>
+    string? _avisoAoParar;
+
+    /// <summary>
+    /// O servidor mandou parar a minha live (spec 029, E5). Sem confirmação: não é uma escolha minha. O resto é o caminho normal de parada
+    /// (<c>Stop</c> → <see cref="OnLiveStopped"/> → <c>EndLink</c>). O texto não dá motivo. Se não transmito, ignora; o servidor pode repetir e manda uma vez por grupo.
+    /// </summary>
+    void AoServidorEncerrarLive()
+    {
+        if (!_sender.Running) return;
+        Log.Info("Sala: live encerrada pelo servidor.");
+        _avisoAoParar = "Sua live foi encerrada.";
+        _sender.Stop();
+    }
+
+    /// <summary>
+    /// A live de uma conta acabou (spec 029, E5): fecha o player de quem eu assisto dela, com o mesmo texto do fim normal ("parou de transmitir"), para não
+    /// revelar a causa. Sem avisar o outro lado (<c>tellPeer: false</c>, como o "parar" recebido): ele já foi avisado pelo servidor.
+    /// </summary>
+    void AoServidorLiveEncerrada(string conta)
+    {
+        foreach (var sid in Streemu.Net.GroupRoom.SessoesParaFechar(_links.Values.Select(l => (l.SessionId, l.PeerId, l.IAmSender)), conta))
+        {
+            if (!_links.TryGetValue(sid, out var link)) continue;
+            Log.Info("Sala: live encerrada pelo servidor.");
+            EndLink(sid, tellPeer: false, why: $"{link.PeerNick} parou de transmitir.");
+        }
+    }
+
     /// <summary>"Ver minha live" / "Fechar a prévia" (linha da barra lateral).</summary>
     void ToggleMyLive()
     {

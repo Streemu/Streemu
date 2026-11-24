@@ -32,6 +32,8 @@ public sealed class SalaUnida : ISala
     public event Action<string, JsonObject?>? Undeliverable;
     public event Action? TelemetryNow;
     public event Action? AtividadesMudaram;
+    public event Action? EncerrarLive;
+    public event Action<string>? LiveEncerrada;
     /// <summary>Só o "sessao" (a sessão da conta acabou) sobe como <see cref="Encerrada"/>: vale para todos os grupos. Removido e saiu são de UM grupo: ver <see cref="GrupoEncerrado"/>.</summary>
     public event Action<string>? Encerrada;
     /// <summary>Um grupo acabou para esta pessoa (removido, saiu): (id do grupo, motivo). A sala dele já foi tirada daqui.</summary>
@@ -53,8 +55,11 @@ public sealed class SalaUnida : ISala
         Action aoTelemetria = () => TelemetryNow?.Invoke();
         Action aoAtividade = () => AtividadesMudaram?.Invoke();
         Action<string> aoEncerrar = motivo => AoEncerrar(grupoId, sala, motivo);
+        Action aoEncerrarLive = () => EncerrarLive?.Invoke();
+        Action<string> aoLiveEncerrada = conta => LiveEncerrada?.Invoke(conta);
         sala.Changed += aoMudar; sala.Message += aoMensagem; sala.Undeliverable += aoNaoEntregue; sala.TelemetryNow += aoTelemetria; sala.Encerrada += aoEncerrar; sala.AtividadesMudaram += aoAtividade;
-        Action desligar = () => { sala.Changed -= aoMudar; sala.Message -= aoMensagem; sala.Undeliverable -= aoNaoEntregue; sala.TelemetryNow -= aoTelemetria; sala.Encerrada -= aoEncerrar; sala.AtividadesMudaram -= aoAtividade; };
+        sala.EncerrarLive += aoEncerrarLive; sala.LiveEncerrada += aoLiveEncerrada;
+        Action desligar = () => { sala.Changed -= aoMudar; sala.Message -= aoMensagem; sala.Undeliverable -= aoNaoEntregue; sala.TelemetryNow -= aoTelemetria; sala.Encerrada -= aoEncerrar; sala.AtividadesMudaram -= aoAtividade; sala.EncerrarLive -= aoEncerrarLive; sala.LiveEncerrada -= aoLiveEncerrada; };
         var nova = new Entrada(grupoId, nome, sala, desligar);
         Entrada? antiga;
         lock (_gate)

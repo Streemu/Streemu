@@ -89,6 +89,21 @@ public sealed class GroupRoom : ISala
     /// <summary>Alguém marcou um problema numa live em que estou, ou o admin pediu: enviar a telemetria já (spec 009).</summary>
     public event Action? TelemetryNow;
     public event Action<string>? Encerrada;
+    /// <summary>O servidor mandou parar a minha transmissão (<c>encerrar_live</c>, spec 029, E5).</summary>
+    public event Action? EncerrarLive;
+    /// <summary>A live desta conta acabou (<c>live_encerrada</c>, spec 029, E5): o id da conta de quem transmitia.</summary>
+    public event Action<string>? LiveEncerrada;
+
+    static readonly System.Text.RegularExpressions.Regex ReConta = new(@"^c-[a-z0-9]{12}\z");
+    /// <summary>Id de conta no formato que o servidor sorteia (<c>c-</c> e 12 letras minúsculas ou dígitos). Qualquer outra coisa não fecha player nenhum.</summary>
+    public static bool ContaValida(string? id) => id != null && ReConta.IsMatch(id);
+
+    /// <summary>
+    /// Quais ligações fechar quando a live da <paramref name="conta"/> acabou: as em que EU ASSISTO essa conta. A ligação guarda em <c>PeerId</c> o id da linha
+    /// da sala (o id da conta); as em que eu transmito nunca fecham por aqui (quem transmite para pelo <c>encerrar_live</c>).
+    /// </summary>
+    public static IReadOnlyList<string> SessoesParaFechar(IEnumerable<(string Sessao, string PeerId, bool EuTransmito)> ligacoes, string? conta) =>
+        !ContaValida(conta) ? Array.Empty<string>() : ligacoes.Where(l => !l.EuTransmito && l.PeerId == conta).Select(l => l.Sessao).ToList();
 
     /// <summary>Pede para estes amigos enviarem a telemetria já (marquei um problema numa live com eles).</summary>
     public Task SendTelemetryNow(IEnumerable<string> ids) => SendAsync(new JsonObject { ["t"] = "telemetria-agora", ["ids"] = new JsonArray(ids.Select(i => (JsonNode)i!).ToArray()) });
@@ -293,7 +308,8 @@ public sealed class GroupRoom : ISala
         }
     }
 
-    void Handle(JsonObject? m)
+    /// <summary>Trata uma mensagem da sala já lida do JSON. Pública só para o teste (<c>tests/SalaUnida</c>) exercitar sem rede.</summary>
+    public void Handle(JsonObject? m)
     {
         switch (m?["t"]?.GetValue<string>())
         {
@@ -354,6 +370,14 @@ public sealed class GroupRoom : ISala
                 }
                 _telemetriaAgoraEm = DateTime.UtcNow;
                 TelemetryNow?.Invoke();
+                break;
+            case "encerrar_live":
+                EncerrarLive?.Invoke();
+                break;
+            case "live_encerrada":
+                // sem conta válida o app não sabe de quem é a live: ignora em vez de fechar um player qualquer
+                if ((m["conta"] as JsonValue)?.TryGetValue<string>(out var contaEncerrada) == true && ContaValida(contaEncerrada))
+                    LiveEncerrada?.Invoke(contaEncerrada);
                 break;
             case "erro":
                 if (m["motivo"]?.GetValue<string>() == "offline" && m["para"]?.GetValue<string>() is string to)

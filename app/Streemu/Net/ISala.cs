@@ -41,6 +41,10 @@ public interface ISala : IDisposable
     /// <summary>A sala com conta acabou para esta pessoa e NÃO reconecta: "removido" (o dono tirou do grupo), "sessao" (a sessão foi encerrada) ou
     /// "saiu" (saiu do grupo). A sala antiga nunca dispara isto.</summary>
     event Action<string>? Encerrada;
+    /// <summary>O servidor mandou parar a MINHA transmissão (spec 029, E5; o texto não traz motivo). Pode chegar de novo, e uma vez por grupo. Padrão vazio: salas falsas de teste não precisam dele.</summary>
+    event Action? EncerrarLive { add { } remove { } }
+    /// <summary>O servidor avisa que a live desta conta (o id) acabou, para quem assiste fechar o player (spec 029, E5). Chega a todos do grupo, inclusive a quem não assiste.</summary>
+    event Action<string>? LiveEncerrada { add { } remove { } }
 }
 
 /// <summary>Membro do grupo que não está conectado agora (só a sala com conta sabe quem são).</summary>

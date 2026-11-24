@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "93a9979001dc250b52129b62673b718760516902",
-    "notas":  "- Envia os ids do aparelho no login da conta [obrigatória] (spec 029, E4)",
-    "obrigatoria":  true
+    "privado":  "64a7cd47698f339e5a0adecfe6c802080d995af7",
+    "notas":  "- Corrige os achados da revisão do encerrar live (spec 029, E5)\n- Faz o app parar a live e fechar o player quando o servidor encerra (spec 029, E5)",
+    "obrigatoria":  false
 }

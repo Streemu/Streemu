@@ -179,6 +179,91 @@ Caso("mensagem de qualquer sala chega, trocar a sala do mesmo grupo desliga a an
     Exige(de == null, "a sala antiga ainda fala");
 });
 
+// ---- encerrar live (spec 029, E5). GroupRoom.Handle sem rede: o token nulo deixa a sala esperando; só se alimenta a mensagem.
+
+GroupRoom SalaDeTeste() => new(new Uri("wss://sala.invalid/grupos/g/sala"), "c-aaaaaaaaaaaa", "Eu", _ => Task.FromResult<string?>(null));
+JsonObject J(string json) => (JsonObject)JsonNode.Parse(json)!;
+
+Caso("encerrar_live vira o evento, sem conta", () =>
+{
+    using var r = SalaDeTeste();
+    int n = 0; r.EncerrarLive += () => n++;
+    r.Handle(J("""{"t":"encerrar_live"}"""));
+    Exige(n == 1, $"EncerrarLive disparou {n}x");
+    r.Handle(J("""{"t":"encerrar_live"}""")); // o servidor pode repetir
+    Exige(n == 2, "devia disparar de novo a cada mensagem");
+});
+
+Caso("live_encerrada vira o evento com a conta", () =>
+{
+    using var r = SalaDeTeste();
+    var contas = new List<string>(); r.LiveEncerrada += c => contas.Add(c);
+    int encerrar = 0; r.EncerrarLive += () => encerrar++;
+    r.Handle(J("""{"t":"live_encerrada","conta":"c-abc123def456"}"""));
+    Exige(contas.SequenceEqual(new[] { "c-abc123def456" }), "contas: " + string.Join(",", contas));
+    Exige(encerrar == 0, "live_encerrada não pode parar a minha live");
+});
+
+Caso("live_encerrada com conta ausente ou invalida nao dispara", () =>
+{
+    using var r = SalaDeTeste();
+    int n = 0; r.LiveEncerrada += _ => n++;
+    foreach (var json in new[]
+    {
+        """{"t":"live_encerrada"}""", """{"t":"live_encerrada","conta":null}""", """{"t":"live_encerrada","conta":""}""", """{"t":"live_encerrada","conta":42}""",
+        """{"t":"live_encerrada","conta":"c-ana"}""", """{"t":"live_encerrada","conta":"C-ABC123DEF456"}""", """{"t":"live_encerrada","conta":"x-abc123def456"}""",
+        """{"t":"live_encerrada","conta":"c-abc123def4567"}""", """{"t":"live_encerrada","conta":"c-abc123def45"}""", """{"t":"live_encerrada","conta":"c-abc123def456\n"}""",
+        """{"t":"live_encerrada","conta":{"id":"c-abc123def456"}}""", """{"t":"live_encerrada","conta":["c-abc123def456"]}""",
+    })
+        r.Handle(J(json));
+    Exige(n == 0, $"disparou {n}x com conta inválida");
+});
+
+Caso("t desconhecido e mensagem nula continuam ignorados", () =>
+{
+    using var r = SalaDeTeste();
+    int n = 0; r.EncerrarLive += () => n++; r.LiveEncerrada += _ => n++; r.TelemetryNow += () => n++;
+    r.Handle(J("""{"t":"coisa_nova","conta":"c-abc123def456"}"""));
+    r.Handle(J("""{"conta":"c-abc123def456"}"""));
+    r.Handle(null);
+    Exige(n == 0, $"algo disparou ({n})");
+});
+
+Caso("SalaUnida repassa as duas mensagens de qualquer grupo e para depois de tirar a sala", () =>
+{
+    using var u = new SalaUnida("eu", "Eu");
+    var a = new Falsa(); var b = new Falsa();
+    u.Adicionar("g1", "Um", a); u.Adicionar("g2", "Dois", b);
+    int parar = 0; var contas = new List<string>();
+    u.EncerrarLive += () => parar++; u.LiveEncerrada += c => contas.Add(c);
+    a.PedirParar(); b.PedirParar();
+    a.AvisarLiveEncerrada("c-abc123def456"); b.AvisarLiveEncerrada("c-abc123def456");
+    Exige(parar == 2 && contas.Count == 2 && contas.All(c => c == "c-abc123def456"), $"não repassou ({parar}/{contas.Count})");
+    u.Remover("g1");
+    a.PedirParar(); a.AvisarLiveEncerrada("c-zzzzzzzzzzzz");
+    Exige(parar == 2 && contas.Count == 2, "a sala removida ainda repassa");
+    var b2 = new Falsa(); u.Adicionar("g2", "Dois", b2); // troca a sala do mesmo grupo
+    b.PedirParar(); b2.PedirParar();
+    Exige(parar == 3, $"só a sala nova devia repassar ({parar})");
+});
+
+Caso("SessoesParaFechar: so as que assisto dessa conta", () =>
+{
+    var ligacoes = new (string Sessao, string PeerId, bool EuTransmito)[]
+    {
+        ("s1", "c-abc123def456", false), // assisto a conta: fecha
+        ("s2", "c-abc123def456", true),  // essa conta me assiste (eu transmito para ela): não fecha
+        ("s3", "c-outraconta1", false),  // assisto outra conta: não fecha
+        ("s4", "c-abc123def456", false), // a mesma conta numa segunda ligação: fecha também
+    };
+    var fecha = GroupRoom.SessoesParaFechar(ligacoes, "c-abc123def456");
+    Exige(fecha.SequenceEqual(new[] { "s1", "s4" }), "fechou: " + string.Join(",", fecha));
+    Exige(GroupRoom.SessoesParaFechar(ligacoes, "c-zzzzzzzzzzzz").Count == 0, "conta que ninguém assiste");
+    Exige(GroupRoom.SessoesParaFechar(ligacoes, null).Count == 0 && GroupRoom.SessoesParaFechar(ligacoes, "").Count == 0, "sem conta não fecha nada");
+    Exige(GroupRoom.SessoesParaFechar(new (string, string, bool)[] { ("s5", "", false) }, "").Count == 0, "id vazio não casa com conta vazia");
+    Exige(GroupRoom.SessoesParaFechar(Array.Empty<(string, string, bool)>(), "c-abc123def456").Count == 0, "sem ligações");
+});
+
 Console.WriteLine($"casos: {falhas} falha(s)");
 return falhas == 0 ? 0 : 1;
 
@@ -210,6 +295,10 @@ sealed class Falsa : ISala
     public event Action<string, JsonObject?>? Undeliverable;
     public event Action? TelemetryNow;
     public event Action<string>? Encerrada;
+    public event Action? EncerrarLive;
+    public event Action<string>? LiveEncerrada;
+    public void PedirParar() => EncerrarLive?.Invoke();
+    public void AvisarLiveEncerrada(string conta) => LiveEncerrada?.Invoke(conta);
     public void Mudar() => Changed?.Invoke();
     public void Falar(string de) => Message?.Invoke(de, de, new JsonObject());
     public void Encerrar(string motivo) => Encerrada?.Invoke(motivo);

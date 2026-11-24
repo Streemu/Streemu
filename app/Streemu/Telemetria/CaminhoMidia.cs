@@ -11,7 +11,7 @@ public enum EtapaMidia { Captura, Escala, Encoder, Envio, Decodificacao, Renderi
 /// <summary>Por que falhou. Lista fechada: nada de texto do ffmpeg, do jogo ou da janela sai daqui. O que não se reconhece vira <see cref="Outro"/>.</summary>
 public enum MotivoMidia
 {
-    // envio: teste do encoder e processo da captura (ver CaminhoMidia.ClassificarFfmpeg)
+    // envio: teste do encoder e processo da captura (ver CaminhoMidia.ClassificarFfmpeg); DispositivoRemovido também vem do player (VK_ERROR_DEVICE_LOST no ffplay, lado viewer)
     EncoderIndisponivel, DriverIncompativel, SemMemoria, ParametroRecusado, TexturaRecusada, DispositivoRemovido, CapturaNaoAbriu,
     Demorou, SaiuComErro, NenhumEncoder, ProcessoSaiu, CaiuRepetidas,
     // envio: o vigia da captura e o envio para quem assiste

@@ -21,21 +21,24 @@ static class Program
         if (executable == "ffplay") return await FakePlayer(args);
         // Os prazos de verdade (5 s na abertura direta, 12 s na recuperação, 30 s para o Vulkan valer como funcionou, 300 ms para o aviso "Ajustando o
         // player..." e 300 ms de espera da linha get_buffer() depois da falta de memória) ficam conferidos aqui e trocados por valores curtos: o teste não
-        // espera 12 s. A recuperação tem que ser maior que a abertura, senão o caso d3d11-install-late não prova nada.
+        // espera 12 s. A recuperação tem que ser maior que a abertura, senão o caso d3d11-install-late não prova nada. A segunda tentativa do Direct3D 11
+        // depois do reset do driver (1,5 s de espera, até 12 s depois do reset) também é conferida e trocada: o teste espera 200 ms.
         if (Viewer.Direct3DPreparationTimeout != TimeSpan.FromSeconds(5) || Viewer.Direct3DRecoveryPreparationTimeout != TimeSpan.FromSeconds(12)
             || Viewer.VulkanWorkedAfter != TimeSpan.FromSeconds(30) || Viewer.Direct3DPreparingNoticeAfter != TimeSpan.FromMilliseconds(300)
-            || Viewer.MemoryFailureKillDelay != TimeSpan.FromMilliseconds(300))
-        { Console.WriteLine("FALHA player-prazos: os prazos do Viewer mudaram (5 s, 12 s, 30 s, 300 ms e 300 ms)."); return 1; }
+            || Viewer.MemoryFailureKillDelay != TimeSpan.FromMilliseconds(300)
+            || Viewer.Direct3DRetryDelay != TimeSpan.FromMilliseconds(1500) || Viewer.Direct3DRetryWindow != TimeSpan.FromSeconds(12))
+        { Console.WriteLine("FALHA player-prazos: os prazos do Viewer mudaram (5 s, 12 s, 30 s, 300 ms, 300 ms, 1,5 s e 12 s)."); return 1; }
         Viewer.Direct3DPreparationTimeout = TimeSpan.FromMilliseconds(300);
         Viewer.Direct3DRecoveryPreparationTimeout = TimeSpan.FromMilliseconds(1500);
         Viewer.VulkanWorkedAfter = TimeSpan.FromMilliseconds(400);
         Viewer.Direct3DPreparingNoticeAfter = TimeSpan.FromMilliseconds(100);
+        Viewer.Direct3DRetryDelay = TimeSpan.FromMilliseconds(200);
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "ffplay.exe"), true);
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "mpv.exe"), true);
         var results = new List<string>();
         int failed = 0;
         CaminhoMidia.Ligar((tipo, dados) => { lock (Midia) Midia.Add((tipo, dados)); });
-        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-install", "d3d11-install-late", "d3d11-install-timeout", "d3d11-install-stop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview", "preview-vram", "vram-get-buffer", "vram-slab", "vulkan-worked", "vulkan-no-hwaccel", "vulkan-video-then-vram" })
+        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-device-lost", "d3d11-device-lost-retry", "d3d11-device-lost-twice", "d3d11-install", "d3d11-install-late", "d3d11-install-timeout", "d3d11-install-stop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview", "preview-vram", "vram-get-buffer", "vram-slab", "vulkan-worked", "vulkan-no-hwaccel", "vulkan-video-then-vram" })
         {
             if (Environment.GetEnvironmentVariable("VIEWER_CASE_FILTER") is { } filter && name != filter) continue;
             try { CaminhoMidia.Descarregar(TimeSpan.FromSeconds(15)); lock (Midia) Midia.Clear(); await Check(name); ConferirMidia(name); results.Add($"OK    player-{name}"); }
@@ -111,6 +114,15 @@ static class Program
             return 0;
         }
         if (name == "d3d11-surface") { Console.Error.WriteLine(SurfaceError); return 0; }
+        if (name.StartsWith("d3d11-device-lost"))
+        {
+            // reset do driver (LIV-140, 2026-11-23), as linhas como o ffplay escreveu: a primeira não tem "Vulkan" nem "failed"
+            Console.Error.WriteLine("[h264 @ 0000015695873e40] [vk @ 0000015695822080] Unable to submit command buffer: VK_ERROR_DEVICE_LOST");
+            Console.Error.WriteLine("[h264 @ 0000015695873e40] hardware accelerator failed to decode picture");
+            Console.Error.WriteLine("[Vulkan Renderer @ 000001569bccd000] Failed acquiring swapchain image: VK_ERROR_DEVICE_LOST");
+            await Task.Delay(20000);
+            return 0;
+        }
         Console.Error.WriteLine(name is "vram-loop" or "preview-vram" || name.StartsWith("d3d11-") ? "[error] VK_ERROR_OUT_OF_DEVICE_MEMORY" : SurfaceError);
         if (name is "vram-loop" or "preview-vram" || name.StartsWith("d3d11-")) await Task.Delay(20000);
         return 0;
@@ -122,7 +134,10 @@ static class Program
             return 2;
         File.AppendAllText(Environment.GetEnvironmentVariable("VIEWER_FAKE_TRACE")!, "d3d11\n");
         string name = Environment.GetEnvironmentVariable("VIEWER_FAKE_CASE")!;
-        Console.WriteLine(name == "d3d11-fails" ? "STREEMU_D3D11 no 1280 720 1.7778" : "STREEMU_D3D11 d3d11va 1280 720 1.7778");
+        // d3d11-device-lost-retry: o driver ainda voltando na 1ª abertura do mpv, já de volta na 2ª; d3d11-device-lost-twice: não volta
+        int abertura = File.ReadAllLines(Environment.GetEnvironmentVariable("VIEWER_FAKE_TRACE")!).Count(l => l == "d3d11");
+        bool semHardware = name is "d3d11-fails" or "d3d11-device-lost-twice" || name == "d3d11-device-lost-retry" && abertura == 1;
+        Console.WriteLine(semHardware ? "STREEMU_D3D11 no 1280 720 1.7778" : "STREEMU_D3D11 d3d11va 1280 720 1.7778");
         Console.WriteLine("STREEMU_MPV_STATUS -0.012 9 2");
         await Task.Delay(20000);
         return 0;
@@ -200,9 +215,10 @@ static class Program
                         return;
                     }
                 }
-                string expected = name == "d3d11-cooldown" ? "d3d11" : name == "d3d11-fails" ? "gpu,d3d11,cpu" : "gpu,d3d11";
-                await Until(() => ReadTrace(trace) == expected && viewer.Running
-                    && viewer.Decoder == (name == "d3d11-fails" ? "cpu" : "d3d11va"));
+                bool naCpu = name is "d3d11-fails" or "d3d11-device-lost-twice";
+                string expected = name == "d3d11-cooldown" ? "d3d11" : name == "d3d11-fails" ? "gpu,d3d11,cpu"
+                    : name == "d3d11-device-lost-retry" ? "gpu,d3d11,d3d11" : name == "d3d11-device-lost-twice" ? "gpu,d3d11,d3d11,cpu" : "gpu,d3d11";
+                await Until(() => ReadTrace(trace) == expected && viewer.Running && viewer.Decoder == (naCpu ? "cpu" : "d3d11va"));
                 Require(vulkanFailures == (name == "d3d11-cooldown" ? 0 : 1) && worked == 0, "Registro da falha do Vulkan incorreto.");
                 if (name == "d3d11-install-late")
                 {
@@ -212,9 +228,13 @@ static class Program
                 }
                 else if (!name.StartsWith("d3d11-install"))
                     Require(preparando.Count == 0 && !viewer.IsPreparingDirect3D, "O aviso de preparo apareceu com o mpv já pronto.");
-                Require(rejected == (name == "d3d11-fails" ? 1 : 0), "Registro da rejeição do Direct3D 11 incorreto.");
+                if (name.StartsWith("d3d11-device-lost"))
+                    Require(motivos[0] == MotivoMidia.DispositivoRemovido && viewer.ErrorCounts()["placa_reiniciou"]?.GetValue<int>() >= 1,
+                        $"O reset do driver não chegou como DispositivoRemovido ({string.Join(",", motivos)}).");
+                // a 1ª falha do Direct3D 11 logo depois do reset não bloqueia o Direct3D 11 (nem cai na CPU); só a 2ª, que segue o caminho de sempre
+                Require(rejected == (name is "d3d11-fails" or "d3d11-device-lost-twice" ? 1 : 0), "Registro da rejeição do Direct3D 11 incorreto.");
                 Require(restarts == expected.Count(c => c == ',') && exits == 0, "Avisou o transmissor em uma hora errada.");
-                if (name != "d3d11-fails")
+                if (!naCpu)
                 {
                     Require(viewer.VideoSize == new Size(1280, 720) && viewer.UsingHardware, "Não confirmou o decoder ou a resolução.");
                     await Until(() => viewer.PlaybackSnapshot()["quadros_descartados_exibicao"]?.GetValue<int>() == 9);
@@ -378,6 +398,9 @@ static class Program
         "vram-loop" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/sem_memoria tentativa:cpu/sdl/recuperacao video recuperada",
         "exit-error" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/saiu_cedo tentativa:cpu/sdl/recuperacao video recuperada",
         "d3d11-after-vram" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/sem_memoria tentativa:d3d11va/d3d11/recuperacao video recuperada",
+        "d3d11-device-lost" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/dispositivo_removido tentativa:d3d11va/d3d11/recuperacao video recuperada",
+        "d3d11-device-lost-retry" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/dispositivo_removido tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:d3d11va/d3d11/recuperacao video recuperada",
+        "d3d11-device-lost-twice" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/dispositivo_removido tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:cpu/sdl/recuperacao video recuperada",
         "d3d11-fails" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/sem_memoria tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:cpu/sdl/recuperacao video recuperada",
         "d3d11-cooldown" => "tentativa:d3d11va/d3d11/inicio video",
         "normal-close" => "tentativa:vulkan/vulkan/inicio",

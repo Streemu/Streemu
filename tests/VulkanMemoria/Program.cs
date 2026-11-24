@@ -34,7 +34,7 @@ static class Program
             ("decisao-assinatura-evita-na-primeira", DecisaoAssinatura),
             ("decisao-registro-igual-nao-salva", DecisaoRegistroIgual),
             ("decisao-vram-cheia-sem-assinatura-pede-duas", DecisaoVramCheia),
-            ("mpv-antes-so-quando-pode-ser-preciso", MpvAntes),
+            ("decisao-placa-reiniciou-nao-vai-para-o-disco", DecisaoPlacaReiniciou),
         };
         var linhas = new List<string>();
         foreach (var (nome, corpo) in casos)
@@ -252,20 +252,21 @@ static class Program
         Exigir(semPlaca is { Registrou: true, Salvar: false } && semPlaca.Registro == null, "sem chave de placa nada é lembrado nem salvo");
     }
 
-    static void MpvAntes()
+    // reset do driver (VK_ERROR_DEVICE_LOST no ffplay, 887a0026 na captura, LIV-140 em 2026-11-23): a placa volta sozinha; as lives dos próximos
+    // 2 min abrem pelo Direct3D 11 (o reset é passageiro), mas nada vai para o estado.json, nem somado a uma falha de verdade já lembrada
+    static void DecisaoPlacaReiniciou()
     {
-        const string rtx = "NVIDIA GeForce RTX 5070 (driver 32.0.15.6094)";
-        const string rtx40 = "NVIDIA GeForce RTX 4070 (driver 32.0.15.6094)";
-        const string rx6 = "AMD Radeon RX 6800 XT (driver 31.0.24033.1003)";
-        Exigir(VulkanMemoria.PodePrecisarDoMpv(null, false, new[] { Rx7600 }), "RX 7600 pode precisar");
-        Exigir(VulkanMemoria.PodePrecisarDoMpv(null, false, new[] { Igpu, Rx7800 }), "RX 7800 XT pode precisar");
-        Exigir(VulkanMemoria.PodePrecisarDoMpv(null, false, new[] { "AMD Radeon RX 7900 XTX (driver 1.0)" }), "RX 7900 XTX pode precisar");
-        Exigir(VulkanMemoria.PodePrecisarDoMpv(null, true, new[] { rtx }), "RTX 50 pode precisar (abre direto pelo Direct3D 11)");
-        Exigir(VulkanMemoria.PodePrecisarDoMpv(Evitando(rx6, Hoje), false, new[] { rx6 }), "quem já falhou o Vulkan pode precisar");
-        Exigir(VulkanMemoria.PodePrecisarDoMpv(VulkanMemoria.RegistrarFalha(null, rx6, Hoje), false, new[] { rx6 }), "uma falha lembrada já basta");
-        Exigir(!VulkanMemoria.PodePrecisarDoMpv(null, false, new[] { rtx40 }), "RTX 40 não baixa à toa");
-        Exigir(!VulkanMemoria.PodePrecisarDoMpv(null, false, new[] { rx6, Igpu }), "RX 6000 e a gráfica integrada não baixam à toa");
-        Exigir(!VulkanMemoria.PodePrecisarDoMpv(null, false, Array.Empty<string>()), "sem placa conhecida, não baixa à toa");
+        long t = 1_000_000;
+        var a = Decidir(0, t, MotivoMidia.DispositivoRemovido, false, null);
+        Exigir(a is { Registrou: false, Salvar: false, PassouAEvitar: false } && a.Registro == null && a.JanelaAteTicks == t + 2 * Min && VulkanMemoria.JanelaResetMs == 2 * Min,
+            "reset do driver só abre a janela de 2 min");
+        // um reset dentro da janela de 20 min de uma falha de verdade não a encurta
+        var oom = Decidir(0, t, MotivoMidia.SemMemoria, false, null);
+        var reset = Decidir(oom.JanelaAteTicks, t + 60_000, MotivoMidia.DispositivoRemovido, false, oom.Registro);
+        Exigir(reset.JanelaAteTicks == oom.JanelaAteTicks && !reset.Registrou && !reset.Salvar, "o reset dentro dos 20 min da falha não encurta a janela nem grava");
+        var umaFalha = VulkanMemoria.RegistrarFalha(null, Rx7800, Hoje);
+        var b = Decidir(0, t, MotivoMidia.DispositivoRemovido, false, umaFalha);
+        Exigir(!b.Registrou && b.Registro == umaFalha, "reset do driver não vira a segunda falha de quem já tinha uma");
     }
 
     sealed class Estado { public VulkanBloqueio? VulkanBloqueio { get; set; } }

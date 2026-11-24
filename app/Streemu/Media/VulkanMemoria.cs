@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Streemu.Telemetria;
 
 namespace Streemu.Media;
@@ -11,7 +10,7 @@ namespace Streemu.Media;
 public sealed record VulkanBloqueio(string Placas, int Falhas, long DesdeUnixMs, bool Evitar);
 
 /// <summary>
-/// O que o MainForm faz com uma falha do Vulkan (<see cref="VulkanMemoria.DecidirFalha"/>): a nova janela de 20 min (em <c>Environment.TickCount64</c>),
+/// O que o MainForm faz com uma falha do Vulkan (<see cref="VulkanMemoria.DecidirFalha"/>): a nova janela de 20 min, ou de 2 min num reset do driver (em <c>Environment.TickCount64</c>),
 /// o registro a gravar, se a falha foi contada, se esta falha fez o app passar a evitar o Vulkan e se o registro mudou (e então vai para o disco).
 /// </summary>
 public sealed record DecisaoDeFalha(long JanelaAteTicks, VulkanBloqueio? Registro, bool Registrou, bool PassouAEvitar, bool Salvar);
@@ -36,6 +35,12 @@ public static class VulkanMemoria
 
     /// <summary>Janela, em ms, em que uma falha explícita faz as lives novas abrirem sem o Vulkan (só na memória do app, nesta sessão).</summary>
     public const long JanelaMs = 20 * 60_000;
+
+    /// <summary>
+    /// Janela, em ms, depois de um reset do driver (<see cref="MotivoMidia.DispositivoRemovido"/>). O reset é passageiro: a placa volta sozinha em segundos,
+    /// e 20 min no Direct3D 11 deixariam a prévia da própria live na CPU por um defeito que já passou. Dois minutos cobrem os resets em sequência.
+    /// </summary>
+    public const long JanelaResetMs = 2 * 60_000;
 
     /// <summary>
     /// Adaptadores que aparecem e somem sem a placa mudar (display virtual do Parsec, do spacedesk, do Citrix, o do Windows sem driver...). Se entrassem
@@ -87,7 +92,8 @@ public static class VulkanMemoria
     public static VulkanBloqueio? RegistrarSucesso(VulkanBloqueio? registro, string placasAtuais) => null;
 
     /// <summary>
-    /// A decisão inteira de uma falha do Vulkan (o MainForm só aplica o que volta daqui). A janela de 20 min vale para qualquer falha explícita; só
+    /// A decisão inteira de uma falha do Vulkan (o MainForm só aplica o que volta daqui). A janela de 20 min vale para qualquer falha explícita (a de
+    /// um reset do driver é de <see cref="JanelaResetMs"/>, 2 min); só
     /// memória e Vulkan (não "janela não abriu") entram na conta que vai para o disco, e só quem falha com a janela livre: a prévia da própria live
     /// e uma live de amigo falhando juntas, na mesma abertura, contam uma vez. A segunda falha, depois dos 20 min, conta de novo.
     /// <paramref name="decodificacao"/> é a assinatura das RDNA3 (<c>get_buffer() failed</c> logo depois da falta de memória, com a VRAM livre): é
@@ -97,21 +103,14 @@ public static class VulkanMemoria
     public static DecisaoDeFalha DecidirFalha(long janelaAteTicks, long agoraTicks, MotivoMidia motivo, bool decodificacao,
         VulkanBloqueio? registro, string placas, DateTimeOffset agora)
     {
-        long novaJanela = agoraTicks + JanelaMs;
+        // reset do driver: janela curta, e nunca encurta uma janela de 20 min que uma falha de verdade já abriu
+        long novaJanela = motivo == MotivoMidia.DispositivoRemovido ? Math.Max(janelaAteTicks, agoraTicks + JanelaResetMs) : agoraTicks + JanelaMs;
         if (agoraTicks < janelaAteTicks || motivo is not (MotivoMidia.SemMemoria or MotivoMidia.VulkanFalhou))
             return new DecisaoDeFalha(novaJanela, registro, Registrou: false, PassouAEvitar: false, Salvar: false);
         var depois = RegistrarFalha(registro, placas, agora, assinaturaDaDecodificacao: decodificacao && motivo == MotivoMidia.SemMemoria);
         return new DecisaoDeFalha(novaJanela, depois, Registrou: true,
             PassouAEvitar: depois is { Evitar: true } && registro is not { Evitar: true }, Salvar: depois != registro);
     }
-
-    /// <summary>
-    /// Este PC pode precisar do mpv (Direct3D 11) logo na primeira live? Sim se já falhou o Vulkan, na RTX série 50 (abre direto pelo Direct3D 11) ou numa
-    /// AMD RX série 7000 (RDNA3, as duas placas que falharam). Aí o app baixa o mpv ao abrir, antes de qualquer live: na primeira falha de um PC o mpv
-    /// de 47 MB terminou 1 s depois do prazo e a live ficou na CPU.
-    /// </summary>
-    public static bool PodePrecisarDoMpv(VulkanBloqueio? registro, bool rtx50, IEnumerable<string> placas)
-        => registro != null || rtx50 || placas.Any(p => Regex.IsMatch(p, @"Radeon.*RX\s*7\d{3}", RegexOptions.IgnoreCase));
 
     static VulkanBloqueio Contar(string placas, int falhas, long agoraMs, bool assinatura) => new(placas, falhas, agoraMs, falhas >= FalhasParaEvitar || assinatura);
 

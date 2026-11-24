@@ -637,22 +637,27 @@ public sealed partial class MainForm
     }
 
     /// <summary>
-    /// Ao abrir o app, baixa o mpv (Direct3D 11) em segundo plano se este PC pode precisar dele na primeira live (<see cref="VulkanMemoria.PodePrecisarDoMpv"/>).
+    /// Ao abrir o app, baixa o mpv (Direct3D 11) em segundo plano, em qualquer placa: é o que o player usa quando o Vulkan falha no meio da live.
     /// Antes ele só vinha depois da primeira falha do Vulkan: num PC AMD RDNA3 o mpv de 47 MB terminou 1 s depois do prazo e a live ficou na CPU.
-    /// Nunca na thread da tela (o WMI e a conferência do SHA-256 do mpv demoram) e nunca em teste automático.
+    /// Depois só vinha nas placas suspeitas (RX 7000, RTX 50 ou falha lembrada), mas um reset do driver derruba o Vulkan de qualquer placa: numa RX 6600
+    /// (LIV-140, 2026-11-23) o player levou 9 s para voltar, 4,6 s deles baixando o mpv. São 47 MB uma vez só, e o modo filme usa o mesmo.
+    /// Espera 60 s depois de abrir antes de conferir e baixar: quem começa uma live logo ao abrir o app não divide a banda com os 47 MB, e a recuperação
+    /// do player já baixa o mpv sozinha se uma falha chegar antes disso.
+    /// Nunca na thread da tela (a conferência do SHA-256 do mpv demora) e nunca em teste automático.
     /// </summary>
     void PrepararDirect3DAoAbrir()
     {
         if (Automated || !_hwDecode.Checked) return;
-        var estado = _state.VulkanBloqueio;
         _ = Task.Run(async () =>
         {
             try
             {
-                if (!VulkanMemoria.PodePrecisarDoMpv(estado, SystemInfo.HasRtx50, SystemInfo.Gpus()) || Filme.Mpv.Find() != null) return;
-                Log.Info("Player: baixando o mpv agora, em segundo plano, porque esta placa de vídeo pode precisar do Direct3D 11 na primeira live.");
+                await Task.Delay(TimeSpan.FromSeconds(60), _closing.Token).ConfigureAwait(false);
+                if (Filme.Mpv.Find() != null) return;
+                Log.Info("Player: baixando o mpv agora, em segundo plano, para o player voltar rápido se o Vulkan falhar numa live.");
                 await PrepararPlayerDirect3D().ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (_closing.IsCancellationRequested) { } // o app fechou antes dos 60 s: nada a registrar
             catch (Exception e) { Log.Info($"Player: não consegui adiantar o mpv ({e.Message})."); }
         });
     }

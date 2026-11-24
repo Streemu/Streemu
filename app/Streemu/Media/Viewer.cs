@@ -26,9 +26,20 @@ public sealed class Viewer
     /// logo depois da do OUT_OF_DEVICE_MEMORY, e matar o ffplay na primeira a perderia.
     /// </summary>
     internal static TimeSpan MemoryFailureKillDelay = TimeSpan.FromMilliseconds(300);
+    /// <summary>
+    /// Depois de um reset do driver (<see cref="MotivoMidia.DispositivoRemovido"/>), quanto esperar antes da segunda tentativa do Direct3D 11. LIV-140
+    /// (2026-11-23): o mpv abria ~1,4 s depois do reset, e a captura do mesmo PC ainda falhava 2,3 s depois e só voltou em 5,3 s; o D3D11 batia no driver
+    /// ainda voltando e a live caía na CPU. O teste troca por um valor curto.
+    /// </summary>
+    internal static TimeSpan Direct3DRetryDelay = TimeSpan.FromMilliseconds(1500);
+    /// <summary>Até quanto depois do reset do driver a primeira falha do Direct3D 11 ainda vale uma segunda tentativa (passado isso, não foi o driver voltando).</summary>
+    internal static TimeSpan Direct3DRetryWindow = TimeSpan.FromSeconds(12);
     static readonly TimeSpan Direct3DPlaybackTimeout = TimeSpan.FromSeconds(8);
     Process? _player;
     volatile bool _stopRequested, _reopening;
+    // a segunda tentativa do Direct3D 11 depois do reset do driver vale uma vez por recuperação
+    int _retryDirect3DAfterReset;
+    long _deviceLostAtMs;
     bool _direct3DActive;
     sealed record PlayerFailure(string Reason, Telemetria.MotivoMidia Motivo);
     sealed record Direct3DSample(int? AudioVideoMs, int RenderDrops, int DecoderDrops);
@@ -172,6 +183,7 @@ public sealed class Viewer
         VideoSize = null; VideoAspect = null;
         lock (_errors) _errors.Clear();
         _direct3DExecutable = null;
+        Volatile.Write(ref _retryDirect3DAfterReset, 0);
         _midia.NovaLive();
         _midia.Preparar(Telemetria.GatilhoMidia.Inicio);
         if (UseHardware && AvoidVulkan && PrepareDirect3D != null)
@@ -201,6 +213,8 @@ public sealed class Viewer
     /// <summary>Classifica uma linha do stderr do ffplay. Nulo = não é erro que interessa.</summary>
     static string? Classify(string l)
     {
+        // antes do "Vulkan ... ailed": a primeira linha do reset ("[vk @ ...] Unable to submit command buffer: VK_ERROR_DEVICE_LOST") não tem nenhum dos dois
+        if (l.Contains("VK_ERROR_DEVICE_LOST")) return "placa_reiniciou";
         if (l.Contains("VK_ERROR_OUT_OF_DEVICE_MEMORY") || l.Contains("No slab to serve")) return "sem_memoria_de_video";
         if (l.Contains("Vulkan") && (l.Contains("rror") || l.Contains("ailed"))) return "vulkan_outro";
         if (l.Contains("error while decoding") || l.Contains("concealing") || l.Contains("non-existing PPS") || l.Contains("decode_slice")) return "decodificacao";
@@ -256,6 +270,9 @@ public sealed class Viewer
         // Teste 0.1.8 (PC do grupo, Cyberpunk aberto): o renderizador Vulkan ficou sem VRAM e repetiu o erro em loop sem sair,
         // então o "saiu em menos de 4 s" nunca disparava. Outro PC (11/11): VK_KHR_surface ausente fecha com código ZERO.
         // O erro explícito do renderizador vale mesmo sem código de falha; pacote perdido/erro de rede não pede CPU.
+        // Reset do driver (LIV-140, 2026-11-23: a captura do mesmo PC deu 887a0026 no mesmo milissegundo): não é defeito do Vulkan nesta placa. Recupera
+        // como as outras falhas, mas com DispositivoRemovido, que a VulkanMemoria não grava no estado.json.
+        if (kind == "placa_reiniciou") return new("a placa de vídeo reiniciou (o driver se recuperou de um erro)", Telemetria.MotivoMidia.DispositivoRemovido);
         if (kind == "sem_memoria_de_video") return new("falha ao alocar memória de vídeo no Vulkan", Telemetria.MotivoMidia.SemMemoria);
         if (kind == "vulkan_outro" || line.Contains("Failed to create window"))
             return new("o player não conseguiu abrir o vídeo pelo Vulkan", line.Contains("Failed to create window") ? Telemetria.MotivoMidia.JanelaNaoAbriu : Telemetria.MotivoMidia.VulkanFalhou);
@@ -397,6 +414,9 @@ public sealed class Viewer
                     // o Direct3D 11 só abre live de amigo: a prévia lê o vídeo pelo pipe e o mpv do app só aceita SRT
                     if (!IsPreview && PrepareDirect3D != null)
                     {
+                        // reset do driver: se o Direct3D 11 também falhar logo em seguida, vale uma segunda tentativa (TryRetryDirect3DAfterReset)
+                        _deviceLostAtMs = Environment.TickCount64;
+                        Volatile.Write(ref _retryDirect3DAfterReset, fallback.Motivo == Telemetria.MotivoMidia.DispositivoRemovido ? 1 : 0);
                         _midia.Preparar(Telemetria.GatilhoMidia.Recuperacao);
                         await TryDirect3DAsync(fallback.Reason, restartSender: true).ConfigureAwait(false);
                         return;
@@ -502,8 +522,9 @@ public sealed class Viewer
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
-            Direct3DRejected?.Invoke();
             tentativa.Falhou(Telemetria.EtapaMidia.Renderizacao, Telemetria.MotivoMidia.D3d11NaoAbriu);
+            if (TryRetryDirect3DAfterReset()) return;
+            Direct3DRejected?.Invoke();
             RecoverOnCpu("não consegui abrir o player Direct3D 11", restartSender: false);
             return;
         }
@@ -525,7 +546,6 @@ public sealed class Viewer
             int outcome = Volatile.Read(ref result);
             if (!_stopRequested && (outcome != 1 || SafeExit(player) != 0))
             {
-                if (outcome == 2) Direct3DRejected?.Invoke();
                 // sem hardware ou sem vídeo em 8 s: não decodificou; com vídeo e depois saída com erro: caiu já desenhando
                 var amostra = _direct3DSample;
                 tentativa.Falhou(outcome == 1 ? Telemetria.EtapaMidia.Renderizacao : Telemetria.EtapaMidia.Decodificacao,
@@ -534,11 +554,35 @@ public sealed class Viewer
                     {
                         ["descartes_exibicao"] = amostra.RenderDrops, ["descartes_decodificador"] = amostra.DecoderDrops,
                     });
+                // só a falha de abrir (sem hardware ou sem vídeo): quem já desenhou e caiu depois não foi o driver ainda voltando
+                if (outcome != 1 && TryRetryDirect3DAfterReset()) return;
+                if (outcome == 2) Direct3DRejected?.Invoke();
                 RecoverOnCpu("o player Direct3D 11 não conseguiu manter a reprodução");
             }
             else
                 Exited?.Invoke();
         }
+    }
+
+    /// <summary>
+    /// A primeira tentativa do Direct3D 11 de uma recuperação de reset do driver falhou ao abrir, dentro de <see cref="Direct3DRetryWindow"/> do reset:
+    /// o driver provavelmente ainda estava voltando. Espera <see cref="Direct3DRetryDelay"/> e tenta o Direct3D 11 mais uma vez, refazendo o SRT do
+    /// transmissor (<see cref="Relaunch"/>). Nessa primeira falha o chamador não dispara <see cref="Direct3DRejected"/> (o app bloquearia o Direct3D 11
+    /// por 2 min) nem cai na CPU. Vale uma vez por recuperação; a segunda falha segue o caminho de sempre. Devolve verdadeiro se agendou a nova tentativa.
+    /// </summary>
+    bool TryRetryDirect3DAfterReset()
+    {
+        if (_stopRequested || Interlocked.Exchange(ref _retryDirect3DAfterReset, 0) != 1) return false;
+        if (Environment.TickCount64 - _deviceLostAtMs > (long)Direct3DRetryWindow.TotalMilliseconds) return false;
+        Log.Info("Player: o Direct3D 11 falhou logo depois do reset da placa de vídeo; tentando de novo em instantes.");
+        _midia.Preparar(Telemetria.GatilhoMidia.Recuperacao);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(Direct3DRetryDelay).ConfigureAwait(false);
+            if (_stopRequested || _reopening) return;
+            Relaunch(LaunchDirect3D);
+        });
+        return true;
     }
 
     void ObserveDirect3DStatus(string line)

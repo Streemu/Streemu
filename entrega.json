@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "4a467a6d73a136be3061a2dff0125cd5820400af",
-    "notas":  "- Recomeça o resumo da live num lock só\n- Corrige os achados da revisão do resumo da pausa\n- Separa os segundos de pausa no live_resumo e no painel de lives\n- Corrige os achados de revisao do PR dos binarios de teste\n- Confere pelo pin também o ffmpeg e o mpv de teste no app",
+    "privado":  "2a71967e219e20d80976088a30395c0737fed9d6",
+    "notas":  "- Tenta o Direct3D 11 de novo depois do reset do driver e encurta a janela do reset\n- Adianta o mpv em qualquer placa e trata o reset do driver no player",
     "obrigatoria":  false
 }

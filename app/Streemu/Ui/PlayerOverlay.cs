@@ -1,4 +1,5 @@
 using Streemu.Media;
+using Streemu.Net;
 using Streemu.Ui.Multistream;
 using Streemu.Util;
 
@@ -41,6 +42,10 @@ public sealed class PlayerOverlay : Form
     readonly IDisposable _hotkey;
     readonly PlayerStage? _stage;
     readonly Button _liveButton = IconButton(UiGlyphs.Sidebar);
+    /// <summary>Bandeira vermelha "Denunciar esta live" (spec 029, E3): desenhada em vetor (o Segoe MDL2 não tem bandeira cheia), só com um <see cref="ReportHook"/>.</summary>
+    readonly Button _report = IconButton("");
+    readonly ReportHook? _reportHook;
+    bool _reportAvailable = true, _reportHover;
     readonly LiveHeaderOverlay _header = new(); // com uma live só no palco: cabeçalho por cima do vídeo, que some junto com a barra
     /// <summary>Teste (STREEMU_TEST_PANEL=1): abre o painel "Ao vivo agora" sozinho assim que o vídeo aparece.</summary>
     bool _openPanelForTest = Environment.GetEnvironmentVariable("STREEMU_TEST_PANEL") == "1";
@@ -58,16 +63,24 @@ public sealed class PlayerOverlay : Form
     Point _lastCursor;
     DateTime _lastMove = DateTime.MinValue;
 
-    /// <summary>Cria a barra para este player; ela se fecha sozinha quando o player fecha.</summary>
-    public static PlayerOverlay ShowFor(Viewer viewer, Func<string> quality, Func<IReadOnlyList<RosterEntry>> people, IMiniPlayerStore? mini = null, Action<string>? notify = null, PlayerStage? stage = null)
+    /// <summary>
+    /// A denúncia desta live, entregue por quem sabe de quem ela é (o <c>MainForm</c>): <see cref="Target"/> diz grupo e live (nulo = não dá agora), <see cref="Open"/> abre a janela
+    /// e entrega a função que tira a imagem (nulo se não há player para capturar; só é chamada depois do Enviar) e <see cref="Notice"/> mostra um aviso curto SEM escrever no log
+    /// (spec 029, 15.16: o <c>notify</c> normal loga tudo que mostra).
+    /// </summary>
+    public sealed record ReportHook(Func<DenunciaAlvo?> Target, Action<DenunciaAlvo, Func<byte[]?>?> Open, Action<string> Notice);
+
+    /// <summary>Cria a barra para este player; ela se fecha sozinha quando o player fecha. <paramref name="report"/> liga o botão de denunciar (a prévia da própria live não tem).</summary>
+    public static PlayerOverlay ShowFor(Viewer viewer, Func<string> quality, Func<IReadOnlyList<RosterEntry>> people, IMiniPlayerStore? mini = null, Action<string>? notify = null, PlayerStage? stage = null, ReportHook? report = null)
     {
-        var overlay = new PlayerOverlay(viewer, quality, people, mini, notify, stage);
+        var overlay = new PlayerOverlay(viewer, quality, people, mini, notify, stage, report);
         viewer.Exited += () => { if (overlay.IsHandleCreated) overlay.BeginInvoke(overlay.Close); };
         return overlay;
     }
 
-    PlayerOverlay(Viewer viewer, Func<string> quality, Func<IReadOnlyList<RosterEntry>> people, IMiniPlayerStore? mini, Action<string>? notify, PlayerStage? stage)
+    PlayerOverlay(Viewer viewer, Func<string> quality, Func<IReadOnlyList<RosterEntry>> people, IMiniPlayerStore? mini, Action<string>? notify, PlayerStage? stage, ReportHook? report)
     {
+        _reportHook = report;
         _store = mini;
         _notify = notify;
         _stage = stage;
@@ -116,11 +129,11 @@ public sealed class PlayerOverlay : Form
     void BuildLayout()
     {
         // tamanhos em pixels de 96 DPI viram pixels reais (a barra abre em monitores com escala de 125% a 200%)
-        foreach (var b in new[] { _mute, _fullscreen, _close, _mini, _liveButton }) { b.Width = LogicalToDeviceUnits(40); b.Height = LogicalToDeviceUnits(32); }
+        foreach (var b in new[] { _mute, _fullscreen, _close, _mini, _liveButton, _report }) { b.Width = LogicalToDeviceUnits(40); b.Height = LogicalToDeviceUnits(32); }
         _volume.Width = LogicalToDeviceUnits(110); _volume.Height = LogicalToDeviceUnits(32);
         _percent.Width = LogicalToDeviceUnits(52); _badge.Width = LogicalToDeviceUnits(150);
         _percent.Height = _badge.Height = LogicalToDeviceUnits(32);
-        _mute.FlatAppearance.BorderSize = _fullscreen.FlatAppearance.BorderSize = _close.FlatAppearance.BorderSize = _mini.FlatAppearance.BorderSize = _liveButton.FlatAppearance.BorderSize = 0;
+        _mute.FlatAppearance.BorderSize = _fullscreen.FlatAppearance.BorderSize = _close.FlatAppearance.BorderSize = _mini.FlatAppearance.BorderSize = _liveButton.FlatAppearance.BorderSize = _report.FlatAppearance.BorderSize = 0;
         // só ícones, com o texto na dica (pedido de 2026-11-16: "Barra", "Tela cheia" e "Sair da live" escritos poluíam a barra); sair continua vermelho
         _close.ForeColor = Theme.Error;
         _close.FlatAppearance.MouseOverBackColor = Theme.Error;
@@ -129,6 +142,13 @@ public sealed class PlayerOverlay : Form
         Describe(_mini, MiniTip);
         Describe(_close, _viewer.IsPreview ? "Fechar a prévia" : "Parar de assistir esta live");
         Describe(_liveButton, "Mostrar ou esconder a barra lateral");
+        // bandeira vermelha, como o "sair": no mouse por cima o fundo fica vermelho e o desenho branco; a prévia da própria live (sem dono para denunciar) não tem o botão
+        _report.Visible = _reportHook != null && !_viewer.IsPreview;
+        _report.FlatAppearance.MouseOverBackColor = Theme.Error;
+        _report.MouseEnter += (_, _) => { _reportHover = true; _report.Invalidate(); };
+        _report.MouseLeave += (_, _) => { _reportHover = false; _report.Invalidate(); };
+        _report.Paint += (_, e) => PaintFlag(e.Graphics);
+        Describe(_report, "Denunciar esta live");
         _volume.AccessibleName = "Volume";
         _volume.BackColor = Theme.SurfaceInput;
         _right.Padding = new Padding(0, 0, LogicalToDeviceUnits(8), 0);
@@ -136,7 +156,7 @@ public sealed class PlayerOverlay : Form
         _center.Controls.AddRange(_viewer.IsPreview ? new Control[] { _badge } : new Control[] { _mute, _volume, _percent, _badge });
         _liveButton.Visible = _stage != null;
         _emphasis.Width = LogicalToDeviceUnits(80); _emphasis.Height = LogicalToDeviceUnits(32); _emphasis.FlatAppearance.BorderSize = 0;
-        _right.Controls.AddRange(new Control[] { _emphasis, _liveButton, _mini, _fullscreen, _close });
+        _right.Controls.AddRange(new Control[] { _emphasis, _liveButton, _mini, _fullscreen, _report, _close });
         Controls.AddRange(new Control[] { _roster, _center, _right });
         RefreshAudio();
         RefreshFullscreen();
@@ -221,6 +241,7 @@ public sealed class PlayerOverlay : Form
         _fullscreen.Click += (_, _) => { if (_stage is { Active: true }) _stage.ToggleFullscreen(); else _viewer.Window.PressKey(Keys.F); };
         _mini.Click += (_, _) => ToggleSmall();
         _liveButton.Click += (_, _) => ToggleLiveNow();
+        _report.Click += (_, _) => OnReport();
         _emphasis.Click += (_, _) => ToggleEmphasis();
         WireDrag(this);
         _close.Click += (_, _) => _viewer.Stop();
@@ -315,6 +336,7 @@ public sealed class PlayerOverlay : Form
     void ShowBar(Rectangle video)
     {
         Bounds = BarBounds(video);
+        RefreshReport();
         _badge.Text = _quality();
         var people = _people();
         _roster.SetEntries(people);
@@ -338,6 +360,67 @@ public sealed class PlayerOverlay : Form
     }
 
     void PlaceAbovePlayer() => PlayerWindowOrder.PlaceAbove(this, _viewer.Window.Handle, _header.Handle);
+
+    // ------------------------------------------------------------------ denunciar a live (spec 029, E3)
+
+    /// <summary>
+    /// Sem grupo ou live para denunciar (a live acabou de sair da lista, ou a sala não sabe de quem é), a bandeira fica apagada e a dica diz isso. O botão continua clicável
+    /// de propósito: um botão desabilitado do WinForms não mostra dica, e o clique repete o motivo num aviso.
+    /// </summary>
+    void RefreshReport()
+    {
+        if (_reportHook == null || !_report.Visible) return;
+        bool available = _reportHook.Target() != null;
+        if (available == _reportAvailable && _report.AccessibleName != null) return;
+        _reportAvailable = available;
+        Describe(_report, available ? "Denunciar esta live" : Denuncia.SemAlvo);
+        _report.Invalidate();
+    }
+
+    /// <summary>
+    /// Nada é capturado ao clicar: a janela abre sem imagem e recebe a função de captura, que ela só chama depois do Enviar (spec 029, 10: em abuso infantil nenhuma imagem é tirada).
+    /// Sem janela de player (nem ffplay) não há o que capturar e a janela abre sem a caixa da imagem.
+    /// </summary>
+    void OnReport()
+    {
+        if (_reportHook == null) return;
+        if (_reportHook.Target() is not { } alvo) { _reportHook.Notice(Denuncia.SemAlvo); return; }
+        _reportHook.Open(alvo, _viewer.Window.Handle != IntPtr.Zero ? CapturarPlayer : null);
+    }
+
+    /// <summary>Esconde a barra e o cabeçalho, tira a imagem do player e mostra a barra de novo (ela só voltaria sozinha quando o mouse mexesse).</summary>
+    byte[]? CapturarPlayer()
+    {
+        var window = _viewer.Window.Handle;
+        if (window == IntPtr.Zero) return null;
+        _viewer.Window.TryGetClientBounds(out var video);
+        try { return DenunciaCaptura.Capturar(window, video, () => { HideBar(); _header.Place(null, false, IntPtr.Zero); }); }
+        finally { RestoreBarAfterCapture(); }
+    }
+
+    void RestoreBarAfterCapture()
+    {
+        _lastMove = DateTime.Now; // conta como mouse recente: a barra volta e some pelo tempo de sempre
+        if (IsDisposed) return;
+        if (VideoRect(out var video)) ShowBar(video);
+        _header.Place(HeaderCaption, Visible, _viewer.Window.Handle, Handle);
+    }
+
+    /// <summary>A bandeira (cabo e bandeirola cheia, na grade de 24 do <see cref="UiIcons"/>), vermelha; branca com o mouse por cima, apagada quando não dá para denunciar.</summary>
+    void PaintFlag(Graphics g)
+    {
+        int size = LogicalToDeviceUnits(18);
+        var color = !_reportAvailable ? Theme.TextMuted : _reportHover ? Theme.AccentText : Theme.Error;
+        var saved = g.Save();
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.TranslateTransform((_report.Width - size) / 2f, (_report.Height - size) / 2f);
+        g.ScaleTransform(size / 24f, size / 24f);
+        using var pen = new Pen(color, 2f) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+        using var brush = new SolidBrush(color);
+        g.DrawLine(pen, 5, 3, 5, 22);
+        g.FillPolygon(brush, [new PointF(5, 4), new PointF(20, 4), new PointF(16.5f, 9), new PointF(20, 14), new PointF(5, 14)]);
+        g.Restore(saved);
+    }
 
     // ------------------------------------------------------------------ painel "Ao vivo agora" (spec 006, M5)
 

@@ -202,6 +202,20 @@ public sealed class SalaUnida : ISala
     public IReadOnlyList<string> GruposDe(string id) =>
         Copia().Where(e => e.Sala.Members.Any(m => m.Id == id) || e.Sala.Ausentes.Any(a => a.Id == id)).Select(e => e.GrupoId).ToList();
 
+    /// <summary>
+    /// O grupo (id) em que <paramref name="donoId"/> transmite a live <paramref name="live"/> (o <c>sala</c> do <c>ao_vivo</c>), para a denúncia (spec 029, E3). Vale o primeiro grupo
+    /// em que a sala mostra essa live no ar com esse dono. Sem isso (a live acabou de sumir da lista), só se a pessoa está em UM grupo conectado: com dois não dá para
+    /// adivinhar, e o servidor descartaria a denúncia do grupo errado. Nulo = não sei.
+    /// </summary>
+    public string? GrupoDaLive(string donoId, string live)
+    {
+        var salas = Copia();
+        var comLive = salas.Where(e => e.Sala.Find(donoId)?.Live?.StreamId == live).Select(e => e.GrupoId).ToList();
+        if (comLive.Count > 0) return comLive[0];
+        var dele = GruposDe(donoId);
+        return dele.Count == 1 ? dele[0] : null;
+    }
+
     // ---- o que o app manda
 
     public void SetNick(string nick)

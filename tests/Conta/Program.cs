@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
 using Streemu.Net;
+using Streemu.Ui;
 using Streemu.Util;
 
 // Testes do cliente de conta (spec 019, etapa 5): Streemu.Net.Conta contra um servidor FALSO dentro do HttpClient. Sem rede, sem janela, sem
@@ -759,6 +760,150 @@ Caso("ids-sem-delegado-nada-vai-e-o-renovar-leva-pc-e-hw-quando-prontos", async 
     // os ids não vão para o estado salvo
     var estadoJson = System.Text.Json.JsonSerializer.Serialize(s);
     Exige(!estadoJson.Contains(PcDeTeste) && !estadoJson.Contains(HwDeTeste), "pc e hw não podem estar no estado salvo");
+});
+
+// ------------------------------------------------------------------ denúncia (spec 029, E3): regras puras, imagem e envio
+
+var alvoDeTeste = new DenunciaAlvo("abcd2345", "sala-xyz", "Bruno");
+
+Caso("denuncia-categorias-viram-os-codigos-do-servidor", () =>
+{
+    var quer = new[] { "abuso_infantil", "odio", "golpe", "assedio", "outro" };
+    Exige(Denuncia.Categorias.Select(c => c.Codigo).SequenceEqual(quer), "códigos e ordem das categorias");
+    Exige(Denuncia.Categorias.Select(c => c.Rotulo).SequenceEqual(new[] { "Abuso infantil", "Ódio ou nazismo", "Golpe ou fraude", "Assédio ou ameaça", "Outro" }), "rótulos da janela");
+    Exige(Denuncia.Codigo(CategoriaDenuncia.Assedio) == "assedio" && Denuncia.Codigo(CategoriaDenuncia.Odio) == "odio", "Codigo()");
+    return Task.CompletedTask;
+});
+
+Caso("denuncia-corpo-tem-so-o-combinado", () =>
+{
+    var simples = Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.Golpe, "   ", null);
+    Exige(simples.Count == 3 && simples["grupo"]!.GetValue<string>() == "abcd2345" && simples["live"]!.GetValue<string>() == "sala-xyz" && simples["categoria"]!.GetValue<string>() == "golpe",
+        "sem texto e sem imagem o corpo é só grupo, live e categoria: " + simples.ToJsonString());
+    var longo = new string('a', 700) + " fim";
+    var cheio = Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.Outro, "  " + longo + "  ", new byte[] { 0xFF, 0xD8, 0xFF, 1, 2, 3 });
+    Exige(cheio["texto"]!.GetValue<string>().Length == 500, "o texto passa de 500: corta em 500");
+    Exige(cheio["captura"]!.GetValue<string>() == Convert.ToBase64String(new byte[] { 0xFF, 0xD8, 0xFF, 1, 2, 3 }), "a captura vai em base64");
+    Exige(cheio.Count == 5, "campos a mais no corpo");
+    // um emoji (par substituto) na posição 500 não pode ser cortado ao meio
+    var emoji = Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.Outro, new string('a', 499) + "\U0001F600", null)["texto"]!.GetValue<string>();
+    Exige(emoji.Length == 499 && !char.IsHighSurrogate(emoji[^1]), "par substituto cortado ao meio");
+    return Task.CompletedTask;
+});
+
+Caso("denuncia-abuso-infantil-nunca-leva-imagem", () =>
+{
+    var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 9, 9, 9 };
+    var corpo = Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.AbusoInfantil, "texto", jpeg);
+    Exige(!corpo.ContainsKey("captura") && corpo["categoria"]!.GetValue<string>() == "abuso_infantil" && corpo.ContainsKey("texto"), "abuso infantil não leva imagem, mesmo que ela venha");
+    Exige(!Denuncia.PodeAnexarImagem(CategoriaDenuncia.AbusoInfantil) && Denuncia.PodeAnexarImagem(CategoriaDenuncia.Odio) && Denuncia.PodeAnexarImagem(null), "PodeAnexarImagem");
+    return Task.CompletedTask;
+});
+
+Caso("denuncia-jpeg-respeita-1280-px-e-300-kb", () =>
+{
+    // ruído colorido de 3000 x 2000: o pior caso para o peso do JPEG
+    using var grande = new Bitmap(3000, 2000, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+    var rng = new Random(7);
+    var linha = new byte[3000 * 3];
+    var dados = grande.LockBits(new Rectangle(0, 0, 3000, 2000), System.Drawing.Imaging.ImageLockMode.WriteOnly, grande.PixelFormat);
+    for (int y = 0; y < 2000; y++) { rng.NextBytes(linha); System.Runtime.InteropServices.Marshal.Copy(linha, 0, dados.Scan0 + y * dados.Stride, linha.Length); }
+    grande.UnlockBits(dados);
+    var jpeg = DenunciaCaptura.ParaJpeg(grande);
+    Exige(jpeg != null, "não coube nem na menor medida");
+    Exige(jpeg!.Length <= 300 * 1024, $"JPEG com {jpeg.Length} bytes passa de 300 KB");
+    Exige(jpeg[0] == 0xFF && jpeg[1] == 0xD8 && jpeg[2] == 0xFF, "não começa com FF D8 FF (o servidor descartaria)");
+    using var lido = Image.FromStream(new MemoryStream(jpeg));
+    Exige(lido.Width <= 1280, $"largura {lido.Width} passa de 1280");
+    Exige(Math.Abs((double)lido.Height / lido.Width - 2000.0 / 3000) < 0.01, "a proporção mudou");
+    // imagem leve e pequena: nada de aumentar nem de perder o tamanho
+    using var pequena = new Bitmap(640, 360); using (var g = Graphics.FromImage(pequena)) g.Clear(Color.SteelBlue);
+    var leve = DenunciaCaptura.ParaJpeg(pequena);
+    using var leveLida = Image.FromStream(new MemoryStream(leve!));
+    Exige(leveLida.Width == 640 && leve!.Length < 300 * 1024, "imagem pequena mudou de tamanho");
+    // o teto de largura é parâmetro: 1280 num quadro de 1920 x 1080 vira 1280 x 720
+    using var fullhd = new Bitmap(1920, 1080); using (var g = Graphics.FromImage(fullhd)) g.Clear(Color.DarkSlateGray);
+    using var fullhdLida = Image.FromStream(new MemoryStream(DenunciaCaptura.ParaJpeg(fullhd)!));
+    Exige(fullhdLida.Width == 1280 && fullhdLida.Height == 720, $"1920x1080 virou {fullhdLida.Width}x{fullhdLida.Height}");
+    // preto não vale como imagem
+    using var preta = new Bitmap(400, 300); using (var g = Graphics.FromImage(preta)) g.Clear(Color.Black);
+    Exige(DenunciaCaptura.Escura(preta) && !DenunciaCaptura.Escura(fullhd), "detecção de imagem preta");
+    return Task.CompletedTask;
+});
+
+Caso("denuncia-envio-vai-com-o-token-e-o-corpo-combinado", async () =>
+{
+    var (c, _, f, _, _, _) = await Entrar();
+    f.Pedidos.Clear();
+    f.Rota = (m, p, corpo) => p == "/denuncia" ? (200, new JsonObject { ["ok"] = true }) : (404, new JsonObject());
+    var corpo = Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.Odio, "texto", new byte[] { 0xFF, 0xD8, 0xFF, 1 });
+    await c.DenunciarAsync(corpo, TimeSpan.Zero);
+    var p = f.Pedidos.Single();
+    Exige(p.Metodo == "POST" && p.Path == "/denuncia", "método e caminho");
+    Exige(p.Cabecalhos["authorization"] == "Bearer sa1.carga.assinatura", "token de acesso da conta");
+    Exige(p.Corpo!.ToJsonString() == corpo.ToJsonString(), "corpo diferente do montado");
+});
+
+Caso("denuncia-rede-ruim-tenta-uma-vez-so-e-sem-barulho", async () =>
+{
+    var (c, _, f, _, _, _) = await Entrar();
+    var corpo = Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.Outro, null, null);
+    // cai na primeira, passa na segunda
+    int n = 0;
+    f.Pedidos.Clear();
+    f.Rota = (m, p, b) => p == "/denuncia" ? (++n == 1 ? (-1, null!) : (200, new JsonObject { ["ok"] = true })) : (404, new JsonObject());
+    await c.DenunciarAsync(corpo, TimeSpan.Zero);
+    Exige(f.Pedidos.Count(p => p.Path == "/denuncia") == 2, "uma nova tentativa depois da queda");
+    // cai sempre: uma tentativa e uma repetição, nada mais
+    f.Pedidos.Clear();
+    f.Rota = (m, p, b) => p == "/denuncia" ? (-1, null!) : (404, new JsonObject());
+    await c.DenunciarAsync(corpo, TimeSpan.Zero);
+    Exige(f.Pedidos.Count(p => p.Path == "/denuncia") == 2, "só uma repetição, não um laço");
+    // resposta de erro do servidor não se repete (a resposta nem importa)
+    f.Pedidos.Clear();
+    f.Rota = (m, p, b) => p == "/denuncia" ? (500, new JsonObject()) : (404, new JsonObject());
+    await c.DenunciarAsync(corpo, TimeSpan.Zero);
+    Exige(f.Pedidos.Count(p => p.Path == "/denuncia") == 1, "500 não repete");
+});
+
+Caso("denuncia-401-renova-o-token-e-tenta-uma-vez", async () =>
+{
+    var (c, _, f, _, _, _) = await Entrar();
+    int n = 0;
+    f.Pedidos.Clear();
+    f.Rota = (m, p, b) =>
+    {
+        if (p == "/conta/renovar") return (200, Sessao("sa1.novo.token", Agora() + 3600));
+        if (p == "/denuncia") return (++n == 1 ? 401 : 200, new JsonObject());
+        return (404, new JsonObject());
+    };
+    await c.DenunciarAsync(Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.Outro, null, null), TimeSpan.Zero);
+    var envios = f.Pedidos.Where(p => p.Path == "/denuncia").ToList();
+    Exige(envios.Count == 2 && envios[0].Cabecalhos["authorization"] == "Bearer sa1.carga.assinatura" && envios[1].Cabecalhos["authorization"] == "Bearer sa1.novo.token", "depois do 401, o segundo envio usa o token renovado");
+});
+
+Caso("denuncia-nada-no-log", async () =>
+{
+    var (c, _, f, _, _, _) = await Entrar();
+    var linhas = new List<string>();
+    void Ouvir(string l) { lock (linhas) linhas.Add(l); }
+    Log.Line += Ouvir;
+    try
+    {
+        var corpo = Denuncia.MontarCorpo(alvoDeTeste, CategoriaDenuncia.AbusoInfantil, "texto secreto", null);
+        foreach (var rota in new Func<string, string, JsonObject?, (int, JsonObject?)>[]
+        {
+            (m, p, b) => (200, new JsonObject { ["ok"] = true }),   // normal
+            (m, p, b) => (-1, null),                                 // rede caída nas duas tentativas
+            (m, p, b) => (500, new JsonObject()),                    // servidor com erro
+        })
+        {
+            f.Rota = rota!;
+            await c.DenunciarAsync(corpo, TimeSpan.Zero);
+        }
+    }
+    finally { Log.Line -= Ouvir; }
+    Exige(linhas.Count == 0, "o envio da denúncia escreveu no log: " + string.Join(" | ", linhas));
 });
 
 Console.WriteLine($"casos: {falhas} falha(s) em {total}");

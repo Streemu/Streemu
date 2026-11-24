@@ -565,7 +565,7 @@ public sealed partial class MainForm
         var stage = _playerStage ??= new PlayerStage(this);
         stage.Add(v, () => StreamCaption(link.PeerId), () => AvatarOfMember(link.PeerId)); // antes do Start: o ffplay novo já abre no lugar que a janela de streams reservou
         v.Start(link.Relay.Port, link.Tunnel.Passphrase, LatenciaDoEspectador(link), $"{UiBrand.Name} — {link.PeerNick}");
-        PlayerOverlay.ShowFor(v, () => _room?.Members.FirstOrDefault(m => m.Id == link.PeerId)?.Live?.Quality ?? "", () => WatchersRoster(link), new AppStateMiniStore(_state, !Automated), text => Ui(() => Notify(text)), stage);
+        PlayerOverlay.ShowFor(v, () => _room?.Members.FirstOrDefault(m => m.Id == link.PeerId)?.Live?.Quality ?? "", () => WatchersRoster(link), new AppStateMiniStore(_state, !Automated), text => Ui(() => Notify(text)), stage, DenunciaDoPlayer(link)); // MainForm.Denuncia.cs
         _groupStatus.Text = DefaultStatus();
         AtualizarIconeAtividade(); // passou a assistir (o fim sai pelo EndLink, que chama o UpdateLive)
         AvisarSomDoAmigoNaLive(); // MainForm.AvisoSom.cs

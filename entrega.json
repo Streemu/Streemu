@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "64a7cd47698f339e5a0adecfe6c802080d995af7",
-    "notas":  "- Corrige os achados da revisão do encerrar live (spec 029, E5)\n- Faz o app parar a live e fechar o player quando o servidor encerra (spec 029, E5)",
+    "privado":  "d055c1f73ca5ce4039f55dc7ccf6384dc2550d6f",
+    "notas":  "- Corrige os achados da revisão da denúncia (spec 029, E3)\n- Adiciona a bandeira de denúncia no player do app (spec 029, E3)",
     "obrigatoria":  false
 }

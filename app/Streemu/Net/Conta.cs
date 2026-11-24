@@ -306,6 +306,42 @@ public sealed partial class Conta : IDisposable
         return true;
     }
 
+    // ------------------------------------------------------------------ denúncia (spec 029, E3)
+
+    /// <summary>
+    /// Manda a denúncia (<c>POST /denuncia</c>, com o token da conta). O servidor sempre responde 200 e confere depois, então a resposta não diz nada e é ignorada:
+    /// quem chama mostra o mesmo agradecimento de qualquer jeito. Erro de rede tem UMA nova tentativa (depois de <paramref name="espera"/>, padrão 3 s); 401 renova o
+    /// token e tenta uma vez. <b>Não escreve em log nem em telemetria</b> (spec 029, 15.16): por isso não usa o <see cref="ChamarAsync"/>, que loga a falha de rede.
+    /// </summary>
+    public async Task DenunciarAsync(JsonObject corpo, TimeSpan? espera = null)
+    {
+        bool forcar = false, repetiuRede = false, repetiu401 = false;
+        var json = corpo.ToJsonString();
+        while (true)
+        {
+            var token = await AcessoAsync(forcar);
+            if (token == null) return; // sem sessão não há como provar quem denuncia
+            HttpStatusCode? status = null;
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, _servidor + "/denuncia") { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                using var resp = await _http.SendAsync(req);
+                status = resp.StatusCode;
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or OperationCanceledException or IOException) { }
+            if (status == null)
+            {
+                if (repetiuRede) return;
+                repetiuRede = true;
+                await Task.Delay(espera ?? TimeSpan.FromSeconds(3));
+                continue;
+            }
+            if (status == HttpStatusCode.Unauthorized && !repetiu401) { repetiu401 = true; forcar = true; continue; }
+            return;
+        }
+    }
+
     // ------------------------------------------------------------------ ações da conta (etapa 6)
 
     /// <summary>Começa vincular, sair de todos ou excluir: pede o pedido ao servidor (com o token da conta, que o prende a ela) e devolve o endereço da

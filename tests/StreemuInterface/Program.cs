@@ -27,6 +27,7 @@ static class Program
         if (args.FirstOrDefault() == "--palco-estresse-check") { PalcoEstresseBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--alt-tab-check") { AltTabBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--palco-tema-check") { PalcoTemaBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
+        if (args.FirstOrDefault() == "--denuncia-check") { DenunciaBehavior.Run(); return; }
         if (args.FirstOrDefault() == "--layout-check") { LayoutBehavior.Run(); return; }
         if (args.FirstOrDefault() == "--fontes-check") { FontesBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--cinema-player-check") { CinemaPlayerBehavior.Run(args.Skip(1).FirstOrDefault()); return; }

@@ -1,17 +1,17 @@
 {
-  "atualizado_em": "2026-11-24T21:47:59Z",
+  "atualizado_em": "2026-11-24T22:50:23Z",
   "ultima": "atualizacao",
   "atualizacao": {
     "versao": "0.5.1",
     "tag": "main-atual",
     "arquivo": "streemu-main.zip",
-    "sha256": "ee5885b55d1507a5f5916cadc514b8fdeb013529f68c24679a65e5d1e48bec36",
-    "commit": "b7a4ba7b5edec530bbdb62fe26eb5854709de849",
-    "publicado_em": "2026-11-24T21:46:30Z",
+    "sha256": "6d630dc81540c6bffa8dc38429608e9a4e0c808c86fc32c109a9957411640900",
+    "commit": "4539a3fa3738d54dc609de2d7a0c60cc4e38a2f8",
+    "publicado_em": "2026-11-24T22:48:32Z",
     "defender": {
       "status": "limpo",
       "versao_assinaturas": "1.463.453.0",
-      "analisado_em": "2026-11-24T21:46:17Z",
+      "analisado_em": "2026-11-24T22:48:18Z",
       "arquivos": [
         {
           "arquivo": "streemu-main.zip",
@@ -28,16 +28,16 @@
       "deteccoes": 0,
       "total": 66,
       "motores_que_acusaram": [],
-      "link": "https://www.virustotal.com/gui/file/ee5885b55d1507a5f5916cadc514b8fdeb013529f68c24679a65e5d1e48bec36",
-      "analisado_em": "2026-11-24T21:46:47Z"
+      "link": "https://www.virustotal.com/gui/file/6d630dc81540c6bffa8dc38429608e9a4e0c808c86fc32c109a9957411640900",
+      "analisado_em": "2026-11-24T22:48:54Z"
     },
     "metadefender": {
       "status": "ok",
       "deteccoes": 0,
       "total": 21,
       "motores_que_acusaram": [],
-      "link": "https://metadefender.com/results/hash/ee5885b55d1507a5f5916cadc514b8fdeb013529f68c24679a65e5d1e48bec36",
-      "analisado_em": "2026-11-24T21:47:50Z"
+      "link": "https://metadefender.com/results/hash/6d630dc81540c6bffa8dc38429608e9a4e0c808c86fc32c109a9957411640900",
+      "analisado_em": "2026-11-24T22:50:14Z"
     }
   },
   "instalador": {

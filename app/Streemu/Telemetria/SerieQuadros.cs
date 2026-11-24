@@ -42,10 +42,7 @@ public sealed class SerieQuadros
         carga.Registrar("gpu_3d_pct", gpu?.Total3d); carga.Registrar("gpu_jogo_3d_pct", gpu?.Jogo3d); carga.Registrar("gpu_encoder_pct", gpu?.Encoder);
         carga.Registrar("gpu_decoder_pct", gpu?.Decoder); carga.Registrar("gpu_app_3d_pct", gpu?.App3d);
         carga.Registrar("cpu_app_nucleo_pct", gpu?.AppCpu); carga.Registrar("cpu_jogo_nucleo_pct", gpu?.JogoCpu);
-        var resumo = ResumoLive.Host; // mesmos valores, agregados por minuto para o live_resumo
-        resumo.Marcar(); resumo.Registrar(ResumoLive.QuadrosNovos, novos >= 0 ? (int)novos : null); resumo.Registrar(ResumoLive.Espectadores, espectadores);
-        foreach (var (n, v) in new (string, int?)[] { ("gpu_3d_pct", gpu?.Total3d), ("gpu_jogo_3d_pct", gpu?.Jogo3d), ("gpu_encoder_pct", gpu?.Encoder), ("gpu_decoder_pct", gpu?.Decoder),
-            ("gpu_app_3d_pct", gpu?.App3d), ("cpu_app_nucleo_pct", gpu?.AppCpu), ("cpu_jogo_nucleo_pct", gpu?.JogoCpu) }) resumo.Registrar(n, v);
+        SomarNoResumo(ResumoLive.Host, novos, espectadores, medida, gpu); // mesmos valores, agregados por minuto para o live_resumo
         lock (_gate)
         {
             if (!_cabecalho)
@@ -64,6 +61,19 @@ public sealed class SerieQuadros
             if (++_linhas >= Bloco) gravar = Tirar();
         }
         if (gravar != null) _sessao.Acrescentar(Arquivo, gravar);
+    }
+
+    /// <summary>
+    /// Soma um segundo no <c>live_resumo</c> (público para o teste). Em pausa (o jogo saiu da frente ou a janela transmitida minimizou) não há captura:
+    /// o 0 não entra nos quadros novos do minuto (puxaria a mediana para 0 como se a captura tivesse parado), só no <c>pausa_s</c>.
+    /// </summary>
+    public static void SomarNoResumo(ResumoLive resumo, long novos, int espectadores, string medida, UsoGpu.Amostra? gpu)
+    {
+        if (medida == "pausa") resumo.MarcarPausa();
+        else { resumo.Marcar(); resumo.Registrar(ResumoLive.QuadrosNovos, novos >= 0 ? (int)novos : null); }
+        resumo.Registrar(ResumoLive.Espectadores, espectadores);
+        foreach (var (n, v) in new (string, int?)[] { ("gpu_3d_pct", gpu?.Total3d), ("gpu_jogo_3d_pct", gpu?.Jogo3d), ("gpu_encoder_pct", gpu?.Encoder), ("gpu_decoder_pct", gpu?.Decoder),
+            ("gpu_app_3d_pct", gpu?.App3d), ("cpu_app_nucleo_pct", gpu?.AppCpu), ("cpu_jogo_nucleo_pct", gpu?.JogoCpu) }) resumo.Registrar(n, v);
     }
 
     /// <summary>Grava o que estiver na memória (fim da live, saída do app).</summary>

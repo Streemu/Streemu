@@ -335,6 +335,40 @@ Caso("resumo-live-minutos-limite-e-formato", () =>
     v.Marcar("L2"); v.Registrar(ResumoLive.Descartes, 7, "L2");
     var v1 = v.Fechar("L1")!["minutos"]![0]!.AsObject(); var v2 = v.Fechar("L2")!["minutos"]![0]!.AsObject();
     Exigir(v1["av_pior_ms"]!.GetValue<int>() == 120 && v1["descartes"] == null && v2["descartes"]!.GetValue<int>() == 7 && v2["av_pior_ms"] == null, "viewer por ligação");
+    Exigir(m0["pausa_s"] == null, "minuto sem pausa ganhou pausa_s");
+});
+
+Caso("resumo-live-pausa-de-privacidade", () =>
+{
+    // live de 23/11: os minutos com o jogo fora da frente saíam com mediana 0 e o painel os lia como captura parada
+    long agora = 0; var utc = new DateTime(2026, 11, 23, 23, 0, 0, DateTimeKind.Utc);
+    var r = new ResumoLive("host", () => agora, () => utc.AddMilliseconds(agora));
+    r.Iniciar();
+    for (int i = 0; i < 3; i++) { r.Marcar(); r.Registrar(ResumoLive.QuadrosNovos, 60); agora += 1000; }
+    for (int i = 0; i < 2; i++) { r.MarcarPausa(); agora += 1000; } // minuto 0: 3 s de captura e 2 s em pausa
+    agora = 60_000;
+    for (int i = 0; i < 4; i++) { r.MarcarPausa(); agora += 1000; } // minuto 1: só pausa
+    var min = r.Fechar()!["minutos"]!.AsArray();
+    var m0 = min[0]!.AsObject(); var m1 = min[1]!.AsObject();
+    Exigir(m0["s"]!.GetValue<int>() == 5 && m0["pausa_s"]!.GetValue<int>() == 2, "segundos e pausa_s do minuto misto");
+    Exigir(m0["quadros_novos_mediana"]!.GetValue<int>() == 60 && m0["quadros_novos_min"]!.GetValue<int>() == 60, "a pausa entrou nos quadros novos");
+    Exigir(m1["s"]!.GetValue<int>() == 4 && m1["pausa_s"]!.GetValue<int>() == 4 && m1["quadros_novos_mediana"] == null, "minuto só em pausa");
+});
+
+Caso("resumo-live-segundo-da-serie-de-quadros", () =>
+{
+    // a ligação entre SerieQuadros.Segundo e o resumo: "pausa" vira pausa_s e fica fora dos quadros novos; os outros valores seguem normais
+    long agora = 0; var utc = new DateTime(2026, 11, 24, 12, 0, 0, DateTimeKind.Utc);
+    var r = new ResumoLive("host", () => agora, () => utc.AddMilliseconds(agora));
+    r.Iniciar();
+    var gpu = new UsoGpu.Amostra(40, 30, 10, 0, 5, 1, 20, 50);
+    for (int i = 0; i < 3; i++) { SerieQuadros.SomarNoResumo(r, 60, 2, "sensor", gpu); agora += 1000; }
+    for (int i = 0; i < 2; i++) { SerieQuadros.SomarNoResumo(r, 0, 2, "pausa", null); agora += 1000; }
+    var m0 = r.Fechar()!["minutos"]![0]!.AsObject();
+    Exigir(m0["s"]!.GetValue<int>() == 5 && m0["pausa_s"]!.GetValue<int>() == 2, "s e pausa_s do minuto");
+    Exigir(m0["quadros_novos_min"]!.GetValue<int>() == 60 && m0["quadros_novos_mediana"]!.GetValue<int>() == 60, "a pausa entrou em quadros_novos_*");
+    Exigir(m0["espectadores_max"]!.GetValue<int>() == 2, "espectadores_max");
+    Exigir(m0["metricas"]!["gpu_3d_pct"]!["max"]!.GetValue<int>() == 40, "métrica de GPU do segundo medido");
 });
 
 Caso("falha-leva-carga-e-lives", () =>

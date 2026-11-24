@@ -16,7 +16,7 @@ public sealed class ResumoLive
     public static readonly ResumoLive Host = new(CaminhoMidia.Host), Viewer = new(CaminhoMidia.Viewer);
     public static ResumoLive? Do(string lado) => lado == CaminhoMidia.Host ? Host : lado == CaminhoMidia.Viewer ? Viewer : null;
 
-    sealed class Minuto { public readonly Dictionary<string, List<int>> V = new(); public int Segundos; }
+    sealed class Minuto { public readonly Dictionary<string, List<int>> V = new(); public int Segundos, Pausa; }
     sealed class Ligacao { public long InicioMs; public DateTime InicioUtc; public readonly SortedDictionary<int, Minuto> Min = new(); public readonly HashSet<int> Descartados = new(); }
 
     readonly string _lado;
@@ -39,6 +39,12 @@ public sealed class ResumoLive
 
     /// <summary>Soma um segundo com amostra no minuto atual.</summary>
     public void Marcar(string lig = "") { lock (_g) { var m = Minuto_(Pegar(lig)); if (m != null) m.Segundos++; } }
+
+    /// <summary>
+    /// Soma um segundo com amostra em que a transmissão estava na pausa de privacidade (o jogo saiu da frente ou a janela transmitida minimizou). Vira <c>pausa_s</c> no minuto.
+    /// Motivo (live de 23/11, 9 minutos com mediana 0): o segundo em pausa entrava como 0 quadros novos e o painel o mostrava como captura falhando.
+    /// </summary>
+    public void MarcarPausa(string lig = "") { lock (_g) { var m = Minuto_(Pegar(lig)); if (m != null) { m.Segundos++; m.Pausa++; } } }
 
     /// <summary>Guarda uma leitura no minuto atual; nulo é ignorado (sem leitura).</summary>
     public void Registrar(string metrica, int? valor, string lig = "")
@@ -92,6 +98,7 @@ public sealed class ResumoLive
         foreach (var (idx, m) in l.Min)
         {
             var o = new JsonObject { ["m"] = idx, ["s"] = m.Segundos };
+            if (m.Pausa > 0) o["pausa_s"] = m.Pausa; // ausente = nenhum segundo em pausa (e o formato de antes)
             var metricas = new JsonObject();
             foreach (var (nome, v) in m.V)
             {

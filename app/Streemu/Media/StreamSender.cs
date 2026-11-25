@@ -1056,7 +1056,7 @@ public sealed class StreamSender : IDisposable
         }
         if (sensorDied)
         {
-            // o contador FECHOU: não diz nada sobre a captura (reabrir a captura por isso deixaria quem assiste ~1–2 s parado à toa). Grava o segundo sem medida.
+            // o contador FECHOU: não diz nada sobre a captura (reabrir a captura por isso deixaria quem assiste ~2–5 s parado à toa). Grava o segundo sem medida.
             _lastSecondAt = now;
             try { SecondMeasured?.Invoke(-1, EncodedNow(), "sem_medida"); } catch { }
             return;
@@ -1086,10 +1086,13 @@ public sealed class StreamSender : IDisposable
             _outRing.Enqueue(((int)unique, (int)encoded));
             while (_outRing.Count > 8) _outRing.Dequeue();
             // rede de segurança: reabrir a captura recomeça o ffmpeg e o relógio do áudio, e os dois voltam alinhados; no máximo uma vez por minuto
+            // o limite por janela (ReaberturaInutil) também vale aqui: no campo (LIV-161) 11 das 53 reaberturas foram esta
             if (_restartPending == null && !_diagnosing && (now - _captureStartedAt).TotalSeconds >= 6 && (now - _stutterRestartAt).TotalMinutes >= 1
+                && !_inutil.NoLimite(Environment.TickCount64 / 1000.0)
                 && EncoderStutters(_outRing, target))
             {
                 _stutterRestartAt = now;
+                if (_inutil.ContarReabertura(Environment.TickCount64 / 1000.0)) AvisarLimiteDeReaberturas();
                 string msg = $"a captura recebe ~{unique} quadros novos/s, mas o encoder solta aos trancos ({string.Join(" ", _outRing.Select(x => x.Out))} por segundo): " +
                              "áudio e vídeo da captura desalinharam. Reabrindo a captura para realinhar.";
                 Log.Info("[captura] " + msg);
@@ -1176,7 +1179,8 @@ public sealed class StreamSender : IDisposable
     {
         _restarts++;
         if (TestStuckAfter >= 0) _testStuckCount++;
-        Log.Info($"Reabrindo a captura ({reason}). O amigo vê ~1–2 s parado; o player dele não fecha.");
+        // campo 2026-11-25 (LIV-161): 53 reaberturas deixaram quem assistia parado de 2,4 a 5,5 s (mediana 3,8 s)
+        Log.Info($"Reabrindo a captura ({reason}). O amigo vê ~2–5 s parado; o player dele não fecha.");
         if (Telemetria.CaminhoMidia.FalhaDaReabertura(reason) is { } falha)
         {
             var (etapa, motivo) = falha.Motivo == Telemetria.MotivoMidia.ProcessoSaiu
@@ -1387,14 +1391,16 @@ public sealed class StreamSender : IDisposable
         // jogo em tela cheia dá ~17–37/s, campo 2026-11-08 e capture-test de um PC do grupo) nunca passava pela sonda: quem assistia via a live engasgada até o fim
         _lowSeconds++;
         _stuckSeconds = unique >= fps * 0.3 ? 0 : _stuckSeconds + 1;
+        // Janela cheia (4 reaberturas do vigia em 10 min, ver ReaberturaInutil): só a reabertura rápida, que age sem conferir, espera. O fluxo segue para a sonda, que só
+        // reabre ou troca quando CONFIRMA a trava (as pausas de 1–3 s da LIV-161 voltam sozinhas durante ela), então uma trava de verdade não fica congelada até a janela esvaziar.
         if (_stuckSeconds > 0 && !_diagnosing && _restartPending == null
-            && CanFastReopen(_staleConfirmed, _stuckSeconds, (now - _captureStartedAt).TotalSeconds, (now - _fastReopenAt).TotalSeconds))
+            && CanFastReopen(_staleConfirmed, _stuckSeconds, (now - _captureStartedAt).TotalSeconds, (now - _fastReopenAt).TotalSeconds, _inutil.NoLimite(Environment.TickCount64 / 1000.0)))
         {
             _fastReopenAt = now;
             string msg = $"a captura caiu de novo para ~{unique} quadros novos/s; nesta live ela já travou e voltou reabrindo, então reabro direto, sem o teste de ~4 s.";
             Log.Info("[captura] " + msg);
             lock (_diagnoses) { _diagnoses.Add($"{now:HH:mm:ss} {msg}"); if (_diagnoses.Count > 20) _diagnoses.RemoveAt(0); }
-            _inutil.Reabriu(Environment.TickCount64 / 1000.0, LiveMedianSince(now.AddSeconds(-20)), fps);
+            RegistrarReaberturaDoVigia(LiveMedianSince(now.AddSeconds(-20)), fps);
             _restartPending = "captura travada de novo";
             return;
         }
@@ -1560,11 +1566,18 @@ public sealed class StreamSender : IDisposable
     /// <summary>
     /// Reabre na hora, sem sonda? Só depois de o diagnóstico já ter visto, NESTA live e neste método, a captura travar enquanto uma nova pegava (o jogo
     /// mandando ~49/s, a live recebendo 0–16/s). Motivo (PC do grupo, Hookshot, 10/11): a captura da janela travou 3 vezes em 4 min e cada vez levou ~8 s
-    /// (3 s caída + ~5 s de sonda) até reabrir, e reabrir resolvia sempre. Com 2 s caída já reabre; no máximo uma vez a cada 30 s, para um trecho do jogo
-    /// com poucos quadros de verdade (load) não virar reabertura em série. Se depois disso continuar caída, a sonda volta a decidir.
+    /// (3 s caída + ~5 s de sonda) até reabrir, e reabrir resolvia sempre. Com <see cref="SegundosParadaParaReabrirDireto"/> s caída já reabre; no máximo uma vez a cada 30 s,
+    /// para um trecho do jogo com poucos quadros de verdade (load) não virar reabertura em série. Se depois disso continuar caída, a sonda volta a decidir.
     /// </summary>
-    internal static bool CanFastReopen(bool staleConfirmed, int stuckSeconds, double secondsSinceCaptureStart, double secondsSinceLastFastReopen) =>
-        staleConfirmed && stuckSeconds >= 2 && secondsSinceCaptureStart >= 3 && secondsSinceLastFastReopen >= 30;
+    internal static bool CanFastReopen(bool staleConfirmed, int stuckSeconds, double secondsSinceCaptureStart, double secondsSinceLastFastReopen, bool windowFull = false) =>
+        staleConfirmed && stuckSeconds >= SegundosParadaParaReabrirDireto && secondsSinceCaptureStart >= 3 && secondsSinceLastFastReopen >= 30 && !windowFull;
+
+    /// <summary>
+    /// Segundos parada (abaixo de 30% do FPS) até a reabertura direta. Eram 2. Campo 2026-11-25 (LIV-161, gfxcapture no monitor): a captura ficou sem quadros novos
+    /// em 126 períodos, 54 de 1 s, 27 de 2 s, 38 de 3 s, 4 de 4 s, 2 de 5 s e 1 de 6 s; quase todos voltavam sozinhos em 1–3 s, e cada reabertura congelava a imagem
+    /// de quem assiste por 2,4–5,5 s: o vigia trocava uma pausa que passaria sozinha por um congelamento maior. Com 4 s só reabre o que não volta logo.
+    /// </summary>
+    internal const int SegundosParadaParaReabrirDireto = 4;
 
     void Schedule(string reason)
     {
@@ -1572,8 +1585,28 @@ public sealed class StreamSender : IDisposable
         // 12/11, depois de duas reaberturas a sonda seguinte disse "confiro de novo em 40 s" e a live ficou ruim até o fim, 35 s depois)
         _nextDiagnosisAt = DateTime.Now + _backoff;
         _backoff = TimeSpan.FromSeconds(Math.Min(20, _backoff.TotalSeconds * 2));
-        _inutil.Reabriu(Environment.TickCount64 / 1000.0, LiveMedianSince(DateTime.Now.AddSeconds(-20)), Current?.Preset.Fps ?? 60);
+        // a sonda (que chega aqui) NÃO é barrada pelo limite por janela, de propósito: ela só chega aqui depois de confirmar a trava ou a troca de método (ver ReaberturaInutil);
+        // a reabertura dela só entra na contagem da janela
+        RegistrarReaberturaDoVigia(LiveMedianSince(DateTime.Now.AddSeconds(-20)), Current?.Preset.Fps ?? 60);
         _restartPending = reason;
+    }
+
+    /// <summary>
+    /// Registra uma reabertura DO VIGIA (captura travada, troca de método) para o julgamento de ganho e para o limite por janela. A do ffmpeg que morreu
+    /// (<c>RestartCapture</c> pelo laço) não passa por aqui: ela tem que continuar sempre, senão a live para.
+    /// </summary>
+    void RegistrarReaberturaDoVigia(double medianaAntes, int fps)
+    {
+        if (_inutil.Reabriu(Environment.TickCount64 / 1000.0, medianaAntes, fps)) AvisarLimiteDeReaberturas();
+    }
+
+    /// <summary>Uma vez cada vez que a janela enche (quem chama só avisa quando <see cref="ReaberturaInutil.ContarReabertura"/> devolve true).</summary>
+    void AvisarLimiteDeReaberturas()
+    {
+        double agora = Environment.TickCount64 / 1000.0;
+        int minutos = Math.Max(1, (int)Math.Round(_inutil.SegundosDaJanela(agora) / 60));
+        Log.Info($"[captura] o vigia reabriu a captura {_inutil.ReaberturasRecentes(agora)} vezes em {minutos} min e cada reabertura congela a imagem de quem assiste; " +
+                 $"a reabertura rápida e a do encoder aos trancos param até a mais antiga sair dos últimos {ReaberturaInutil.JanelaSegundos / 60:0} min (a sonda segue conferindo; o limite parece ser do PC ou do jogo).");
     }
 
     // ------------------------------------------------------------------ comandos

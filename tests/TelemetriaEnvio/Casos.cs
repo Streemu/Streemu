@@ -51,6 +51,8 @@ static class Casos
         Caso("latencia-srt-calculo-por-ida-e-volta-piso-do-relay-e-teto", LatenciaCalculo);
         Caso("latencia-srt-escalada-so-com-perda-sustentada-e-no-maximo-4-vezes", LatenciaEscalada);
         Caso("vigia-para-de-reabrir-captura-quando-reabrir-nao-ganha-quadros", ReaberturaInutilReplay);
+        Caso("vigia-limita-reaberturas-por-janela-mesmo-voltando-saudavel", ReaberturaInutilLimitePorJanela);
+        Caso("vigia-reabertura-inutil-duas-threads-sem-excecao", ReaberturaInutilDuasThreads);
         Caso("oferta-de-30-fps-so-quando-a-live-em-60-fica-abaixo-e-a-pessoa-decide", SugestaoDe30FpsRegra);
         Caso("anonimo-troca-nomes-por-pessoa-n-e-tira-identidade-do-evento", AnonimizadorTroca);
         Caso("anonimo-sessao-grava-log-e-series-mas-nao-o-texto-livre", ReduzidaGrava);
@@ -1005,6 +1007,111 @@ static class Casos
         r.Reabriu(t, 17, 60);
         Passar(20, 40); // 17 -> 40 (>= 1,25x) mas ainda abaixo de 75%: ganhou
         Exigir(!r.Desistiu, "ganho de 1,25x ou mais conta como útil");
+    }
+
+    /// <summary>
+    /// Replay da LIV-161 (2026-11-25): trava, reabre, volta a ~60/s em 12 s, trava de novo ~37 s depois. Cada reabertura "funciona", mas quem assiste para 2,4–5,5 s.
+    /// O limite é por janela (4 em 10 min) e NÃO permanente: se a trava for de verdade, a live não pode ficar congelada até o fim.
+    /// </summary>
+    static void ReaberturaInutilLimitePorJanela()
+    {
+        // (a) o ciclo do campo: reabre a cada 37 s e depois de cada uma a captura volta saudável; a 5ª dentro de 10 min é bloqueada
+        var r = new Streemu.Media.ReaberturaInutil();
+        double t = 0;
+        bool Passar(int segundos, int quadros) { bool inutil = false; for (int i = 0; i < segundos; i++) { t++; inutil |= r.Observar(t, quadros); } return inutil; }
+        for (int i = 1; i <= 3; i++)
+        {
+            Exigir(!r.NoLimite(t), $"{i}ª reabertura ainda cabe");
+            Exigir(!r.Reabriu(t, 5, 60), $"{i}ª reabertura não enche a janela");
+            Exigir(!Passar(14, 59), "volta saudável: reabertura útil");
+            Exigir(!r.Desistiu, $"{i}ª reabertura útil não faz desistir");
+            t += 37 - 14;
+        }
+        Exigir(!r.NoLimite(t), "a 4ª ainda é permitida");
+        Exigir(r.Reabriu(t, 5, 60), "a 4ª reabertura (~2 min) enche a janela e devolve true uma vez");
+        Exigir(r.NoLimite(t) && !r.Desistiu, "janela cheia, mas não é desistência permanente");
+        Exigir(r.ReaberturasRecentes(t) == 4 && r.SegundosDaJanela(t) is > 100 and < 120, $"conta e janela para o log: {r.ReaberturasRecentes(t)} em {r.SegundosDaJanela(t):0} s");
+        Passar(14, 59);
+        t += 23;
+        Exigir(r.NoLimite(t), "a 5ª, ~37 s depois da 4ª e dentro de 10 min, é barrada na reabertura rápida (a sonda não é limitada)");
+        Exigir(!r.Desistiu, "o bloqueio por janela não vira Desistiu");
+
+        // (b) quando a reabertura mais antiga sai da janela, volta a poder reabrir
+        // horários: 0, 37, 74, 111 -> a de 0 sai em t > 600; a de 37, em t > 637
+        t = 600;
+        Exigir(r.NoLimite(t), "exatamente 600 s depois da mais antiga ela ainda está na janela");
+        t = 601;
+        Exigir(!r.NoLimite(t), "601 s depois: a mais antiga saiu, volta a poder reabrir");
+        Exigir(r.Reabriu(t, 5, 60) && r.NoLimite(t), "a reabertura que ocupa a vaga (3 antigas + a nova) enche a janela de novo e avisa de novo");
+
+        // o aviso do log sai uma vez por vez que a janela enche
+        r = new Streemu.Media.ReaberturaInutil();
+        int avisos = 0;
+        for (int i = 0; i < 4; i++) { if (r.ContarReabertura(i * 37)) avisos++; }
+        Exigir(avisos == 1, "enche uma vez: um aviso (" + avisos + ")");
+        Exigir(!r.ContarReabertura(150), "chamadas a mais, já cheia, não repetem o aviso");
+        Exigir(r.ContarReabertura(1000) is false && r.ContarReabertura(1010) is false && r.ContarReabertura(1020) is false && r.ContarReabertura(1030), "encheu de novo depois de esvaziar: avisa de novo");
+
+        // (b2) 4 reaberturas espalhadas em mais de 10 min nunca enchem a janela
+        r = new Streemu.Media.ReaberturaInutil(); t = 0;
+        for (int i = 0; i < 6; i++)
+        {
+            Exigir(!r.NoLimite(t), $"reabertura {i + 1} a cada 4 min cabe");
+            Exigir(!r.Reabriu(t, 5, 60), $"reabertura {i + 1} a cada 4 min não enche a janela");
+            Passar(14, 59);
+            t += 240 - 14;
+        }
+        Exigir(!r.Desistiu && !r.NoLimite(t), "janela de 10 min só guarda as recentes: " + r.ReaberturasRecentes(t));
+
+        // (c) o caso antigo: 2 inúteis seguidas continuam desistindo, para sempre (a janela esvaziar não desfaz)
+        r = new Streemu.Media.ReaberturaInutil(); t = 0;
+        r.Reabriu(t, 35, 60); Passar(20, 36);
+        r.Reabriu(t, 35, 60); Passar(20, 36);
+        Exigir(r.Desistiu, "2 inúteis seguidas: desistiu");
+        t += 5000;
+        Exigir(r.Desistiu && !r.NoLimite(t), "SemGanho é permanente: a janela vazia não faz o vigia voltar");
+
+        // (d) Reiniciar (nova live) zera o limite e a desistência
+        r = new Streemu.Media.ReaberturaInutil(); t = 0;
+        for (int i = 0; i < 4; i++) { r.Reabriu(t, 5, 60); t += 30; }
+        Exigir(r.NoLimite(t), "chegou ao limite");
+        r.Reiniciar();
+        Exigir(!r.Desistiu && !r.NoLimite(t) && r.ReaberturasRecentes(t) == 0, "Reiniciar zera o limite");
+        for (int i = 0; i < 3; i++) { Exigir(!r.Reabriu(t, 5, 60), "recomeça a contar do zero"); t += 30; }
+        Exigir(!r.NoLimite(t), "3 reaberturas depois de reiniciar ainda cabem");
+        r.Reabriu(t, 35, 60); Passar(20, 36); r.Reabriu(t, 35, 60); Passar(20, 36);
+        Exigir(r.Desistiu, "preparo: desistiu por falta de ganho");
+        r.Reiniciar();
+        Exigir(!r.Desistiu, "Reiniciar zera também a desistência por falta de ganho");
+
+        // reabertura só contada (encoder aos trancos) entra na mesma janela
+        r = new Streemu.Media.ReaberturaInutil(); t = 0;
+        Exigir(!r.ContarReabertura(t) && !r.ContarReabertura(t + 60) && !r.ContarReabertura(t + 120), "3 contadas não enchem");
+        Exigir(r.ContarReabertura(t + 180) && r.NoLimite(t + 180), "a 4ª, de qualquer origem do vigia, enche");
+    }
+
+    /// <summary>
+    /// O vigia (thread do segundo) e a sonda (Task.Run, fora do _observeGate) mexem no mesmo ReaberturaInutil: sem o lock interno a lista de horários
+    /// lançava "Collection was modified" / índice fora do intervalo. Duas threads por ~1 s, sem exceção.
+    /// </summary>
+    static void ReaberturaInutilDuasThreads()
+    {
+        var r = new Streemu.Media.ReaberturaInutil();
+        var erros = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+        var fim = DateTime.UtcNow.AddSeconds(1);
+        var escritora = new Thread(() =>
+        {
+            try { double t = 0; while (DateTime.UtcNow < fim) { t += 0.5; if (((int)t) % 3 == 0) r.Reabriu(t, 5, 60); else r.ContarReabertura(t); r.Observar(t, 40); } }
+            catch (Exception e) { erros.Enqueue(e); }
+        });
+        var leitora = new Thread(() =>
+        {
+            try { double t = 0; while (DateTime.UtcNow < fim) { t += 0.5; _ = r.NoLimite(t); _ = r.SegundosDaJanela(t); _ = r.ReaberturasRecentes(t); _ = r.Desistiu; if (((int)t) % 2000 == 0) r.Reiniciar(); } }
+            catch (Exception e) { erros.Enqueue(e); }
+        });
+        escritora.Start(); leitora.Start();
+        escritora.Join(); leitora.Join();
+        Exigir(erros.IsEmpty, "duas threads sem exceção: " + (erros.TryPeek(out var ex) ? ex.GetType().Name + " " + ex.Message : ""));
     }
 
     static void LatenciaEscalada()

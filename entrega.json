@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "84889b69d57e4ef285a6f3389161cd0c2446e14f",
-    "notas":  "- Refina a oferta de 30 FPS: retorno ao desligar e ao aceitar, interruptor em Transmitir e telemetria por origem\n- Deixa a oferta de 30 FPS menos intrusiva e com opção de desligar",
+    "privado":  "a04969adb41debf6fad9714e94d7dc26bed4957e",
+    "notas":  "- Corrige os achados da revisão do limite de reaberturas\n- Corrige o laço de reabertura da captura (LIV-161)",
     "obrigatoria":  false
 }

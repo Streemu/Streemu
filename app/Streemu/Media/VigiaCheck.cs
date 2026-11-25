@@ -114,11 +114,22 @@ static class VigiaCheck
         Check("o vigia trocou para o monitor e o jogo SAIU da tela cheia: captura pelo monitor", StreamSender.WantMonitor(true, fullScreenNow: false, coversMonitor: false), false);
 
         // reabrir direto, sem sonda (PC do grupo, Hookshot, 10/11: a captura da janela travou 3 vezes e reabrir sempre resolveu)
-        Check("captura já travou nesta live, caída há 2 s: reabre direto", StreamSender.CanFastReopen(true, 2, 60, 1e9), true);
-        Check("captura nunca travou nesta live, caída há 2 s: reabre direto", StreamSender.CanFastReopen(false, 2, 60, 1e9), false);
+        // LIV-161 (2026-11-25): pausas do gfxcapture de 1–3 s voltam sozinhas; só 4 s ou mais parada reabre direto
+        Check("captura já travou nesta live, caída há 4 s: reabre direto", StreamSender.CanFastReopen(true, 4, 60, 1e9), true);
+        Check("captura já travou, caída há 2 s (volta sozinha): não reabre", StreamSender.CanFastReopen(true, 2, 60, 1e9), false);
+        Check("captura já travou, caída há 3 s (volta sozinha): não reabre", StreamSender.CanFastReopen(true, 3, 60, 1e9), false);
+        Check("captura nunca travou nesta live, caída há 4 s: reabre direto", StreamSender.CanFastReopen(false, 4, 60, 1e9), false);
         Check("captura já travou, caída há só 1 s: reabre direto", StreamSender.CanFastReopen(true, 1, 60, 1e9), false);
-        Check("captura já travou, mas reabriu direto há 10 s (load longo?): reabre direto de novo", StreamSender.CanFastReopen(true, 2, 60, 10), false);
-        Check("captura já travou e acabou de abrir (2 s): reabre direto", StreamSender.CanFastReopen(true, 2, 2, 1e9), false);
+        Check("captura já travou, mas reabriu direto há 10 s (load longo?): reabre direto de novo", StreamSender.CanFastReopen(true, 4, 60, 10), false);
+        Check("captura já travou e acabou de abrir (2 s): reabre direto", StreamSender.CanFastReopen(true, 4, 2, 1e9), false);
+        // limite por janela (ReaberturaInutil): barra só a reabertura rápida; a sonda segue (o Watchdog só a bloqueia com Desistiu)
+        var janela = new ReaberturaInutil();
+        for (int i = 0; i < ReaberturaInutil.ReaberturasNaJanela; i++) janela.Reabriu(i * 37, 5, 60);
+        double agoraJanela = (ReaberturaInutil.ReaberturasNaJanela - 1) * 37 + 30;
+        Check("4 reaberturas em 10 min: janela cheia", janela.NoLimite(agoraJanela), true);
+        Check("janela cheia: a reabertura rápida espera", StreamSender.CanFastReopen(true, 4, 60, 1e9, janela.NoLimite(agoraJanela)), false);
+        Check("janela cheia não é desistência: a sonda continua liberada", janela.Desistiu, false);
+        Check("janela vazia de novo (11 min depois): a reabertura rápida volta", StreamSender.CanFastReopen(true, 4, 60, 1e9, janela.NoLimite(agoraJanela + 700)), true);
 
         // memória do método por jogo
         var hoje = new DateTime(2026, 11, 10, 21, 0, 0);

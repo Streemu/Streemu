@@ -227,6 +227,18 @@ public sealed class SidePanel : Control
         base.Dispose(disposing);
     }
 
+    /// <summary>
+    /// Só o fundo, sem as linhas: enquanto a barra flutuante desliza por cima do lugar dela, a barra encaixada já está na largura final mas não pode
+    /// aparecer por baixo (MainForm.BarraAnimada.cs).
+    /// </summary>
+    [System.ComponentModel.Browsable(false), System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool ContentHidden
+    {
+        get => _contentHidden;
+        set { if (_contentHidden == value) return; _contentHidden = value; Invalidate(); }
+    }
+    bool _contentHidden;
+
     /// <summary>Recolhida (trilho de avatares) ou aberta. Muda a largura; quem hospeda refaz o layout.</summary>
     [System.ComponentModel.Browsable(false), System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool Collapsed
@@ -559,6 +571,7 @@ public sealed class SidePanel : Control
     {
         var g = e.Graphics;
         g.Clear(Theme.SurfaceRaised);
+        if (ContentHidden) return;
         _rows = BuildRows();
         for (int i = 0; i < _rows.Count; i++)
         {

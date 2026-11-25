@@ -15,7 +15,7 @@ public sealed partial class MainForm : IStageHost
     readonly SidePanel _side = new();
     readonly StageCanvas _stageCanvas = new() { Dock = DockStyle.Fill, Visible = false };
     readonly LiveCardsView _liveCards = new() { Width = 360, Margin = new Padding(0, 6, 0, 6) };
-    readonly BufferedPanel _homeHost = new() { Dock = DockStyle.Fill };
+    readonly BufferedPanel _homeHost = new() { Dock = DockStyle.Fill, Composited = true }; // pinta o Início de uma vez quando a barra desliza (vídeo de 2026-11-25)
     readonly BufferedPanel _settingsHost = new() { Dock = DockStyle.Fill, Visible = false };
     bool _stageView, _settingsView, _fullscreenStage, _sideWasCollapsed;
     bool _settingsRailActive, _sideBeforeSettings;
@@ -62,7 +62,7 @@ public sealed partial class MainForm : IStageHost
         _stageCanvas.CaptionDragged += (from, at, done) => CaptionDragged?.Invoke(from, at, done);
         _liveCards.Picked += PickLiveCard;
         _side.Slid += FinishSlide;
-        _side.SizeChanged += (_, _) => _playerStage?.Relayout(); // a barra desliza: os vídeos acompanham a cada passo
+        _side.SizeChanged += (_, _) => { _playerStage?.Relayout(); RepintarConteudoDuranteDeslize(); }; // a barra desliza: os vídeos acompanham a cada passo
         InitPreparation();
         InitScale(); // Ctrl + / Ctrl - (MainForm.Escala.cs)
         InitMinhaLive(); // selo AO VIVO e opções (MainForm.MinhaLive.cs)
@@ -216,6 +216,7 @@ public sealed partial class MainForm : IStageHost
         if (!Automated) _state.Save();
         if (!pinned) return;
         _sideAutoCollapsed = false;
+        _abertaPeloMouse = false; // fixou com a barra aberta pelo mouse: o TickBarraNasConfiguracoes não pode recolhê-la depois
         HideFlyout();
         _side.Collapsed = false;
     }
@@ -230,13 +231,10 @@ public sealed partial class MainForm : IStageHost
     public void ToggleSidebar()
     {
         DispensarDicaDaBarra();
-        if (SidebarPinned && !_side.Collapsed) return; // fixada: o « » não recolhe
+        if (SidebarPinned && !_side.Collapsed) _pinSidebar.Checked = false; // « com a barra fixa: desfaz a trava (e o interruptor dos Ajustes) e recolhe, em vez de não fazer nada
         if (FixarAbertaPeloMouse()) return; // aberta pelo mouse nas Configurações: o « a deixa aberta
         _sideAutoCollapsed = false;
-        if (_settingsView) { TrocarBarraSemDeslizar(!_side.Collapsed); return; } // nas Configurações deslizar piscava (MainForm.BarraConfiguracoes.cs)
-        _side.Collapsed = !_side.Collapsed;
-        PerformLayout();
-        _playerStage?.Relayout();
+        TrocarBarraAnimada(!_side.Collapsed); // MainForm.BarraAnimada.cs
     }
 
     /// <summary>Tela cheia do palco: a janela principal ocupa o monitor e a barra lateral some; de novo, tudo volta como estava.</summary>
@@ -294,7 +292,9 @@ public sealed partial class MainForm : IStageHost
     {
         using var pausa = new PinturaPausada(this);
         _abertaPeloMouse = false; // trocar de tela pela barra aberta com o mouse: quem decide a largura agora é a tela nova
-        if (_settingsView && !_settingsRailActive && !SidebarPinned)
+        if (_pinSidebar.Checked != SidebarPinned) _pinSidebar.Checked = SidebarPinned; // o interruptor sempre reflete o estado salvo, qualquer que seja o caminho até as Configurações
+        if (_settingsView && SidebarPinned) { _settingsRailActive = false; _side.SnapCollapsed(false); } // fixa: nas Configurações a barra não vira trilho
+        else if (_settingsView && !_settingsRailActive)
         {
             _sideBeforeSettings = _side.Collapsed;
             _settingsRailActive = true;
@@ -377,13 +377,31 @@ public sealed partial class MainForm : IStageHost
     }
 
     /// <summary>Os blocos da home ocupam a largura que a janela tem (menos a folga dos lados): margens iguais e texto que quebra na largura certa.</summary>
+    /// <summary>
+    /// A cada passo do deslize, repinta o conteúdo todo. Os filhos mudam de lugar mas o WinForms só repinta o que ele julga novo: sobravam pedaços do
+    /// quadro anterior (a ponta dos botões e a barra de rolagem da coluna Transmitir apareciam duplicadas por ~0,15 s, vídeo de 2026-11-25 15:11).
+    /// </summary>
+    void RepintarConteudoDuranteDeslize()
+    {
+        if (SidePanel.Sliding) RepintarConteudo();
+    }
+
+    void RepintarConteudo()
+    {
+        if (_homeHost.Visible) _homeHost.Invalidate(true);
+        if (_settingsHost.Visible) _settingsHost.Invalidate(true);
+    }
+
     /// <summary>A barra parou: refaz o que ficou esperando durante o deslize (folgas, larguras dos cartões e quebras de linha) na largura final.</summary>
     void FinishSlide()
     {
+        RepintarConteudo(); // o último passo (a largura final) acontece já com Sliding desligado
         foreach (var host in new Control[] { _homeHost, _settingsHost })
-            if (host.Controls.Count > 0 && host.Controls[0] is TableLayoutPanel root) FitRootPadding(root);
-        _homePage?.PerformLayout();
+            if (host.Visible && host.Controls.Count > 0 && host.Controls[0] is TableLayoutPanel root) FitRootPadding(root);
+        if (_homeHost.Visible) _homePage?.PerformLayout();
+        if (!_settingsHost.Visible) return; // refazer a página escondida das Configurações a cada deslize da Início só custava tempo
         if (_settingsHost.Controls.Count > 0) WrapLabelsTo(_settingsHost.Controls[0]);
+        _settingsPage?.RelayoutPage(); // a página ignorou os passos do deslize (SettingsView.LayoutPage)
     }
 
     // ------------------------------------------------------------------ trilho que abre ao passar o mouse
@@ -396,7 +414,7 @@ public sealed partial class MainForm : IStageHost
     /// </summary>
     void TickFlyout()
     {
-        if (!IsHandleCreated) return;
+        if (!IsHandleCreated || _animandoBarra) return; // a barra flutuante está deslizando no lugar da encaixada (MainForm.BarraAnimada.cs)
         if (_settingsView) { TickBarraNasConfiguracoes(); return; }
         if (!SidebarHover) // desligado nos Ajustes: o mouse não abre a barra; se já estava aberta, fecha
         {
@@ -495,6 +513,7 @@ public sealed partial class MainForm : IStageHost
     {
         if (_flyout != null) return _flyout;
         var flyout = new SideFlyout();
+        flyout.AnimationFinished += FimDaAnimacaoDaBarra;
         var panel = flyout.Panel;
         panel.HomeClicked += () => { HideFlyout(); ShowView(stage: false); };
         panel.FilmeVisivel = _side.FilmeVisivel;

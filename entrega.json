@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "a04969adb41debf6fad9714e94d7dc26bed4957e",
-    "notas":  "- Corrige os achados da revisão do limite de reaberturas\n- Corrige o laço de reabertura da captura (LIV-161)",
+    "privado":  "8e8650c365aaeae58989496193f8e4cc0fa40842",
+    "notas":  "- Registra a barra lateral animada no CHANGELOG e no NOVIDADES\n- A barra lateral desliza pela barra flutuante, sem refazer o conteudo a cada passo\n- Repinta o conteudo a cada passo do deslize da barra lateral\n- Evita o layout cortado do Inicio quando a barra lateral desliza\n- Ajusta a auditoria da barra e o comentario ao deslize nas Configuracoes\n- Barra lateral: o « desfaz a trava, o interruptor acompanha o estado salvo e a barra desliza nas Configurações",
     "obrigatoria":  false
 }

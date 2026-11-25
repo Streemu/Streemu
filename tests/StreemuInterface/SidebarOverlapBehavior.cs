@@ -231,15 +231,15 @@ static class SidebarOverlapBehavior
     static async Task OpenByMouseStepsAsync(MainForm form, SidePanel side, string label, string? photo, List<string> problems)
     {
         Call(form, "AbrirPeloMouse");
-        // deslizando, as categorias deixavam rastros e a página piscava em branco (vídeo de 2026-11-16, 18:03)
-        if (SidePanel.Sliding) problems.Add($"{label}: a barra aberta pelo mouse desliza nas Configurações");
+        // desde 2026-11-25 a barra desliza nas Configurações (a página adia as quebras de linha até o fim); o que não pode é o deslize não terminar
         await SettleAsync();
+        if (SidePanel.Sliding) problems.Add($"{label}: a barra aberta pelo mouse não terminou de deslizar nas Configurações");
         if (side.Collapsed) problems.Add($"{label}: o mouse não abriu a barra nas Configurações");
         problems.AddRange(Audit(form, side).Select(p => $"{label} aberta pelo mouse: {p}"));
         if (photo != null) Render(form, photo);
         Call(form, "TickBarraNasConfiguracoes");
-        if (SidePanel.Sliding) problems.Add($"{label}: a barra desliza ao recolher nas Configurações");
         await SettleAsync();
+        if (SidePanel.Sliding) problems.Add($"{label}: a barra não terminou de deslizar ao recolher nas Configurações");
         if (!side.Collapsed) problems.Add($"{label}: a barra aberta pelo mouse não recolheu quando o mouse saiu");
         Call(form, "AbrirPeloMouse");
         form.ToggleSidebar();

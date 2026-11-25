@@ -7,12 +7,13 @@ namespace Streemu;
 /// categorias (dois vídeos de 2026-11-16: primeiro sobrava a ponta da categoria escolhida, depois a coluna inteira sumia embaixo dela).
 /// Nas Configurações o mouse no trilho abre a barra ENCAIXADA, empurrando as categorias, como o «; tirar o mouse da barra a recolhe de novo.
 /// O « com ela aberta pelo mouse a deixa aberta.
-/// Aqui a barra não desliza: com ela deslizando as categorias deixavam rastros e a página ficava em branco por alguns quadros (vídeo de 2026-11-16,
-/// 18:03); a largura muda de uma vez, com uma pintura só.
+/// Desde 2026-11-25 ela abre e recolhe com animação aqui também, mas sem deslizar a largura: as categorias deixavam rastros e a página ficava em branco
+/// por alguns quadros (vídeo de 2026-11-16, 18:03). A largura muda de uma vez, com uma pintura só, e quem desliza é a barra flutuante por cima
+/// (MainForm.BarraAnimada.cs). A troca de TELA continua instantânea.
 /// </summary>
 public sealed partial class MainForm
 {
-    const int EsperaDoMouseMs = 180; // a mesma espera da barra flutuante: passar o mouse de raspão não abre
+    const int EsperaDoMouseMs = 90; // metade da espera da barra flutuante: aqui a barra abre sem deslizar, e 180 ms + o tique de 80 ms davam a impressão de lentidão (vídeo de 2026-11-25); de raspão ainda não abre
     bool _abertaPeloMouse;
 
     void TickBarraNasConfiguracoes()
@@ -37,22 +38,13 @@ public sealed partial class MainForm
     {
         _hoverSince = DateTime.MinValue;
         _abertaPeloMouse = true;
-        TrocarBarraSemDeslizar(false);
+        TrocarBarraAnimada(false);
     }
 
     void RecolherAbertaPeloMouse()
     {
         _abertaPeloMouse = false;
-        TrocarBarraSemDeslizar(true);
-    }
-
-    /// <summary>Abre ou recolhe a barra nas Configurações sem deslizar e pinta a janela uma vez só. Ex.: <c>TrocarBarraSemDeslizar(!_side.Collapsed)</c>.</summary>
-    void TrocarBarraSemDeslizar(bool recolhida)
-    {
-        using var pausa = new PinturaPausada(this);
-        _side.SnapCollapsed(recolhida);
-        PerformLayout();
-        FinishSlide(); // sem deslize não há Slid: refaz aqui as quebras de linha na largura nova
+        TrocarBarraAnimada(true);
     }
 
     /// <summary>O « com a barra aberta pelo mouse: ela fica aberta (devolve verdadeiro e o « não faz mais nada).</summary>

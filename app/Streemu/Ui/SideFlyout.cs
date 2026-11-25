@@ -61,6 +61,23 @@ public sealed class SideFlyout : Form
         StartClock();
     }
 
+    /// <summary>A animação de abrir ou de fechar chegou ao fim (no fechar, a janela já está escondida). A barra encaixada da janela principal troca de lugar com esta aqui.</summary>
+    public event Action? AnimationFinished;
+
+    /// <summary>
+    /// Mostra a barra já inteira, sem abrir deslizando, e a pinta antes de devolver o controle: sem isso a janela principal aparecia por um quadro sem
+    /// nada no lugar da barra. Ex.: <c>flyout.ShowOpened(bounds, this); flyout.Dismiss();</c>
+    /// </summary>
+    public void ShowOpened(Rectangle bounds, Form owner)
+    {
+        _home = bounds;
+        _progress = 1;
+        Apply();
+        TopMost = true;
+        if (!Visible) Show(owner);
+        Update();
+    }
+
     /// <summary>Reinicia o relógio da animação: o progresso anda pelo TEMPO que passou, não por tique, para não alongar quando a tela atrasa um quadro.</summary>
     void StartClock()
     {
@@ -96,8 +113,8 @@ public sealed class SideFlyout : Form
         _progress = Math.Clamp(_progress + (_opening ? 1 : -1) * (now - _lastMs) / duration, 0, 1);
         _lastMs = now;
         Apply();
-        if (_opening && _progress >= 1) _anim.Stop();
-        if (!_opening && _progress <= 0) { _anim.Stop(); Hide(); }
+        if (_opening && _progress >= 1) { _anim.Stop(); AnimationFinished?.Invoke(); }
+        if (!_opening && _progress <= 0) { _anim.Stop(); Hide(); AnimationFinished?.Invoke(); }
     }
 
     /// <summary>Posição e transparência de agora: sai da esquerda (40 px) e vai ficando visível, começando rápido e terminando suave.</summary>

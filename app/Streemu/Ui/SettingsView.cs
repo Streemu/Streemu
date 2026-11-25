@@ -125,7 +125,7 @@ public sealed class SettingsView : UserControl
     void LayoutPage()
     {
         int index = _pages.FindIndex(p => p.Name == _selected);
-        if (_layingOut || _layingOutPage || index < 0) return;
+        if (_layingOut || _layingOutPage || index < 0 || SidePanel.Sliding) return; // durante o deslize da barra, medir o texto a cada passo travava a animação
         _layingOutPage = true;
         try
         {

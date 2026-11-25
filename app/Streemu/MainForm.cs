@@ -109,7 +109,9 @@ public sealed partial class MainForm : Form
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < rows; i++) root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         // janela larga: o conteúdo para numa largura boa de ler e fica encostado na barra lateral (24 de folga), com o resto livre à direita
-        root.SizeChanged += (_, _) => { if (!SidePanel.Sliding) FitRootPadding(root); };
+        // também durante o deslize da barra: com a folga velha o conteúdo ficava cortado/estourando à direita por ~0,3 s (vídeo de 2026-11-25, 8 s); a folga só
+        // muda o Padding quando o valor muda, então o custo por passo é pequeno
+        root.SizeChanged += (_, _) => FitRootPadding(root);
         return root;
     }
 

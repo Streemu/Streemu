@@ -16,7 +16,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias
-- **Barra lateral desliza também nas Configurações:** a barra abre e recolhe com animação em todas as telas sem vídeo, sem piscar nem deixar pedaços do conteúdo cortados. O botão de recolher agora também desliga "Manter a barra sempre aberta".
+- **Barra lateral desliza também nas Configurações:** a barra abre e recolhe com animação em todas as telas sem vídeo, sem piscar. As opções "Manter a barra sempre aberta" e "Abrir a barra ao passar o mouse" saíram de Configurações: o botão de painel basta.
 - **Painel de Atividade mais bonito:** o painel do ícone de pulso agora tem cantos arredondados como o resto do app, é mais largo e não mostra mais a barra de rolagem horizontal. A hora e o grupo de cada linha aparecem inteiros.
 - **Enviar arquivos diz o que falta:** com o botão apagado, o texto ao lado avisa se falta escolher um amigo ou os arquivos. Em Grupos, os botões dos cartões ficam alinhados.
 - **Dica no ícone de problema:** na barra lateral aberta, "Marcar problema" agora explica o que faz ao passar o mouse: guarda o momento e envia o diagnóstico.

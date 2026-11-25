@@ -37,10 +37,6 @@ public sealed class AppState
     /// <summary>Volume do player (0 a 100) e mudo, guardados entre transmissões.</summary>
     public int PlayerVolumePercent { get; set; } = 100;
     public bool PlayerMuted { get; set; }
-    /// <summary>Barra lateral sempre aberta: não recolhe sozinha ao assistir nem em janela estreita (Ajustes > Aparência).</summary>
-    public bool SidebarPinned { get; set; }
-    /// <summary>Com a barra recolhida em trilho, passar o mouse abre a navegação (Ajustes > Aparência). Padrão ligado: estado.json antigo, sem o campo, carrega como ligado.</summary>
-    public bool SidebarHover { get; set; } = true;
     /// <summary>Dicas de uso discretas na interface (Ajustes > Aparência). Padrão ligado: estado.json antigo, sem o campo, carrega como ligado.</summary>
     public bool DicasDeUso { get; set; } = true;
     /// <summary>A pessoa já usou o botão de recolher a barra lateral: a dica dele nunca mais aparece.</summary>

@@ -18,12 +18,6 @@ public sealed partial class MainForm
 
     void TickBarraNasConfiguracoes()
     {
-        if (!SidebarHover) // desligado nos Ajustes: só o « abre a barra; se o mouse a tinha aberto, recolhe
-        {
-            _hoverSince = DateTime.MinValue;
-            if (_abertaPeloMouse) RecolherAbertaPeloMouse();
-            return;
-        }
         var cursor = Cursor.Position;
         bool sobreABarra = _side.RectangleToScreen(_side.ClientRectangle).Contains(cursor) && IsOurWindowAt(cursor);
         if (_abertaPeloMouse) { if (!sobreABarra && !_menuDaBarraAberto) RecolherAbertaPeloMouse(); return; }

@@ -25,10 +25,6 @@ public sealed partial class MainForm : IStageHost
     bool _thumbsAsked;
     DateTime _nextThumbAsk = DateTime.MinValue;
     SideFlyout? _flyout;
-    readonly CheckBox _pinSidebar = new Ui.ToggleSwitch { Text = "Manter a barra lateral sempre aberta", AutoSize = true };
-    readonly CheckBox _hoverSidebar = new Ui.ToggleSwitch { Text = "Abrir a barra ao passar o mouse", AutoSize = true };
-    bool SidebarPinned => _state.SidebarPinned;
-    bool SidebarHover => _state.SidebarHover;
     readonly BufferedPanel _gruposHost = new() { Dock = DockStyle.Fill, Visible = false };
     readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 80 };
     DateTime _hoverSince = DateTime.MinValue;
@@ -69,12 +65,6 @@ public sealed partial class MainForm : IStageHost
         InitFilme(); // modo filme (MainForm.Filme.cs)
         InitArquivosTela(); // enviar arquivo (MainForm.ArquivosTela.cs)
         AdicionarNovidades(); // tela Novidades (MainForm.Novidades.cs)
-        _pinSidebar.Checked = _state.SidebarPinned;
-        _pinSidebar.CheckedChanged += (_, _) => SetSidebarPinned(_pinSidebar.Checked);
-        _hoverSidebar.Checked = _state.SidebarHover;
-        _hoverSidebar.Enabled = !_state.SidebarPinned; // fixa aberta, a barra nunca vira trilho: o mouse não tem o que abrir
-        _hoverSidebar.CheckedChanged += (_, _) => SetSidebarHover(_hoverSidebar.Checked);
-        if (_state.SidebarPinned) _side.Collapsed = false;
         IniciarDicasDeUso(); // MainForm.DicasDeUso.cs
         _hoverTimer.Tick += (_, _) => TickFlyout();
         _hoverTimer.Start();
@@ -154,7 +144,7 @@ public sealed partial class MainForm : IStageHost
         bool first = count > 0 && _lastStreamCount == 0;
         if (count > _lastStreamCount && !_preparationView) { _stageView = true; _settingsView = false; } // quem acabou de abrir uma stream quer vê-la
         _lastStreamCount = count;
-        if (first && !SidebarPinned) _side.Collapsed = true; // a barra recolhe para dar a largura ao vídeo (o botão « » reabre; "fixar" nos ajustes desliga isto)
+        if (first) _side.Collapsed = true; // a barra recolhe para dar a largura ao vídeo (o botão « » reabre)
         if (first && !Automated && (!Visible || WindowState == FormWindowState.Minimized)) ShowMain();
         if (count == 0)
         {
@@ -199,7 +189,7 @@ public sealed partial class MainForm : IStageHost
     /// </summary>
     void FitSidebarToWidth()
     {
-        if (_fullscreenStage || SidebarPinned) return;
+        if (_fullscreenStage) return;
         bool narrow = ClientSize.Width < Dp(900);
         if (narrow == _wasNarrow) return;
         _wasNarrow = narrow;
@@ -208,30 +198,9 @@ public sealed partial class MainForm : IStageHost
         else if (!narrow && _sideAutoCollapsed && _lastStreamCount == 0) { _side.Collapsed = false; _sideAutoCollapsed = false; }
     }
 
-    /// <summary>"Manter a barra lateral sempre aberta": guarda a escolha e abre a barra agora (ela não recolhe mais sozinha).</summary>
-    void SetSidebarPinned(bool pinned)
-    {
-        _state.SidebarPinned = pinned;
-        _hoverSidebar.Enabled = !pinned;
-        if (!Automated) _state.Save();
-        if (!pinned) return;
-        _sideAutoCollapsed = false;
-        _abertaPeloMouse = false; // fixou com a barra aberta pelo mouse: o TickBarraNasConfiguracoes não pode recolhê-la depois
-        HideFlyout();
-        _side.Collapsed = false;
-    }
-
-    /// <summary>"Abrir a barra ao passar o mouse": guarda a escolha. Desligada, só o « » abre a barra; o TickFlyout e o TickBarraNasConfiguracoes fecham o que o mouse abriu.</summary>
-    void SetSidebarHover(bool hover)
-    {
-        _state.SidebarHover = hover;
-        if (!Automated) _state.Save();
-    }
-
     public void ToggleSidebar()
     {
         DispensarDicaDaBarra();
-        if (SidebarPinned && !_side.Collapsed) _pinSidebar.Checked = false; // « com a barra fixa: desfaz a trava (e o interruptor dos Ajustes) e recolhe, em vez de não fazer nada
         if (FixarAbertaPeloMouse()) return; // aberta pelo mouse nas Configurações: o « a deixa aberta
         _sideAutoCollapsed = false;
         TrocarBarraAnimada(!_side.Collapsed); // MainForm.BarraAnimada.cs
@@ -292,9 +261,7 @@ public sealed partial class MainForm : IStageHost
     {
         using var pausa = new PinturaPausada(this);
         _abertaPeloMouse = false; // trocar de tela pela barra aberta com o mouse: quem decide a largura agora é a tela nova
-        if (_pinSidebar.Checked != SidebarPinned) _pinSidebar.Checked = SidebarPinned; // o interruptor sempre reflete o estado salvo, qualquer que seja o caminho até as Configurações
-        if (_settingsView && SidebarPinned) { _settingsRailActive = false; _side.SnapCollapsed(false); } // fixa: nas Configurações a barra não vira trilho
-        else if (_settingsView && !_settingsRailActive)
+        if (_settingsView && !_settingsRailActive)
         {
             _sideBeforeSettings = _side.Collapsed;
             _settingsRailActive = true;
@@ -303,7 +270,7 @@ public sealed partial class MainForm : IStageHost
         else if (!_settingsView && _settingsRailActive)
         {
             _settingsRailActive = false;
-            _side.SnapCollapsed(!SidebarPinned && (_lastStreamCount > 0 || _wasNarrow || _sideBeforeSettings));
+            _side.SnapCollapsed(_lastStreamCount > 0 || _wasNarrow || _sideBeforeSettings);
         }
         if (_filmeView) _gruposView = _novidadesView = false; // o Cinema (MainForm.Filme.cs) não zera estas vistas: as telas de Grupos e Novidades não podem sobrar por baixo dele
         SincronizarNovidades(); // MainForm.Novidades.cs: saiu da tela Novidades = o que ela mostrou vira visto
@@ -416,12 +383,6 @@ public sealed partial class MainForm : IStageHost
     {
         if (!IsHandleCreated || _animandoBarra) return; // a barra flutuante está deslizando no lugar da encaixada (MainForm.BarraAnimada.cs)
         if (_settingsView) { TickBarraNasConfiguracoes(); return; }
-        if (!SidebarHover) // desligado nos Ajustes: o mouse não abre a barra; se já estava aberta, fecha
-        {
-            _hoverSince = DateTime.MinValue;
-            if (_flyout is { Visible: true, Closing: false }) _flyout.Dismiss();
-            return;
-        }
         var cursor = Cursor.Position;
         bool canShow = FlutuantePermitida();
         var rail = canShow ? _side.RectangleToScreen(_side.ClientRectangle) : Rectangle.Empty;

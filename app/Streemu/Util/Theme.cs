@@ -258,7 +258,8 @@ public static class Theme
     {
         if (c.Width < 4 || c.Height < 4) return;
         using var path = RoundedPath(new Rectangle(0, 0, c.Width, c.Height), UiScale.Dp(c, UiMetrics.SmallRadius));
-        c.Region?.Dispose();
+        // não descartar a região antiga aqui: o próprio Control a descarta ao receber a nova. Descartá-la antes deixava uma região inválida guardada no controle, e o
+        // próximo handle criado (troca de tela, DPI) falhava com "Parameter is not valid" (ERRO (UI) nos logs desde 2026-11-18)
         c.Region = new Region(path);
     }
 

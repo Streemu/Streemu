@@ -37,9 +37,15 @@ public sealed partial class FilmeTela
         }
         var faltam = s.Amigos.Where(kv => kv.Value != "pronto").Select(kv => s.NomeDe(kv.Key)).ToList();
         if (!s.Comecou && faltam.Count > 0) return ($"Esperando {MpvUi.Juntar(faltam)}", "espera");
-        if (s.Amigos.Count == 0) return ("Ninguém entrou ainda", "");
+        if (!AlguemEntrou(s)) return ("Ninguém entrou ainda", "");
         return (s.TodosControlam ? "Todos podem controlar" : "Só você controla", "");
     }
+
+    /// <summary>
+    /// Alguém além de mim está na sessão? Quem assiste pela transmissão não tem o arquivo e não entra em <c>Amigos</c>: só em <c>FluxoIds</c>.
+    /// Sem contá-lo, o player dizia "Ninguém entrou ainda" com o amigo já assistindo na lista (visto em teste, 2026-11-24).
+    /// </summary>
+    bool AlguemEntrou(Sessao s) => s.Amigos.Count > 0 || (s.FluxoIds?.Invoke() ?? []).Any(id => id != MeuId);
 
     List<MpvUi.Pessoa> PessoasDaSessao(Sessao s)
     {

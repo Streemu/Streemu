@@ -75,6 +75,7 @@ public sealed partial class MainForm : IStageHost
         _hoverSidebar.Enabled = !_state.SidebarPinned; // fixa aberta, a barra nunca vira trilho: o mouse não tem o que abrir
         _hoverSidebar.CheckedChanged += (_, _) => SetSidebarHover(_hoverSidebar.Checked);
         if (_state.SidebarPinned) _side.Collapsed = false;
+        IniciarDicasDeUso(); // MainForm.DicasDeUso.cs
         _hoverTimer.Tick += (_, _) => TickFlyout();
         _hoverTimer.Start();
         LocationChanged += (_, _) => _playerStage?.Relayout(); // os vídeos acompanham a janela
@@ -228,6 +229,7 @@ public sealed partial class MainForm : IStageHost
 
     public void ToggleSidebar()
     {
+        DispensarDicaDaBarra();
         if (SidebarPinned && !_side.Collapsed) return; // fixada: o « » não recolhe
         if (FixarAbertaPeloMouse()) return; // aberta pelo mouse nas Configurações: o « a deixa aberta
         _sideAutoCollapsed = false;
@@ -440,9 +442,28 @@ public sealed partial class MainForm : IStageHost
     void SegurarBarraFlutuante(ContextMenuStrip menu)
     {
         _menuDaBarraAberto = true;
-        HideFlyout();
-        menu.Closed += (_, _) => { _menuDaBarraAberto = false; _esperaSairDoTrilho = true; };
+        HideFlyoutNow();
+        menu.Closed += (_, _) => LiberarBarraFlutuante();
     }
+
+    /// <summary>
+    /// Igual ao menu, para um painel solto aberto pela barra (Atividade recente). Sem isto a barra flutuante fechava no clique, o mouse seguia sobre o trilho
+    /// e ela reabria 180 ms depois por cima do painel; ao ir até o painel o mouse saía da barra e ela piscava de novo (vídeo de 2026-11-24).
+    /// </summary>
+    void SegurarBarraFlutuantePeloPainel(Form painel)
+    {
+        _menuDaBarraAberto = true;
+        HideFlyoutNow();
+        void AoEsconder(object? remetente, EventArgs e)
+        {
+            if (painel.Visible) return;
+            painel.VisibleChanged -= AoEsconder;
+            LiberarBarraFlutuante();
+        }
+        painel.VisibleChanged += AoEsconder;
+    }
+
+    void LiberarBarraFlutuante() { _menuDaBarraAberto = false; _esperaSairDoTrilho = true; }
 
     bool IsOurWindowAt(Point screenPoint)
     {
@@ -461,6 +482,13 @@ public sealed partial class MainForm : IStageHost
     {
         _hoverSince = DateTime.MinValue;
         _flyout?.Dismiss();
+    }
+
+    /// <summary>Esconde a barra flutuante sem animação, antes de abrir um menu ou painel que perde o foco ao fechar (<see cref="SideFlyout.HideNow"/>).</summary>
+    void HideFlyoutNow()
+    {
+        _hoverSince = DateTime.MinValue;
+        _flyout?.HideNow();
     }
 
     SideFlyout EnsureFlyout()
@@ -492,10 +520,11 @@ public sealed partial class MainForm : IStageHost
         panel.DiagClicked += () => { HideFlyout(); ShowSettingsAt("Diagnóstico"); };
         panel.UpdateClicked += () => { HideFlyout(); _ = AtualizarPelaBarraAsync(); }; // MainForm.Atualizacao.cs
         panel.BellClicked += r => { HideFlyout(); MostrarMenuSino(r); }; // MainForm.Silencio.cs
-        panel.AtividadeClicked += r => { HideFlyout(); MostrarAtividades(r); }; // MainForm.Atividades.cs
+        panel.AtividadeClicked += MostrarAtividades; // MainForm.Atividades.cs
         panel.ThemeClicked += _ => { HideFlyout(); ToggleTheme(Rectangle.Empty); }; // MainForm.Tema.cs
         panel.GroupFilterClicked += r => { HideFlyout(); MostrarMenuGrupos(r); }; // MainForm.Grupos.cs
         _flyout = flyout;
+        AtualizarDicaDaBarra();
         SinalAtualizacao(); // a barra flutuante nasce já com o estado da atualização
         SinalSilencio(forcar: true);
         _ultimaAtividade = ""; // a barra flutuante nasce já com o ponto da atividade (no próximo segundo)

@@ -77,6 +77,19 @@ public sealed class SideFlyout : Form
         StartClock();
     }
 
+    /// <summary>
+    /// Some na hora, sem a animação de saída. Quem abre um painel solto a partir da barra precisa disto: com a saída animada a barra só se escondia 110 ms
+    /// depois, o Windows passava o foco adiante e o painel, que fecha ao perder o foco, sumia logo após abrir (log de campo de 2026-11-24).
+    /// </summary>
+    public void HideNow()
+    {
+        if (!Visible) return;
+        _anim.Stop();
+        _opening = false;
+        _progress = 0;
+        Hide();
+    }
+
     void Step()
     {
         double duration = _opening ? OpenMs : CloseMs, now = _clock.Elapsed.TotalMilliseconds;

@@ -41,6 +41,10 @@ public sealed class AppState
     public bool SidebarPinned { get; set; }
     /// <summary>Com a barra recolhida em trilho, passar o mouse abre a navegação (Ajustes > Aparência). Padrão ligado: estado.json antigo, sem o campo, carrega como ligado.</summary>
     public bool SidebarHover { get; set; } = true;
+    /// <summary>Dicas de uso discretas na interface (Ajustes > Aparência). Padrão ligado: estado.json antigo, sem o campo, carrega como ligado.</summary>
+    public bool DicasDeUso { get; set; } = true;
+    /// <summary>A pessoa já usou o botão de recolher a barra lateral: a dica dele nunca mais aparece.</summary>
+    public bool DicaBarraVista { get; set; }
     /// <summary>Hora (ms Unix) da atividade mais nova que a pessoa já viu no painel de atividade: o ponto do ícone só acende com algo depois dela.</summary>
     public long AtividadeVista { get; set; }
     /// <summary>Escala da interface (Ctrl + / Ctrl -): 1 = normal, de 0,8 a 1,75.</summary>

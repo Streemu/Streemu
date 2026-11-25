@@ -20,7 +20,9 @@ public sealed partial class MainForm
             B.Cartao(B.Legenda("Barra lateral"), _pinSidebar,
                 B.Nota("Ligada, a barra lateral não recolhe ao assistir nem em janela estreita. Desligada, ela vira um trilho de avatares nesses casos."),
                 _hoverSidebar,
-                B.Nota("Com a barra recolhida, passar o mouse sobre ela abre a navegação. Desligado, ela só abre pelo botão » .")),
+                B.Nota("Com a barra recolhida, passar o mouse sobre ela abre a navegação. Desligado, ela só abre pelo botão de painel no topo da barra.")),
+            B.Cartao(B.Legenda("Dicas"), _dicasDeUso,
+                B.Nota("Mostra avisos discretos que explicam um botão na primeira vez. Cada um some sozinho depois que você usa o botão.")),
             B.Cartao([B.Legenda("Sinal de ao vivo"), .. sinal]),
             B.Cartao([B.Legenda("Minha live"), .. live]));
     }

@@ -139,9 +139,25 @@ public sealed class EnviarArquivoView : UserControl
     {
         _enviar.Enabled = _listaAmigos.Any(a => a.Id == _amigo) && _caminhos.Count > 0;
         Theme.StyleButton(_enviar, _enviar.Enabled);
-        _total.Visible = _caminhos.Count > 0; // sem arquivo o desenho não leva texto nenhum ao lado do botão
-        _total.Text = $"{_caminhos.Count} arquivo{(_caminhos.Count > 1 ? "s" : "")} · {TextoDoTamanho(_caminhos.Sum(TamanhoDe))}";
+        _total.Text = _caminhos.Count > 0
+            ? $"{_caminhos.Count} arquivo{(_caminhos.Count > 1 ? "s" : "")} · {TextoDoTamanho(_caminhos.Sum(TamanhoDe))}"
+            : "";
+        string? falta = MotivoDeNaoEnviar();
+        if (falta != null) _total.Text = _total.Text.Length > 0 ? $"{_total.Text} · {falta}" : falta;
+        _total.Visible = _total.Text.Length > 0;
         Arrumar();
+    }
+
+    /// <summary>
+    /// O que falta para o botão apagado funcionar; nulo quando já dá para enviar. Antes ele ficava cinza sem dizer por quê (achado de 2026-11-24).
+    /// Ex.: sem amigo e sem arquivo, "Escolha um amigo e os arquivos".
+    /// </summary>
+    string? MotivoDeNaoEnviar()
+    {
+        bool semAmigo = !_listaAmigos.Any(a => a.Id == _amigo), semArquivo = _caminhos.Count == 0;
+        if (semAmigo && semArquivo) return "Escolha um amigo e os arquivos";
+        if (semAmigo) return "Escolha para quem enviar";
+        return semArquivo ? "Escolha os arquivos" : null;
     }
 
     public void MostrarAndamento(IReadOnlyList<PedidoNaTela> pedidos)

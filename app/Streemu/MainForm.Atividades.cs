@@ -87,8 +87,10 @@ public sealed partial class MainForm
     void MostrarAtividades(Rectangle itemNaTela)
     {
         _atividadesPopup ??= new AtividadesPopup();
-        if (_atividadesPopup.AcabouDeFechar) return;
+        if (_atividadesPopup.AcabouDeFechar) { HideFlyout(); return; }
         var (linhas, grupos) = LinhasDeAtividade();
+        // antes de abrir: a barra flutuante some na hora e não reabre por cima do painel (MainForm.Janela.cs); escondê-la depois tirava o foco do painel e ele fechava sozinho
+        if (!_atividadesPopup.Visible) SegurarBarraFlutuantePeloPainel(_atividadesPopup); else HideFlyoutNow();
         _atividadesPopup.Mostrar(this, itemNaTela, linhas, grupos);
         MarcarAtividadesVistas();
         _ultimaAtividade = "";

@@ -16,6 +16,9 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias
+- **Enviar arquivos diz o que falta:** com o botão apagado, o texto ao lado avisa se falta escolher um amigo ou os arquivos. Em Grupos, os botões dos cartões ficam alinhados.
+- **Dica no ícone de problema:** na barra lateral aberta, "Marcar problema" agora explica o que faz ao passar o mouse: guarda o momento e envia o diagnóstico.
+- **Botão da barra lateral mais claro:** o botão de recolher agora é um ícone de painel, com dica ao passar o mouse. Na primeira vez ele ganha uma bolinha de destaque, que some depois do primeiro uso. Dá para desligar em Configurações > Aparência > Dicas.
 - **A live não congela quando o Windows tira a tela da captura:** se isso acontecer várias vezes seguidas (comum com jogo em tela cheia), a live passa para outro modo de captura em vez de congelar a cada poucos segundos. Se o novo ficar bem mais lento, ela volta ao anterior uma vez.
 - **A imagem volta mais rápido quando a tela pisca:** se o jogo troca de resolução, aparece um aviso do Windows ou o driver de vídeo reinicia durante a live, a captura do monitor volta mais rápido. Se a tela demorar alguns segundos para voltar, a live espera em vez de cair.
 - **Janela minimizada pausa a live em vez de derrubar:** se a janela que você transmite minimizar, os amigos veem "Transmissão pausada" e a live volta sozinha quando ela reaparece. O app avisa o que fazer: abrir a janela na frente ou transmitir o monitor.
@@ -29,11 +32,13 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Som da live mais contínuo:** o som da sua live sai num ritmo constante, sem pausas curtas a cada 2 segundos. Quem assiste pelo celular deixa de ouvir estalos.
 
 ### Correções
+- **Cinema: aviso de "ninguém entrou":** o player não diz mais que ninguém entrou quando um amigo já está assistindo pela transmissão.
 - **A live volta mais rápido se o driver de vídeo reiniciar:** o Streemu já deixa pronto o outro modo do player, e a imagem de quem você assiste volta em poucos segundos, em qualquer placa de vídeo.
 - **Lives abrem mais rápido em placas AMD RX 7000:** quando o player da placa falha no seu PC, o Streemu lembra e as próximas lives abrem direto pelo outro modo, sem a janela fechar e reabrir. Se você atualizar o driver, ele testa de novo.
 - **Live de celular que gira:** quando quem transmite pelo celular vira o aparelho, a janela da live acompanha, e a imagem não fica mais espremida.
 - **Texto atrás de uma live em pé:** o aviso "Nenhuma stream à vista" não aparece mais dos lados de uma live estreita.
 - **Som na tela de pausa:** quando o jogo sai da frente e quem assiste vê "Transmissão pausada", o som continua contínuo, sem cortes de meio segundo.
+- **Atividade recente na barra recolhida:** ao abrir o painel pelo ícone de pulso, a barra lateral não reabre sozinha por cima dele nem pisca enquanto você vai até a lista.
 
 ## 0.5.1 — 2026-11-20
 Correções de tela em janela pequena e no tema claro, e um instalador que explica o que deu errado.

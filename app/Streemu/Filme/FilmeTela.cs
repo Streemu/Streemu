@@ -551,7 +551,7 @@ public sealed partial class FilmeTela : UserControl
         string sala = s switch
         {
             { Anfitriao: true } => "Na sala\n\nVocê (anfitrião): pronto\n" + string.Join("\n", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}: {kv.Value}"))
-                + (s.Amigos.Count == 0 ? "\nNinguém entrou ainda. Os amigos veem o filme na barra lateral." : "")
+                + (!AlguemEntrou(s) ? "\nNinguém entrou ainda. Os amigos veem o filme na barra lateral." : "")
                 + (s.Aguardando ? "\n\nComeça sozinho quando todos estiverem prontos." : ""),
             { } => $"Na sala\n\n{s.NomeAnfitriao} (anfitrião)\nVocê: {eu}" + (s.Tocando ? "" : $"\n\nEsperando {s.NomeAnfitriao} dar o play."),
             null when _baixando != null => $"Na sala\n\n{anuncio?["anfitriao"]} (anfitrião)\nVocê: baixando {UltimoDownload?.Atual.Pct ?? 0}%",

@@ -131,10 +131,23 @@ sealed class ConteudoGrupo : PainelManual
         _detalhe.FontChanged += (_, _) => PerformLayout();
     }
 
+    /// <summary>
+    /// "Sair" (membro) é mais estreito que "Mais ▾" (dono): sem igualar, o "Copiar convite" mudava de lugar de um cartão para outro (achado de 2026-11-24).
+    /// Os dois ficam com a largura do mais largo, medida na fonte do botão. Não parte do tamanho preferido do botão: com AutoSize desligado ele devolve o
+    /// tamanho atual, e somar a ele a cada arrumação fazia o "Sair" crescer até ocupar o cartão (visto na tela, 2026-11-24).
+    /// </summary>
+    int LarguraDoSegundo()
+    {
+        var fonte = _secundario.Font;
+        int largo = Math.Max(TextRenderer.MeasureText("Mais ▾", fonte).Width, TextRenderer.MeasureText("Sair", fonte).Width);
+        return largo + Dp(36);
+    }
+
     protected override int Posicionar(int largura, bool aplicar)
     {
         int gap = Dp(8), margem = Dp(16);
         var p = _principal.GetPreferredSize(Size.Empty); var s = _secundario.GetPreferredSize(Size.Empty);
+        s.Width = LarguraDoSegundo();
         int alturaBotao = Math.Max(Dp(34), Math.Max(p.Height, s.Height));
         int botoes = p.Width + gap + s.Width;
         int alturaTexto = LinhaDe(_nome) + Dp(2) + LinhaDe(_detalhe);

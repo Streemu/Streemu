@@ -405,7 +405,9 @@ public sealed class SidePanel : Control
             for (int i = 0; i < tools.Length; i++)
             {
                 bool themeOpen = !rail && tools[i] == Kind.Theme;
-                var bounds = themeOpen ? new Rectangle(pad + i * cell, bottom - height, w - 2 * pad - i * cell, V(30))
+                bool themeSozinho = rail && tools[i] == Kind.Theme && i % columns == 0; // 5 ícones em 2 colunas: o tema ocupa a última fileira inteira, em vez de ficar torto à esquerda
+                var bounds = themeSozinho ? new Rectangle(pad, bottom - height + i / columns * V(30), w - 2 * pad, V(30))
+                    : themeOpen ? new Rectangle(pad + i * cell, bottom - height, w - 2 * pad - i * cell, V(30))
                     : new Rectangle(pad + i % columns * cell, bottom - height + i / columns * V(30), cell, V(30));
                 rows.Add(new Row(bounds, tools[i]));
             }
@@ -434,7 +436,9 @@ public sealed class SidePanel : Control
                 rows.Add(new Row(new Rectangle(pad, y, w - 2 * pad, Dp(26)), Kind.Section, $"OFFLINE — {offlineCount}")); y += Dp(28);
             }
             var r = new Rectangle(pad, y, w - 2 * pad, rowHeight - Dp(2));
-            if (r.Bottom > _friendsViewport.Top && r.Top < _friendsViewport.Bottom) rows.Add(new Row(r, Kind.Friend, Friend: friend));
+            // no trilho um avatar cortado no meio parecia sobreposto às ferramentas (vídeo de 2026-11-24): só entra quem cabe inteiro; a roda do mouse traz os outros
+            bool visivel = rail ? r.Top >= _friendsViewport.Top && r.Bottom <= _friendsViewport.Bottom : r.Bottom > _friendsViewport.Top && r.Top < _friendsViewport.Bottom;
+            if (visivel) rows.Add(new Row(r, Kind.Friend, Friend: friend));
             y += rowHeight;
         }
         return rows.OrderBy(r => r.Bounds.Y).ThenBy(r => r.Bounds.X).ToList();
@@ -453,6 +457,8 @@ public sealed class SidePanel : Control
         else if (kind == Kind.Bell) _tip.SetToolTip(this, _bellDetail);
         else if (kind == Kind.Atividade) _tip.SetToolTip(this, _atividadeDica);
         else if (kind == Kind.Theme) _tip.SetToolTip(this, ThemeLabel);
+        else if (kind == Kind.Toggle) _tip.SetToolTip(this, ToggleTooltip());
+        else if (kind == Kind.Problem) _tip.SetToolTip(this, "Marcar problema\nGuarda este momento e envia o diagnóstico para a equipe e para os amigos da live. Use quando algo travar ou falhar.");
         else if (kind == Kind.StopLive) _tip.SetToolTip(this, "Encerra a sua transmissão para todo mundo que está assistindo");
         else if (kind == Kind.Transmit && _self == null) _tip.SetToolTip(this, "Escolher o que transmitir e começar a live"); // dica do #137
         else if (Rail && now >= 0) _tip.SetToolTip(this, LabelFor(_rows[now]));
@@ -523,8 +529,8 @@ public sealed class SidePanel : Control
         Kind.Transmit => _self == null ? "Transmitir" : "Sua transmissão · AO VIVO",
         Kind.Profile => _profileName + " · Perfil", Kind.Friend => row.Friend!.Nick + (row.Friend.OnScreen ? " · Assistindo" : row.Friend.Live ? " · Ao vivo" : row.Friend.Offline ? " · Offline" : " · Online"),
         Kind.Diag => _diagTitle.Length > 0 ? _diagTitle : "Diagnóstico",
-        Kind.Bell => _bellText, Kind.Atividade => "Atividade recente", Kind.Update => _update == UpdateState.Available ? "Atualizar agora" : "Procurar atualização", Kind.Problem => "Marcar problema",
-        Kind.Toggle => _collapsed ? "Abrir navegação" : "Recolher navegação", Kind.Theme => ThemeLabel, _ => row.Text
+        Kind.Bell => _bellText, Kind.Atividade => "Atividade recente do grupo", Kind.Update => _update == UpdateState.Available ? "Atualizar agora" : "Procurar atualização", Kind.Problem => "Marcar problema",
+        Kind.Toggle => _collapsed ? "Abrir a barra lateral" : "Recolher a barra lateral", Kind.Theme => ThemeLabel, _ => row.Text
     };
     protected override void OnMouseWheel(MouseEventArgs e)
     {
@@ -667,12 +673,42 @@ public sealed class SidePanel : Control
         ThemeToggleArt.DrawThumbOnly(g, IconBounds(r), _themeMotion.Value);
     }
 
+    /// <summary>Dica de primeira vez: uma bolinha no botão de recolher até a pessoa usá-lo (ou desligar as dicas nos Ajustes).</summary>
+    [System.ComponentModel.Browsable(false), System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool DicaToggle
+    {
+        get => _dicaToggle;
+        set { if (_dicaToggle == value) return; _dicaToggle = value; Invalidate(); }
+    }
+    bool _dicaToggle;
+
+    /// <summary>
+    /// O botão de recolher é um ícone de painel lateral (o desenho que os apps usam para isso), não uma seta solta: a seta não dizia o que fazia.
+    /// Aberta o painel esquerdo vem preenchido; no trilho só o contorno.
+    /// </summary>
     void DrawToggle(Graphics g, Rectangle r, bool hover)
     {
-        if (hover) { g.SmoothingMode = SmoothingMode.AntiAlias; using var path = Theme.RoundedPath(r, Dp(8)); using var back = new SolidBrush(Theme.SurfaceInput); g.FillPath(back, path); }
-        int size = Dp(14);
-        var chevron = Rail ? new Rectangle(r.Right - Dp(17), r.Y + (r.Height - size) / 2, size, size) : new Rectangle(r.X + (r.Width - size) / 2, r.Y + (r.Height - size) / 2, size, size);
-        UiIcons.Draw(g, Rail ? UiIcon.ChevronRight : UiIcon.ChevronLeft, chevron, hover ? Theme.Text : Theme.TextMuted);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        if (hover) { using var path = Theme.RoundedPath(r, Dp(8)); using var back = new SolidBrush(Theme.SurfaceInput); g.FillPath(back, path); }
+        int width = Dp(Rail ? 12 : 16), height = Dp(Rail ? 10 : 13); // no trilho cabe só onde ficava a seta, ao lado do gato
+        int left = Rail ? r.Right - Dp(17) : r.X + (r.Width - width) / 2;
+        var icon = new Rectangle(left, r.Y + (r.Height - height) / 2, width, height);
+        var color = hover ? Theme.Text : Theme.TextMuted;
+        using (var outline = Theme.RoundedPath(icon, Dp(3))) using (var pen = new Pen(color, Math.Max(1.4f, Dp(1)))) g.DrawPath(pen, outline);
+        int divider = icon.X + icon.Width * 2 / 5;
+        using (var pen = new Pen(color, Math.Max(1.4f, Dp(1)))) g.DrawLine(pen, divider, icon.Y + Dp(2), divider, icon.Bottom - Dp(2));
+        if (!Rail) { using var pane = new SolidBrush(hover ? Theme.TextMuted : Theme.Border); g.FillRectangle(pane, icon.X + Dp(2), icon.Y + Dp(3), divider - icon.X - Dp(3), icon.Height - Dp(6)); }
+        if (!_dicaToggle) return;
+        using var dot = new SolidBrush(Theme.Accent);
+        g.FillEllipse(dot, icon.Right - Dp(3), icon.Y - Dp(4), Dp(7), Dp(7));
+    }
+
+    /// <summary>Dica do botão de recolher; a explicação extra só vem enquanto a dica de primeira vez está ligada.</summary>
+    string ToggleTooltip()
+    {
+        string basico = _collapsed ? "Abrir a barra lateral" : "Recolher a barra lateral";
+        if (!_dicaToggle) return basico;
+        return basico + (_collapsed ? "\nA barra também abre ao passar o mouse nos ícones." : "\nFica só com os ícones. Passe o mouse neles para abrir de novo.");
     }
 
     /// <summary>Selo "beta" pequeno no canto de cima à direita do item Filme (spec 010: o modo filme ainda está em teste).</summary>

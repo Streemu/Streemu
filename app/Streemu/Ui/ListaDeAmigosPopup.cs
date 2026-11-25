@@ -69,8 +69,7 @@ public sealed class ListaDeAmigosPopup : Form
     void ArredondarCantos()
     {
         using var caminho = Theme.RoundedPath(new Rectangle(0, 0, Width, Height), Dim(RaioAt96));
-        Region?.Dispose();
-        Region = new Region(caminho);
+        Region = new Region(caminho); // o Control descarta a região antiga ao receber a nova; descartá-la antes deixava uma inválida guardada (erro "Parameter is not valid", 2026-11-24)
     }
 
     void PassoDaAnimacao()

@@ -16,6 +16,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias
+- **Painel de Atividade mais bonito:** o painel do ícone de pulso agora tem cantos arredondados como o resto do app, é mais largo e não mostra mais a barra de rolagem horizontal. A hora e o grupo de cada linha aparecem inteiros.
 - **Enviar arquivos diz o que falta:** com o botão apagado, o texto ao lado avisa se falta escolher um amigo ou os arquivos. Em Grupos, os botões dos cartões ficam alinhados.
 - **Dica no ícone de problema:** na barra lateral aberta, "Marcar problema" agora explica o que faz ao passar o mouse: guarda o momento e envia o diagnóstico.
 - **Botão da barra lateral mais claro:** o botão de recolher agora é um ícone de painel, com dica ao passar o mouse. Na primeira vez ele ganha uma bolinha de destaque, que some depois do primeiro uso. Dá para desligar em Configurações > Aparência > Dicas.

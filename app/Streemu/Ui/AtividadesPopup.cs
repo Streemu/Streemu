@@ -11,10 +11,10 @@ namespace Streemu.Ui;
 /// </summary>
 public sealed class AtividadesPopup : Form
 {
-    const int LarguraAt96 = 340, AlturaMaximaAt96 = 380, MargemAt96 = 12;
+    const int LarguraAt96 = 400, AlturaMaximaAt96 = 380, MargemAt96 = 14, RaioAt96 = 14;
 
     readonly Panel _moldura = new() { Dock = DockStyle.Fill };
-    readonly Panel _rolagem = new() { AutoScroll = true };
+    readonly RolagemSoVertical _rolagem = new() { AutoScroll = true };
     readonly AtividadesView _lista = new() { Visible = true };
     /// <summary>Quando fechou por perder o foco: o clique no próprio ícone fecha primeiro e não deve reabrir na mesma hora.</summary>
     long _fechouEm;
@@ -31,7 +31,7 @@ public sealed class AtividadesPopup : Form
         _moldura.Controls.Add(_rolagem);
         Controls.Add(_moldura);
         ScrollSkin.Attach(_rolagem);
-        _moldura.Resize += (_, _) => Arrumar();
+        _moldura.Resize += (_, _) => { ArredondarMoldura(); Arrumar(); };
         Deactivate += (_, _) => Fechar();
     }
 
@@ -44,8 +44,7 @@ public sealed class AtividadesPopup : Form
         {
             var cp = base.CreateParams;
             cp.ExStyle |= 0x80; // WS_EX_TOOLWINDOW: fora do Alt+Tab
-            cp.ClassStyle |= 0x20000; // CS_DROPSHADOW: a sombra dos menus do Windows
-            return cp;
+            return cp; // sem CS_DROPSHADOW: a sombra do Windows é retangular e aparecia atrás dos cantos arredondados
         }
     }
 
@@ -82,6 +81,8 @@ public sealed class AtividadesPopup : Form
         int x = Math.Clamp(itemNaTela.Right + LogicalToDeviceUnits(8), tela.Left, Math.Max(tela.Left, tela.Right - tamanho.Width));
         int y = Math.Clamp(itemNaTela.Bottom - tamanho.Height, tela.Top, Math.Max(tela.Top, tela.Bottom - tamanho.Height));
         Bounds = new Rectangle(x, y, tamanho.Width, tamanho.Height);
+        ArredondarCantos();
+        ArredondarMoldura();
         Arrumar();
         _rolagem.AutoScrollPosition = Point.Empty; // abre no topo: a mais nova
     }
@@ -107,15 +108,54 @@ public sealed class AtividadesPopup : Form
         _lista.Invalidate();
     }
 
-    /// <summary>A lista ocupa a largura útil (menos a barra de rolagem, se houver) e a altura que precisa; a moldura rola o resto.</summary>
+    /// <summary>Cantos do painel (como a lista de amigos do Enviar arquivo); o contorno de 1 px vem do fundo do formulário que aparece em volta da moldura.</summary>
+    void ArredondarCantos()
+    {
+        using var caminho = Theme.RoundedPath(new Rectangle(0, 0, Width, Height), LogicalToDeviceUnits(RaioAt96));
+        Region = new Region(caminho); // o Control descarta a região antiga ao receber a nova (descartá-la antes deixava uma inválida guardada)
+    }
+
+    /// <summary>A moldura também é recortada, um pixel para dentro, para o contorno acompanhar a curva em vez de sumir nos cantos.</summary>
+    void ArredondarMoldura()
+    {
+        if (_moldura.Width < 4 || _moldura.Height < 4) return;
+        using var caminho = Theme.RoundedPath(new Rectangle(0, 0, _moldura.Width, _moldura.Height), Math.Max(1, LogicalToDeviceUnits(RaioAt96) - 1));
+        _moldura.Region = new Region(caminho);
+    }
+
+    /// <summary>
+    /// A lista ocupa a largura útil e a altura que precisa; a moldura rola o resto. Só rola na vertical: o <c>AutoScrollMinSize</c> sem largura impede a barra
+    /// horizontal que aparecia quando a vertical surgia e a lista, medida antes, ficava 17 px larga demais (visto em 2026-11-24).
+    /// </summary>
     void Arrumar()
     {
         int margem = LogicalToDeviceUnits(MargemAt96);
         _rolagem.Bounds = new Rectangle(margem, margem / 2, Math.Max(1, _moldura.ClientSize.Width - margem - margem / 2), Math.Max(1, _moldura.ClientSize.Height - margem));
-        bool rola = _lista.AlturaNecessaria > _rolagem.ClientSize.Height;
-        int largura = Math.Max(1, _rolagem.ClientSize.Width - (rola && !_rolagem.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0) - margem / 2);
-        _lista.Bounds = new Rectangle(0, _rolagem.AutoScrollPosition.Y, largura, _lista.AlturaNecessaria);
+        _rolagem.AutoScrollMinSize = new Size(0, _lista.AlturaNecessaria);
+        // a largura sai do tamanho da área (que não muda quando a barra vertical entra) menos a barra, se for rolar: o ClientSize só se acerta depois da arrumação
+        // e a lista medida por ele ficava 17 px larga demais, cortando a hora e o grupo (visto na tela, 2026-11-24)
+        int barra = _lista.AlturaNecessaria > _rolagem.Height ? SystemInformation.VerticalScrollBarWidth : 0;
+        _lista.Bounds = new Rectangle(0, _rolagem.AutoScrollPosition.Y, Math.Max(1, _rolagem.Width - barra - margem / 2), _lista.AlturaNecessaria);
+    }
+
+    /// <summary>Painel com rolagem só na vertical: a barra horizontal do Windows nunca aparece, mesmo que algo fique largo demais por um instante.</summary>
+    sealed class RolagemSoVertical : Panel
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ShowScrollBar(IntPtr hwnd, int barra, bool mostrar);
+        const int SbHorz = 0;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (IsHandleCreated) ShowScrollBar(Handle, SbHorz, false);
+            base.WndProc(ref m);
+        }
     }
 
     public IReadOnlyList<LinhaDeAtividade> Linhas => _lista.Linhas;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { Region?.Dispose(); _moldura.Region?.Dispose(); }
+        base.Dispose(disposing);
+    }
 }

@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "7c24b306dce4ea904679c763170efbd0ecc50b5e",
-    "notas":  "- Corrige o ninguem entrou do Cinema e o erro de regiao dos campos\n- Centraliza o botao de tema sozinho no trilho em janela baixa\n- Corrige o Sair crescendo no cartao de Grupos\n- Enviar arquivo diz o que falta e botoes dos cartoes de Grupos alinham\n- Adiciona dica ao icone Marcar problema da barra aberta\n- Esconde a barra flutuante na hora ao abrir o painel de Atividade\n- Nao mostra avatar de amigo cortado ao meio no trilho da barra lateral\n- Troca a seta da barra lateral por um icone de painel com dica de primeira vez\n- ﻿Impede que a barra flutuante reabra por cima do painel de Atividade",
+    "privado":  "8692a5036ffc28b0b390d38c6b3bd7de2b546e47",
+    "notas":  "- Corrige a largura da lista do painel de Atividade\n- Arredonda o painel de Atividade e tira a barra horizontal",
     "obrigatoria":  false
 }

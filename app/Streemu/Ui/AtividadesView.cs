@@ -59,7 +59,8 @@ public sealed class AtividadesView : Control
         using var linha = new Pen(Theme.Separator);
         for (int i = 0; i < _linhas.Count; i++)
         {
-            int quandoLargura = Math.Min(Width / 2, TextRenderer.MeasureText(g, _quando[i], Font, new Size(Width, LinhaAltura), TextFormatFlags.NoPadding).Width + Dp(8));
+            // a hora e o grupo valem mais que a frase (que ganha reticências): até 60% da linha, em vez de cortar "há 51 min · Grupo do St"
+            int quandoLargura = Math.Min(Width * 3 / 5,TextRenderer.MeasureText(g, _quando[i], Font, new Size(Width, LinhaAltura), TextFormatFlags.NoPadding).Width + Dp(8));
             var texto = new Rectangle(0, y, Math.Max(0, Width - quandoLargura - Dp(8)), LinhaAltura);
             TextRenderer.DrawText(g, _linhas[i].Texto, Font, texto, Theme.Text, flags);
             TextRenderer.DrawText(g, _quando[i], Font, new Rectangle(Width - quandoLargura, y, quandoLargura, LinhaAltura), Theme.TextMuted, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);

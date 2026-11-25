@@ -62,6 +62,8 @@ public sealed class AppState
     public bool OpenMyLiveOnStart { get; set; }
     /// <summary>Ajustes > Aparência: não mandar aos espectadores o som de "alguém entrou/saiu" (spec 014). Falso = ligado, que é o padrão.</summary>
     public bool SomNaLiveDesligado { get; set; }
+    /// <summary>Ajustes > Aparência > Avançados: não avisar por cima do jogo que a live está abaixo de 60 FPS; o card na janela do Streemu continua. Falso = aviso ligado (padrão).</summary>
+    public bool OfertaFpsSobreOJogoDesligada { get; set; }
     /// <summary>Usa o avatar do Discord (quando não há imagem escolhida no PC). Ligado por padrão (spec 005).</summary>
     public bool UsarAvatarDiscord { get; set; } = true;
     /// <summary>Onde a janela pequena do player ficou (largura 0 = nunca foi usada).</summary>

@@ -74,7 +74,8 @@ public sealed partial class MainForm
         _preparationChanging = changing;
         var current = changing ? _sender.Current : null;
         var view = new GoLiveView(current?.Source, _state.GoLiveProcess, current?.Preset.IsSource == true ? 0 : current?.Preset.Height ?? _state.GoLiveHeight,
-            current != null ? _sender.RequestedFps : _state.GoLiveFps, current != null ? (int)current.Audio : _state.GoLiveAudio, changing, _room?.Friends.ToList() ?? []);
+            current != null ? _sender.RequestedFps : _state.GoLiveFps, current != null ? (int)current.Audio : _state.GoLiveAudio, changing, _room?.Friends.ToList() ?? [], null,
+            [NovoInterruptorDaOfertaNaTransmissao(), Streemu.Ui.AjusteBlocos.Nota("Desligado, o aviso de 30 FPS aparece só na janela do Streemu.")]);
         _preparation = view;
         view.BackRequested += ReturnFromPreparation;
         view.SubmitRequested += async () => await SubmitPreparationAsync(view);

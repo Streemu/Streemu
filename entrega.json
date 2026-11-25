@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "8692a5036ffc28b0b390d38c6b3bd7de2b546e47",
-    "notas":  "- Corrige a largura da lista do painel de Atividade\n- Arredonda o painel de Atividade e tira a barra horizontal",
+    "privado":  "84889b69d57e4ef285a6f3389161cd0c2446e14f",
+    "notas":  "- Refina a oferta de 30 FPS: retorno ao desligar e ao aceitar, interruptor em Transmitir e telemetria por origem\n- Deixa a oferta de 30 FPS menos intrusiva e com opção de desligar",
     "obrigatoria":  false
 }

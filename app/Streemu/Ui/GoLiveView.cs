@@ -61,7 +61,8 @@ public sealed class GoLiveView : UserControl
     /// <param name="lastProcess">Processo da última transmissão, para selecionar de novo.</param>
     /// <param name="friendsOnline">Amigos na sala para a escolha dos convidados; nulo ao trocar (a privacidade vale para a transmissão inteira).</param>
     /// <param name="convidarId">Id de um amigo para abrir já em "Só convidados" com ele marcado (menu da foto, spec 013); ignorado se ele não está em <paramref name="friendsOnline"/>.</param>
-    public GoLiveView(CaptureSource? current, string? lastProcess, int height, int fps, int audio, bool changing, IReadOnlyList<Member>? friendsOnline = null, string? convidarId = null)
+    /// <param name="avancados">Opções para a seção recolhível "Avançados" no fim das opções (ex.: o aviso de 30 FPS sobre o jogo); nulo ou vazio, sem a seção.</param>
+    public GoLiveView(CaptureSource? current, string? lastProcess, int height, int fps, int audio, bool changing, IReadOnlyList<Member>? friendsOnline = null, string? convidarId = null, Control[]? avancados = null)
     {
         _current = current; _lastProcess = lastProcess; _changing = changing;
         Dock = DockStyle.Fill;
@@ -90,6 +91,12 @@ public sealed class GoLiveView : UserControl
         AddOption(_options, 1, "FPS", _fpsSeg);
         AddOption(_options, 2, "Som", _audioSeg);
         if (!changing && friendsOnline != null) AddPrivacyOptions(_options, friendsOnline, convidarId);
+        if (avancados is { Length: > 0 })
+        {
+            _avancados = new SettingsDisclosure("Avançados", avancados) { Margin = new Padding(0, UiMetrics.Gap, 0, 0) };
+            _avancados.SizeChanged += (_, _) => { _options.PerformLayout(); PerformLayout(); }; // abrir ou fechar muda a altura das opções
+            _options.Controls.Add(_avancados, 0, _options.RowCount++);
+        }
         _back.Click += (_, _) => { if (!_busy) BackRequested?.Invoke(); };
         _go = new Button { Text = changing ? "Aplicar alteração" : "Começar a transmitir", AccessibleName = changing ? "Aplicar alteração" : "Começar a transmitir" };
         _go.Click += (_, _) => { if (!_busy && SelectedSource != null) SubmitRequested?.Invoke(); };
@@ -107,6 +114,7 @@ public sealed class GoLiveView : UserControl
         HandleCreated += (_, _) => { UpdateActivity(); ShowBroadcastIcon(); };
     }
 
+    SettingsDisclosure? _avancados;
     readonly Panel _body = new() { AutoScroll = true };
     readonly Panel _footer = new();
     /// <summary>"← Voltar às lives" é um link, não um botão (desenho): texto roxo claro, sem fundo, alinhado à esquerda da coluna.</summary>
@@ -218,6 +226,7 @@ public sealed class GoLiveView : UserControl
             // cartões dividem a largura toda. Recalculada a cada layout (janela, escala do Windows e escala do Streemu mudam a largura útil).
             y = ArrumarGrade(x, y, available) + gap;
             SettingsLayout.Constrain(_options, available);
+            if (_avancados != null && _avancados.Width != available) _avancados.Width = available;
             _options.Location = new Point(x, y);
             // a altura vem de onde termina o último controle visível: o PreferredSize da tabela deixava um vazio de ~500 px no fim da página com os controles novos (mais altos)
             int optionsHeight = _options.Controls.Cast<Control>().Where(c => c.Visible).Select(c => c.Bottom + c.Margin.Bottom).DefaultIfEmpty(0).Max();

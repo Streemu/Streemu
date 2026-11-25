@@ -25,6 +25,7 @@ public sealed partial class MainForm
     readonly Button _badgeTest = new() { Text = "Ver como fica (5 s)", AutoSize = true };
     readonly ComboBox _badgeCorner = new RoundedComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240 };
     readonly CheckBox _openMyLive = new ToggleSwitch { Text = "Abrir a minha live na janela de streams quando eu começar a transmitir", AutoSize = true };
+    readonly CheckBox _ofertaNoJogoOn = new ToggleSwitch { Text = "Avisar por cima do jogo quando a live ficar abaixo de 60 FPS", AutoSize = true };
     readonly CheckBox _somNaLiveOn = new ToggleSwitch { Text = "Tocar um som nos espectadores quando alguém entrar ou sair da minha live", AutoSize = true };
 
     /// <summary>Liga o selo e as opções (uma vez, ao montar a janela). Em teste automático o selo só aparece com STREEMU_TEST_SELO=1.</summary>
@@ -36,6 +37,8 @@ public sealed partial class MainForm
         _openMyLive.Checked = _state.OpenMyLiveOnStart;
         if (Environment.GetEnvironmentVariable("STREEMU_TEST_SOM_NA_LIVE") == "desligado") _state.SomNaLiveDesligado = true; // teste: a opção desligada, sem gravar (o estado de teste não é salvo)
         _somNaLiveOn.Checked = !_state.SomNaLiveDesligado;
+        _ofertaNoJogoOn.Checked = !_state.OfertaFpsSobreOJogoDesligada;
+        _ofertaNoJogoOn.CheckedChanged += (_, _) => MudarOfertaSobreOJogo(_ofertaNoJogoOn.Checked, "aparencia"); // MainForm.Sugestao30Fps.cs
         _badgeStyle.Selected = BadgeStyles.FromSaved(_state.LiveBadgeStyle) == BadgeStyle.Pill ? 1 : 0;
         _badgeSize.Selected = Math.Clamp(_state.LiveBadgeSize, 0, 2);
         _badgeOpacity.Size = new Size(UiScale.Dp(this, 260), UiScale.Dp(this, 30)); // o controle desenhado à mão não é escalado pelas Configurações
@@ -77,7 +80,7 @@ public sealed partial class MainForm
     }
 
     /// <summary>As opções da página Aparência dos Ajustes, em dois grupos: o sinal de "ao vivo" sobre a tela e o que acontece com a minha live.</summary>
-    (Control[] Sinal, Control[] Live) MinhaLiveOpcoes()
+    (Control[] Sinal, Control[] Live, Control[] Avancados) MinhaLiveOpcoes()
     {
         Control Row(string label, params Control[] items)
         {
@@ -94,7 +97,8 @@ public sealed partial class MainForm
         Control[] sinal = [_badgeOn, Row("Estilo:", _badgeStyle), Row("Tamanho:", _badgeSize), opacity, Row("Lugar:", _badgeCorner), Row("", _badgeBlink), test,
             Streemu.Ui.AjusteBlocos.Nota("O sinal é só para você: ele não vai para a transmissão. Com o jogo em tela cheia exclusiva o Windows não deixa nada por cima dele, então ele só aparece sobre jogo em janela ou sem bordas. A barra lateral e a bandeja mostram que você está ao vivo de qualquer jeito. A prévia da sua live usa o vídeo que já está sendo enviado (não abre outra conexão); ela só custa decodificar esse vídeo.", alinhadaAoInterruptor: false)];
         Control[] live = [_openMyLive, _somNaLiveOn, Streemu.Ui.AjusteBlocos.Nota("O som toca no Streemu de quem assiste (quem acabou de entrar não o ouve) e o sino de silenciar dele o cala. Quem está numa versão antiga não ouve.")];
-        return (sinal, live);
+        Control[] avancados = [_ofertaNoJogoOn, Streemu.Ui.AjusteBlocos.Nota("Desligado, o aviso aparece só na janela do Streemu.")];
+        return (sinal, live, avancados);
     }
 
     LiveBadgeState? ReadBadgeState()

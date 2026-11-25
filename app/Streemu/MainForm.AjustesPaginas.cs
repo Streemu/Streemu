@@ -15,7 +15,7 @@ public sealed partial class MainForm
     /// </summary>
     Control PaginaAparencia()
     {
-        var (sinal, live) = MinhaLiveOpcoes();
+        var (sinal, live, avancados) = MinhaLiveOpcoes();
         return SettingsSection("Aparência",
             B.Cartao(B.Legenda("Barra lateral"), _pinSidebar,
                 B.Nota("Ligada, a barra lateral não recolhe ao assistir nem em janela estreita. Desligada, ela vira um trilho de avatares nesses casos."),
@@ -24,7 +24,8 @@ public sealed partial class MainForm
             B.Cartao(B.Legenda("Dicas"), _dicasDeUso,
                 B.Nota("Mostra avisos discretos que explicam um botão na primeira vez. Cada um some sozinho depois que você usa o botão.")),
             B.Cartao([B.Legenda("Sinal de ao vivo"), .. sinal]),
-            B.Cartao([B.Legenda("Minha live"), .. live]));
+            B.Cartao([B.Legenda("Minha live"), .. live]),
+            Disclosure("Avançados", avancados));
     }
 
     Control PaginaAssistir() => SettingsSection("Assistir",

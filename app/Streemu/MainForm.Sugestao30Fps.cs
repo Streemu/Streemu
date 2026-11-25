@@ -10,17 +10,20 @@ namespace Streemu;
 /// Oferta de "usar 30 FPS" quando a live em 60 chega com poucos quadros (ver <see cref="SugestaoDe30Fps"/>). Aceitar troca só o preset da live em andamento,
 /// sem gravar a escolha em <c>_state</c>: a próxima live volta a começar no que a pessoa configurou, e a oferta só reaparece se a captura de novo ficar abaixo.
 /// Onde aparece: com a janela do Streemu na frente, o card dela; com o jogo na frente, o mesmo card por cima do jogo (<see cref="SugestaoFpsOverlay"/>),
-/// que dá para aceitar com Ctrl+Alt+3; em tela cheia exclusiva, onde o Windows não deixa nada por cima, só o balão da bandeja.
+/// que dá para aceitar com Ctrl+Alt+F3 (sai em 15 s; "Não mostrar no jogo" ou Ajustes > Aparência > Avançados desligam o aviso sobre o jogo); em tela cheia exclusiva, onde o Windows não deixa nada por cima, só o balão da bandeja.
 /// </summary>
 public sealed partial class MainForm
 {
-    const int TeclaDoAtalhoDaOferta = 0x33; // "3": Ctrl+Alt+3
-    const string NomeDoAtalhoDaOferta = "Ctrl+Alt+3";
+    const int TeclaDoAtalhoDaOferta = 0x72; // F3: Ctrl+Alt+F3 (Ctrl+Alt+3 é AltGr+3 no ABNT2 e digitaria "³" no chat do jogo)
+    const string NomeDoAtalhoDaOferta = "Ctrl+Alt+F3";
     const int QunsRunningD3dFullScreen = 3;
     readonly SugestaoDe30Fps _sugestaoFps = new();
     SugestaoFpsCard? _sugestaoCard;
     SugestaoFpsOverlay? _ofertaSobreOJogo;
     AtalhoGlobal? _atalhoDaOferta;
+    bool _mudandoOfertaSobreOJogo;
+    ToggleSwitch? _ofertaNoJogoTransmitir; // o mesmo interruptor dentro de Avançados na tela Transmitir (refeito junto com ela)
+    const string FraseAvisoDesligado = "Aviso desligado. Para religar: Configurações > Aparência > Avançados.";
 
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
 
@@ -29,7 +32,8 @@ public sealed partial class MainForm
         _sender.SecondMeasured += (novos, _, medida) => Ui(() => ObservarSugestao30Fps((int)Math.Clamp(novos, -1, 1000), medida));
         _sender.Stopped += () => Ui(() => { _sugestaoFps.Reiniciar(); AtualizarSugestaoCard(); });
         SizeChanged += (_, _) => PosicionarSugestaoCard();
-        FormClosed += (_, _) => { FecharOfertaSobreOJogo(); _ofertaSobreOJogo?.Dispose(); };
+        Activated += (_, _) => FecharOfertaSobreOJogo(true); // a janela veio para a frente: o card dela já está à vista
+        FormClosed += (_, _) => { FecharOfertaSobreOJogo(true); _ofertaSobreOJogo?.Dispose(); };
     }
 
     void ObservarSugestao30Fps(int novos, string medida)
@@ -52,8 +56,8 @@ public sealed partial class MainForm
         _sugestaoCard!.Visible = true;
         _sugestaoCard.BringToFront();
         Log.Info($"[qualidade] oferta de 30 FPS: a captura chega a ~{_sugestaoFps.Tipico} quadros/s com a live em 60 FPS.");
-        _teleSessao?.Evento("sugestao_fps", new JsonObject { ["acao"] = "mostrou", ["quadros_s"] = _sugestaoFps.Tipico });
-        AvisarOfertaForaDaJanela();
+        string onde = AvisarOfertaForaDaJanela();
+        _teleSessao?.Evento("sugestao_fps", new JsonObject { ["acao"] = "mostrou", ["quadros_s"] = _sugestaoFps.Tipico, ["onde"] = onde });
     }
 
     /// <summary>
@@ -61,12 +65,18 @@ public sealed partial class MainForm
     /// Mostra o mesmo card por cima do jogo; se o Windows não deixa (tela cheia exclusiva) ou a janela não pode ficar fora da captura, cai no balão da bandeja,
     /// cujo clique abre a janela do Streemu, onde o card espera.
     /// </summary>
-    void AvisarOfertaForaDaJanela()
+    string AvisarOfertaForaDaJanela()
     {
-        if (Form.ActiveForm != null) return;
+        // o card da janela só é visto com a janela principal ativa; com o player, o Transmitir ou um diálogo na frente ele fica escondido
+        if (ReferenceEquals(Form.ActiveForm, this) && WindowState != FormWindowState.Minimized) return "janela";
+        bool teste = Environment.GetEnvironmentVariable("STREEMU_TEST_SELO") is "1" or "visivel";
+        if (Automated && !teste) return "teste";
+        if (_state.OfertaFpsSobreOJogoDesligada) return "desligado";
+        if (ModoSilencio.Ativo) { Log.Info("[qualidade] oferta de 30 FPS só no card da janela: os avisos estão silenciados."); return "silencio"; }
         if (JogoEmTelaCheiaExclusiva()) Log.Info("[qualidade] o jogo está em tela cheia exclusiva: o Windows não deixa a oferta aparecer por cima dele; aviso pela bandeja.");
-        else if (MostrarOfertaSobreOJogo()) return;
+        else if (MostrarOfertaSobreOJogo()) return "jogo";
         MostrarBalao(8000, UiBrand.Name, "Sua live está abaixo de 60 FPS. Clique aqui e escolha 30 FPS para ficar mais estável.", ToolTipIcon.Info);
+        return "bandeja";
     }
 
     bool MostrarOfertaSobreOJogo()
@@ -77,19 +87,61 @@ public sealed partial class MainForm
             _ofertaSobreOJogo = new SugestaoFpsOverlay();
             _ofertaSobreOJogo.Aceitou += AceitarSugestao30Fps;
             _ofertaSobreOJogo.Recusou += RecusarSugestao30Fps;
-            _ofertaSobreOJogo.Expirou += FecharOfertaSobreOJogo; // sumiu sozinha: não é recusa, o card da janela continua esperando
+            _ofertaSobreOJogo.Expirou += () => { FecharOfertaSobreOJogo(); _teleSessao?.Evento("sugestao_fps", new JsonObject { ["acao"] = "expirou", ["quadros_s"] = _sugestaoFps.Tipico }); }; // sumiu sozinha: não é recusa, o card da janela continua esperando
+            _ofertaSobreOJogo.Desligou += DesligarOfertaSobreOJogo;
         }
         _atalhoDaOferta ??= new AtalhoGlobal(TeclaDoAtalhoDaOferta, AceitarSugestao30Fps);
-        string? dica = _atalhoDaOferta.Registrado ? $"Ou aperte {NomeDoAtalhoDaOferta}." : null;
+        string? dica = _atalhoDaOferta.Registrado ? $"{NomeDoAtalhoDaOferta} troca para 30." : null;
         if (_ofertaSobreOJogo.Mostrar(MonitorBounds(atual.Source), _sugestaoFps.Tipico, dica)) return true;
         FecharOfertaSobreOJogo();
         return false;
     }
 
-    /// <summary>Esconde a oferta sobre o jogo e solta o atalho (a combinação só fica presa enquanto o aviso está na tela).</summary>
-    void FecharOfertaSobreOJogo()
+    /// <summary>"Não mostrar no jogo": o aviso diz por uns segundos como religar (a pessoa está jogando e não vê outra confirmação) e a opção é gravada como a de Aparência. Não é recusa: o card da janela continua.</summary>
+    void DesligarOfertaSobreOJogo()
     {
-        _ofertaSobreOJogo?.Esconder();
+        _ofertaSobreOJogo?.MostrarConfirmacao(FraseAvisoDesligado, TimeSpan.FromSeconds(3));
+        MudarOfertaSobreOJogo(false, "aviso");
+        Notify(FraseAvisoDesligado);
+    }
+
+    /// <summary>
+    /// Único caminho que liga ou desliga o aviso sobre o jogo, chamado pelo aviso, por Aparência e pela tela Transmitir: grava, deixa os dois
+    /// interruptores iguais (sem laço), tira o aviso da tela e conta na telemetria de onde veio a mudança ("aviso", "aparencia" ou "transmitir").
+    /// </summary>
+    void MudarOfertaSobreOJogo(bool ligado, string origem)
+    {
+        if (_mudandoOfertaSobreOJogo || _state.OfertaFpsSobreOJogoDesligada == !ligado) return;
+        _mudandoOfertaSobreOJogo = true;
+        try
+        {
+            _state.OfertaFpsSobreOJogoDesligada = !ligado;
+            if (!Automated) _state.Save();
+            _ofertaNoJogoOn.Checked = ligado;
+            if (_ofertaNoJogoTransmitir is { IsDisposed: false } outro) outro.Checked = ligado;
+            if (!ligado) FecharOfertaSobreOJogo();
+            Log.Info($"[qualidade] a pessoa {(ligado ? "religou" : "desligou")} o aviso de 30 FPS por cima do jogo (origem: {origem}).");
+            _teleSessao?.Evento("sugestao_fps", new JsonObject { ["acao"] = ligado ? "religou" : "desligou", ["origem"] = origem });
+        }
+        finally { _mudandoOfertaSobreOJogo = false; }
+    }
+
+    /// <summary>O mesmo interruptor de Aparência, para a seção Avançados da tela Transmitir (cada preparação cria o seu).</summary>
+    ToggleSwitch NovoInterruptorDaOfertaNaTransmissao()
+    {
+        var interruptor = new ToggleSwitch { Text = _ofertaNoJogoOn.Text, AutoSize = true, Checked = !_state.OfertaFpsSobreOJogoDesligada };
+        interruptor.CheckedChanged += (_, _) => MudarOfertaSobreOJogo(interruptor.Checked, "transmitir");
+        _ofertaNoJogoTransmitir = interruptor;
+        return interruptor;
+    }
+
+    /// <summary>
+    /// Esconde a oferta sobre o jogo e solta o atalho (a combinação só fica presa enquanto o aviso está na tela). Uma frase de retorno que ainda
+    /// está aparecendo termina sozinha, a não ser que <paramref name="forcar"/>.
+    /// </summary>
+    void FecharOfertaSobreOJogo(bool forcar = false)
+    {
+        if (forcar || _ofertaSobreOJogo is not { EmMensagem: true }) _ofertaSobreOJogo?.Esconder();
         _atalhoDaOferta?.Dispose();
         _atalhoDaOferta = null;
     }
@@ -117,6 +169,7 @@ public sealed partial class MainForm
     void AceitarSugestao30Fps()
     {
         int quadros = _sugestaoFps.Tipico;
+        if (_sender.Running && _sender.Current is { Preset.Fps: 60 }) _ofertaSobreOJogo?.MostrarConfirmacao("Live em 30 FPS.", TimeSpan.FromSeconds(2)); // quem aceitou pelo atalho, jogando, não vê mais nada mudar
         _sugestaoFps.Esconder();
         AtualizarSugestaoCard();
         if (!_sender.Running || _sender.Current is not { Preset.Fps: 60 } atual) return;

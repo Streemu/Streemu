@@ -300,7 +300,7 @@ public sealed partial class FilmeTela
             _inicioSessao = DateTime.Now;
             TrocasDaFila++;
             LigarSessao(nova);
-            Log.Info($"[filme] fila: sigo o anfitrião para \"{nome}\" ({para}); a ligação é a mesma.");
+            Log.Info($"[filme] fila: sigo o anfitrião para o próximo episódio ({para}); a ligação é a mesma."); // sem o nome do arquivo (spec 018)
             // o anfitrião responde com as permissões e o estado atual (o "primeiro" é o que dispara isso)
             _lig.Enviar(new JsonObject { ["type"] = "filme_pronto", ["filme"] = para, ["pronto"] = true, ["nome"] = _lig.MeuNome, ["id"] = MeuId, ["primeiro"] = true });
             _trocandoPara = null;

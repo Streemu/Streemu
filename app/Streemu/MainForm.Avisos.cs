@@ -82,7 +82,7 @@ public sealed partial class MainForm
         if (AmigosMudos.Contem(from)) { Log.Info($"[silêncio] aviso de filme de {NomeNaTela(from, nick)} calado (amigo silenciado)."); return; }
         if (_avisoSalaDesde is not { } desde || DateTime.Now - desde < AvisoSemente) return;
         if (_filmeForm?.Sessao != null) return; // já está num filme (o próprio ou o dele)
-        Enfileirar(from, NomeNaTela(from, nick), "abriu um filme", $"abriu um filme: {nome}. Clique em Filme para assistir junto");
+        Enfileirar(from, NomeNaTela(from, nick), "abriu um filme", $"abriu um filme: {nome}. Clique em Filme para assistir junto", "abriu um filme"); // o nome do filme fica na tela, não no log (spec 018)
     }
 
     /// <summary>Marca como visto; verdadeiro só na primeira vez (esquece o que sumiu há mais de 6 h).</summary>
@@ -96,9 +96,10 @@ public sealed partial class MainForm
     }
 
     /// <summary>O nome é só o texto do aviso; quem é a pessoa é o id (dois amigos podem ter o mesmo nome e os dois entram no aviso).</summary>
-    void Enfileirar(string id, string nick, string curto, string longo)
+    /// <param name="paraLog">O que vai ao log no lugar do texto da tela, quando este tem algo que o log não pode ter (nome de arquivo).</param>
+    void Enfileirar(string id, string nick, string curto, string longo, string? paraLog = null)
     {
-        Log.Info($"[amigo] {nick} {longo}."); // não é "[aviso]": isso é informação, e a telemetria conta toda linha "[aviso]" como falha
+        Log.Info($"[amigo] {nick} {paraLog ?? longo}."); // não é "[aviso]": isso é informação, e a telemetria conta toda linha "[aviso]" como falha
         if (!_avisos.Checked || Automated) return;
         if (_avisoFila.Count == 0) _avisoFilaDesde = DateTime.Now;
         _avisoFila.RemoveAll(a => a.Id == id); // a mesma pessoa duas vezes no mesmo aviso: vale a última

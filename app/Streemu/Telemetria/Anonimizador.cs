@@ -20,7 +20,7 @@ public static class Anonimizador
     static volatile bool _pronto;
 
     /// <summary>Campos de identidade que nunca sobem no modo anônimo (o resto do evento passa pela troca de nomes).</summary>
-    static readonly string[] CamposDeIdentidade = { "discord_id", "discord_nome", "apelido", "install", "outro_install", "outro_apelido", "hw" };
+    static readonly string[] CamposDeIdentidade = { "discord_id", "discord_nome", "apelido", "install", "outro_install", "outro_conta", "outro_apelido", "hw" };
 
     /// <summary>Já dá para subir: a sala trouxe os amigos (ou passou tempo suficiente sem sala). Antes disso um nome ainda desconhecido vazaria.</summary>
     public static bool Pronto => _pronto;

@@ -47,8 +47,11 @@ public sealed partial class MainForm
     Control PaginaDiagnostico() => SettingsSection("Diagnóstico",
         B.Cartao(_diagnosisSummary),
         B.Cartao(B.Legenda("Envio"), _teleEnviar,
-            B.Nota("Dados do PC e logs para a equipe do Streemu, sem IP ou senhas. Desligado, continua subindo para consertar bugs, mas anônimo: sem seu nome, seu Discord nem o nome dos amigos."),
+            B.Nota("Dados do PC e logs para a equipe do Streemu, sem IP ou senhas. Desligado, nenhum log nem dado do PC sai; segue só a contagem de uso, sem guardar quem foi."),
+            _teleAnonimo, _teleAnonimoDica,
+            _teleIaLinha,
             B.Botoes(_teleMarcar, _teleVer, _teleSobre)),
+        CartaoHistoricoEnvios(), // MainForm.HistoricoDiagnostico.cs
         B.Cartao(B.Legenda("Ferramentas"), B.Botoes(_report, _openLogs)),
         B.Cartao(B.Legenda("Avançado"), B.Subtitulo("Encoder"), _encoder, B.Subtitulo("Latência SRT"), _latency,
             B.Nota("Deixe o encoder em Automático, a menos que a live não comece. A latência vale também para as lives que você assiste. Os dois voltam ao padrão quando o app abre.", alinhadaAoInterruptor: false)),

@@ -171,7 +171,15 @@ PROBLEMA?
 - O diagnóstico vai sozinho para a equipe do Streemu: specs do PC (processador, placa de vídeo e
   driver, Windows, rede) e os logs, sem IP, sem senhas e sem o nome do seu usuário do Windows.
   Para ver o que vai: Configurações > Diagnóstico > "Ver o que é enviado". Para desligar: desmarque
-  "Enviar diagnóstico" na mesma seção. O botão "Sobre o diagnóstico" (na mesma seção) explica tudo: o que vai, para quê, quem vê, por quanto tempo e como pedir para apagar (à equipe do Streemu, em até 5 dias úteis). Desligado, o app continua mandando o diagnóstico, mas anônimo: sem o seu nome, o seu Discord nem o nome dos amigos (trocados por "pessoa-1", "pessoa-2"...), e sem a nota do Marcar problema.
+  "Enviar diagnóstico" na mesma seção: desligado, nenhum log nem dado do PC sai; segue só a contagem
+  de uso (o app abriu, uma live aconteceu, algo grave falhou), sem guardar quem foi. Se quiser
+  ajudar sem dizer quem você é, ligue "Enviar diagnóstico anônimo" (só aparece com o de cima
+  desligado): sobe sem o seu nome, o seu Discord nem o nome dos amigos (trocados por "pessoa-1",
+  "pessoa-2"...) e sem a nota do Marcar problema; anônimo não é anonimato completo. O botão "Sobre o
+  diagnóstico" explica tudo: o que vai, por que podemos, quem vê, por quanto tempo, onde fica, o que
+  a IA lê e como pedir para apagar (à equipe do Streemu, em até 5 dias úteis). Ele também lembra que,
+  na conexão direta, o amigo recebe o IP do seu PC, e que o Discord mostra que você está ao vivo e o
+  jogo. A mesma página aparece no instalador.
 - Logo acima da bandeira fica o sinal do diagnóstico: ✓ verde = tudo o que o app gravou já chegou
   ao servidor; ✕ vermelho = não está chegando (passe o mouse para ver o motivo; nada se perde, ele
   tenta de novo sozinho); ○ cinza = desligado ou começando.

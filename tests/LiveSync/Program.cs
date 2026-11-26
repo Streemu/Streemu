@@ -184,10 +184,10 @@ Check("telemetria-grava-lote-isolado-e-mostra-falha-de-disco", () =>
         using (var series = new Streemu.Telemetria.SerieSincronia(session))
             for (int i = 0; i < 5; i++) series.Add("live-teste", "ligacao-teste", "assiste", new() { ["delta_ms"] = i });
         Streemu.Telemetria.Gravador.Descarregar(TimeSpan.FromSeconds(10)); // a gravação é assíncrona (etapa 8)
-        string file = Path.Combine(session.Dir, Streemu.Telemetria.SerieSincronia.Arquivo);
-        Require(File.ReadAllLines(file).Length == 5 && session.Arquivos().Any(x => x.Nome == "sincronia.ndjson"), "Perdeu lote final ou não incluiu no envio.");
+        string file = Path.Combine(session.Dir, session.ArquivoSincronia); // uma série por live: sincronia-1.ndjson
+        Require(File.ReadAllLines(file).Length == 5 && session.Arquivos().Any(x => x.Nome == Streemu.Telemetria.SessaoLocal.NomeSincronia(1)), "Perdeu lote final ou não incluiu no envio.");
         var broken = Streemu.Telemetria.SessaoLocal.Criar("sessao-disco-teste", null, naoEnviar: true);
-        Directory.CreateDirectory(Path.Combine(broken.Dir, Streemu.Telemetria.SerieSincronia.Arquivo));
+        Directory.CreateDirectory(Path.Combine(broken.Dir, broken.ArquivoSincronia));
         using (var series = new Streemu.Telemetria.SerieSincronia(broken)) series.Add(null, "codigo", "assiste", new() { ["medida"] = "sem_medida_recente" });
         Streemu.Telemetria.Gravador.Descarregar(TimeSpan.FromSeconds(10));
         Require(!string.IsNullOrWhiteSpace(broken.FalhaLocal), "Falha de disco ficou invisível.");

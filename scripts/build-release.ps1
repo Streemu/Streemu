@@ -129,7 +129,11 @@ if (-not $SoAtualizacao) {
     if (-not $iscc) { $c = Get-Command ISCC.exe -ErrorAction SilentlyContinue; if ($c) { $iscc = $c.Source } }
     if ($iscc) {
         Remove-Item $inst -ErrorAction SilentlyContinue
-        & $iscc /Q "/DVersao=$ver" "/DOrigem=$out" "/DSaida=$dist" (Join-Path $root 'instalador\streemu.iss')
+        # pagina de privacidade do instalador (spec 018, D7): o proprio exe grava o texto do app, para nao existir uma segunda copia
+        $priv = Join-Path $dist "privacidade-$ver.txt"
+        $p = Start-Process -FilePath (Join-Path $out 'Streemu.exe') -ArgumentList @('--exportar-privacidade', "`"$priv`"") -Wait -PassThru -WindowStyle Hidden
+        if ($p.ExitCode -ne 0 -or -not (Test-Path $priv)) { throw "Streemu.exe --exportar-privacidade saiu com $($p.ExitCode) e nao gravou $priv" }
+        & $iscc /Q "/DVersao=$ver" "/DOrigem=$out" "/DSaida=$dist" "/DPrivacidade=$priv" (Join-Path $root 'instalador\streemu.iss')
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup falhou ao gerar o instalador" }
     }
     else { Write-Host 'Inno Setup 6 nao encontrado: pulei o instalador. Instale com: winget install JRSoftware.InnoSetup' -ForegroundColor Yellow }

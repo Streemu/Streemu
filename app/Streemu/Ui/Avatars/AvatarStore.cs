@@ -61,6 +61,8 @@ public sealed class AvatarStore
             var load = format == AvatarFormat.Strip ? AvatarFilmstrip.Decode(bytes) : AvatarDecoder.Load(bytes, AvatarOrigin.LocalFile);
             if (load.Image == null) { Log.Info($"O avatar guardado não abriu ({load.Error}); ignorado."); continue; }
             Apply(load.Image, bytes, format);
+            // "aparecer" é o que conta para o prazo de 90 dias do avatar guardado (Manutencao.LimparAvatares): quem abre o app com ele não o perde
+            try { if (DateTime.UtcNow - File.GetLastWriteTimeUtc(path) > TimeSpan.FromDays(1)) File.SetLastWriteTimeUtc(path, DateTime.UtcNow); } catch { }
             return;
         }
     }

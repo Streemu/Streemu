@@ -103,7 +103,7 @@ public sealed class Historico
     Gravado Carregar()
     {
         if (_arquivo == null || !File.Exists(_arquivo)) return new Gravado();
-        try { return JsonSerializer.Deserialize<Gravado>(File.ReadAllText(_arquivo), Formato) ?? new Gravado(); }
+        try { return JsonSerializer.Deserialize<Gravado>(Telemetria.CofreLocal.LerArquivo(_arquivo), Formato) ?? new Gravado(); } // cifrado desde a A8 do plano 018 (tem nome de amigo e caminho de arquivo); o antigo, em claro, também abre
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
         {
             _log($"[arquivo] histórico ilegível, começo vazio: {e.Message}");
@@ -120,7 +120,7 @@ public sealed class Historico
             string texto;
             lock (_trava) texto = JsonSerializer.Serialize(_dados, Formato);
             Directory.CreateDirectory(Path.GetDirectoryName(_arquivo)!);
-            File.WriteAllText(_arquivo + ".tmp", texto);
+            File.WriteAllText(_arquivo + ".tmp", Telemetria.CofreLocal.Arquivo(texto));
             File.Move(_arquivo + ".tmp", _arquivo, overwrite: true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { _log($"[arquivo] não consegui gravar o histórico: {e.Message}"); }

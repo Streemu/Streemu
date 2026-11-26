@@ -407,7 +407,7 @@ public sealed partial class FilmeTela : UserControl
         LigarSessao(s); // FilmeTela.Fila.cs
         _caminhoArquivo = caminho;
         mpv.Saiu += () => Ui(() => { if (!IsDisposed) Avisar("O player fechou."); });
-        Log.Info($"[filme] {(anfitriao ? "anfitrião" : "espectador")}: {nome} ({id})");
+        Log.Info($"[filme] {(anfitriao ? "anfitrião" : "espectador")}: (nome do filme fora do log) ({id})"); // o nome do filme é o do arquivo da pessoa: fica na tela, não na telemetria (spec 018)
         Player = mpv;
         if (MpvUi.Ligada) mpv.Mensagem += a => Ui(() => AcaoUi(a));
         _inicioSessao = DateTime.Now;

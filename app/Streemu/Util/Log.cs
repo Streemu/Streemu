@@ -1,6 +1,6 @@
 namespace Streemu.Util;
 
-/// <summary>Log simples em arquivo (%LOCALAPPDATA%\Streemu\logs) e em memória para a tela e o relatório.</summary>
+/// <summary>Log simples em arquivo (%LOCALAPPDATA%\Streemu\logs, uma linha cifrada por linha de log: <see cref="Telemetria.CofreLocal"/>) e em memória para a tela e o relatório.</summary>
 public static class Log
 {
     static readonly object Gate = new();
@@ -37,7 +37,8 @@ public static class Log
         lock (Gate)
         {
             // disco cheio ou arquivo bloqueado não pode derrubar quem chamou o log (era exceção solta na thread que logava)
-            try { _writer?.WriteLine(line); if (_writer != null) FalhaGravacao = null; }
+            // o arquivo guarda cada linha cifrada (spec 018, D21): o log tem nome de amigo, de jogo e de arquivo. A tela e o relatório usam a linha em memória.
+            try { _writer?.WriteLine(Telemetria.CofreLocal.Linha(line)); if (_writer != null) FalhaGravacao = null; }
             catch (Exception e) { FalhaGravacao = e.Message; }
             Recent.AddLast(line);
             while (Recent.Count > 1500) Recent.RemoveFirst();

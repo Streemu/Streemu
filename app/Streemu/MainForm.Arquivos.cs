@@ -60,8 +60,8 @@ public partial class MainForm
             case MensagemArquivo.Visto: p.Visto = true; break;
             case MensagemArquivo.Aceito when p.Sentido == Sentido.Enviado: _ = AceitoPeloAmigoAsync(p, msg); break;
             case MensagemArquivo.Ligar when p.Sentido == Sentido.Recebido: LigarAoRemetente(p, msg); break;
-            case MensagemArquivo.Recusado: TerminarPedido(p, FaseArquivo.Recusado, MensagemArquivo.MotivoDe(msg) ?? $"{p.Apelido} recusou."); break;
-            case MensagemArquivo.Cancelado: TerminarPedido(p, FaseArquivo.Cancelado, MensagemArquivo.MotivoDe(msg) ?? $"{p.Apelido} cancelou."); break;
+            case MensagemArquivo.Recusado: TerminarPedido(p, FaseArquivo.Recusado, MensagemArquivo.MotivoDe(msg) ?? $"{p.Apelido} recusou.", "outro_recusou"); break;
+            case MensagemArquivo.Cancelado: TerminarPedido(p, FaseArquivo.Cancelado, MensagemArquivo.MotivoDe(msg) ?? $"{p.Apelido} cancelou.", "outro_cancelou"); break;
             case MensagemArquivo.Concluido when p.Sentido == Sentido.Enviado: TerminarPedido(p, FaseArquivo.Conferido, null); break;
         }
     }
@@ -167,16 +167,16 @@ public partial class MainForm
     }
 
     internal void RecusarPedidoArquivo(string pedido) =>
-        EncerrarPorMim(pedido, MensagemArquivo.Recusado, FaseArquivo.Recusado, $"{Nick} recusou.", "Você recusou.");
+        EncerrarPorMim(pedido, MensagemArquivo.Recusado, FaseArquivo.Recusado, $"{Nick} recusou.", "Você recusou.", "voce_recusou");
 
     internal void CancelarPedidoArquivo(string pedido) =>
-        EncerrarPorMim(pedido, MensagemArquivo.Cancelado, FaseArquivo.Cancelado, $"{Nick} cancelou.", "Você cancelou.");
+        EncerrarPorMim(pedido, MensagemArquivo.Cancelado, FaseArquivo.Cancelado, $"{Nick} cancelou.", "Você cancelou.", "voce_cancelou");
 
-    void EncerrarPorMim(string pedido, string tipo, FaseArquivo fase, string paraOAmigo, string aqui)
+    void EncerrarPorMim(string pedido, string tipo, FaseArquivo fase, string paraOAmigo, string aqui, string causa)
     {
         if (!_pedidosArquivo.TryGetValue(pedido, out var p) || p.Terminado) return;
         _ = _room?.SendTo(p.AmigoId, MensagemArquivo.Simples(tipo, pedido, paraOAmigo));
-        TerminarPedido(p, fase, aqui);
+        TerminarPedido(p, fase, aqui, causa);
     }
 
     /// <summary>Quem recebe, pelo histórico: pede o mesmo arquivo de novo (D6). A oferta que voltar é aceita sozinha.</summary>
@@ -202,7 +202,7 @@ public partial class MainForm
         string? caminho = p.Caminhos.GetValueOrDefault(arquivo.Identidade);
         if (caminho == null || !await Task.Run(() => AindaIgual(caminho, arquivo.Identidade)))
         {
-            EncerrarPorMim(pedido, MensagemArquivo.Recusado, FaseArquivo.Recusado, $"O arquivo mudou ou não está mais no PC de {Nick}.", "O arquivo mudou ou saiu do lugar.");
+            EncerrarPorMim(pedido, MensagemArquivo.Recusado, FaseArquivo.Recusado, $"O arquivo mudou ou não está mais no PC de {Nick}.", "O arquivo mudou ou saiu do lugar.", "arquivo_mudou");
             return "O arquivo mudou ou saiu do lugar desde que você mandou.";
         }
         _pedidosArquivo.Remove(pedido);
@@ -226,9 +226,9 @@ public partial class MainForm
         foreach (var p in _pedidosArquivo.Values.ToList())
         {
             if (p.Terminado) { if (agora - p.TerminouEm > GuardarTerminado) _pedidosArquivo.Remove(p.Pedido); continue; }
-            if (p.SemVisto(agora)) TerminarPedido(p, FaseArquivo.PrecisaAtualizar, MotivoSemVisto(p));
+            if (p.SemVisto(agora)) TerminarPedido(p, FaseArquivo.PrecisaAtualizar, MotivoSemVisto(p), _room?.IsPresent(p.AmigoId) == true ? "versao_antiga" : "saiu_da_sala");
             else if (p.Venceu(agora)) ExpirarPedido(p);
-            else if (LigacaoArquivoCaiu(p)) TerminarPedido(p, p.Fase == FaseArquivo.Conectando ? FaseArquivo.Falhou : FaseArquivo.Parou, $"A ligação com {p.Apelido} caiu. O que já veio fica guardado.");
+            else if (LigacaoArquivoCaiu(p)) TerminarPedido(p, p.Fase == FaseArquivo.Conectando ? FaseArquivo.Falhou : FaseArquivo.Parou, $"A ligação com {p.Apelido} caiu. O que já veio fica guardado.", "ligacao_caiu");
             else AtualizarProgressoDoEnvio(p);
         }
         if (_pedidosArquivo.Values.Any(p => !p.Terminado)) AvisarMudancaArquivos();
@@ -247,6 +247,14 @@ public partial class MainForm
     {
         if (p.Fase == FaseArquivo.ConfirmandoRelay)
             _ = _room?.SendTo(p.AmigoId, MensagemArquivo.Simples(MensagemArquivo.Cancelado, p.Pedido, "O pedido expirou."));
-        TerminarPedido(p, FaseArquivo.Expirou, "O pedido expirou: ninguém respondeu em 10 min.");
+        // lista fechada: de quem era a vez de responder (o amigo viu a oferta mas não aceitou; eu não respondi à dele; a cota do relay; o pedir de novo sem oferta de volta)
+        string causa = p.Fase switch
+        {
+            FaseArquivo.ConfirmandoRelay => "cota_sem_resposta",
+            FaseArquivo.AguardandoDeNovo => "pedido_de_novo_sem_oferta",
+            FaseArquivo.PedidoDeNovo => "voce_nao_respondeu",
+            _ => p.Sentido == Sentido.Enviado ? "outro_nao_aceitou" : "voce_nao_aceitou",
+        };
+        TerminarPedido(p, FaseArquivo.Expirou, "O pedido expirou: ninguém respondeu em 10 min.", causa);
     }
 }

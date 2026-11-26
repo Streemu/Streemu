@@ -16,5 +16,7 @@
     <!-- Só o núcleo da telemetria do caminho de mídia (sem o app): o teste confere os eventos de tentativa, falha e recuperação do player. -->
     <Compile Include="../../app/Streemu/Telemetria/CaminhoMidia.cs" Link="CaminhoMidia.cs" />
     <Compile Include="../../app/Streemu/Telemetria/CargaRecente.cs" Link="CargaRecente.cs" />
+    <!-- Tools.cs limpa o stderr do ffmpeg/mpv com Higiene (caminho e convite) antes de logar. -->
+    <Compile Include="../../app/Streemu/Telemetria/Higiene.cs" Link="Higiene.cs" />
   </ItemGroup>
 </Project>

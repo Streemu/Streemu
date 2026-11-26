@@ -108,7 +108,7 @@ public sealed class DiscordPresence : IDisposable
                 var (op, ready) = Read(pipe);
                 if (op != 1 || ready?["evt"]?.GetValue<string>() != "READY")
                 {
-                    Log.Info($"Discord recusou o streemu: {ready?["message"] ?? ready?["data"]?["message"] ?? ready?.ToJsonString()}");
+                    Log.Info($"Discord recusou o streemu: {ready?["message"] ?? ready?["data"]?["message"] ?? "sem mensagem"}"); // nunca o JSON inteiro do READY: traz o usuário do Discord (spec 018, D25)
                     pipe.Dispose();
                     return false;
                 }
@@ -118,7 +118,7 @@ public sealed class DiscordPresence : IDisposable
                 DiscordAvatarCode = ready["data"]?["user"]?["avatar"]?.GetValue<string>();
                 Connected = true; // só depois da conta: quem vê Connected já lê nome e avatar preenchidos
                 _loggedMissing = false;
-                Log.Info($"Discord conectado ({DiscordUser ?? "usuário desconhecido"}): o perfil mostra quando você estiver transmitindo.");
+                Log.Info("Discord conectado: o perfil mostra quando você estiver transmitindo."); // sem o nome da conta do Discord no log
                 // "Participar" sem navegador: quem assiste recebe ACTIVITY_JOIN; quem transmite aceita sozinho os pedidos
                 // (ACTIVITY_JOIN_REQUEST). Aceitar qualquer um é seguro: sem a senha da sala do grupo o segredo não abre nada.
                 foreach (var evt in new[] { "ACTIVITY_JOIN", "ACTIVITY_JOIN_REQUEST" })
@@ -166,7 +166,7 @@ public sealed class DiscordPresence : IDisposable
                     case 1 when (msg!["cmd"] as JsonValue)?.GetValue<string>() == "SET_ACTIVITY" && msg["data"] is JsonObject accepted:
                         // resposta de sucesso: o Discord devolve a presença como ficou (serve para conferir o grupo público)
                         LastAccepted = accepted.ToJsonString();
-                        if (_lastHadPrivacy) Log.Info($"Discord aceitou a presença com grupo público (party: {accepted["party"]?.ToJsonString() ?? "-"}).");
+                        if (_lastHadPrivacy) Log.Info("Discord aceitou a presença com grupo público.");
                         break;
                     case 1 when Evt(msg) == "ACTIVITY_JOIN":
                         if (msg!["data"]?["secret"]?.GetValue<string>() is string secret)
@@ -178,7 +178,7 @@ public sealed class DiscordPresence : IDisposable
                     case 1 when Evt(msg) == "ACTIVITY_JOIN_REQUEST":
                         if (msg!["data"]?["user"]?["id"]?.GetValue<string>() is string userId)
                         {
-                            Log.Info($"Discord: {msg["data"]?["user"]?["username"]} pediu para participar; aceitando.");
+                            Log.Info("Discord: alguém pediu para participar; aceitando.");
                             lock (pipe) Write(pipe, 1, new JsonObject
                             {
                                 ["cmd"] = "SEND_ACTIVITY_JOIN_INVITE", ["args"] = new JsonObject { ["user_id"] = userId },
@@ -241,7 +241,7 @@ public sealed class DiscordPresence : IDisposable
             ["nonce"] = Guid.NewGuid().ToString("N")
         };
         lock (pipe) Write(pipe, 1, frame);
-        Log.Info(info == null ? "Discord: presença apagada." : $"Discord: presença \"{info.Details} · {info.State}\".");
+        Log.Info(info == null ? "Discord: presença apagada." : "Discord: presença atualizada."); // sem o texto: traz o jogo e o nome de quem transmite
     }
 
     static string Clip(string s, int max) => s.Length <= max ? (s.Length < 2 ? s + "  " : s) : s[..max];

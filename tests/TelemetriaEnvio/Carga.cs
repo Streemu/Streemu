@@ -196,6 +196,9 @@ static class Carga
             }) ?? throw new Exception("não consegui iniciar o servidor falso");
             string? l = p.StandardOutput.ReadLine();
             if (l == null || !l.StartsWith("PORTA=")) { try { p.Kill(); } catch { } throw new Exception("servidor falso não informou a porta: " + l); }
+            string? c = p.StandardOutput.ReadLine();
+            if (c == null || !c.StartsWith("CHAVE=")) { try { p.Kill(); } catch { } throw new Exception("servidor falso não informou a chave pública de teste: " + c); }
+            Environment.SetEnvironmentVariable(Streemu.Telemetria.CifraEnvio.VarChaveTeste, c[6..]); // o app cifra para ESTE servidor
             return new Servidor(p, int.Parse(l[6..]));
         }
 

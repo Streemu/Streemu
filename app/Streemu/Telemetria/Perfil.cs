@@ -13,8 +13,10 @@ namespace Streemu.Telemetria;
 /// <summary>
 /// Perfil do PC (spec 009, seção 5.1): tudo o que já explicou ou pode explicar um bug que só acontece numa máquina (RX 570 sem AMF, notebook com
 /// Intel + GTX, HDR de um amigo, cor avançada, NAT da operadora). "estavel" muda raramente (o hash dele decide se o índice recebe de novo);
-/// "momento" é o retrato da hora (bateria, Wi-Fi, programas abertos). Roda em segundo plano: o WMI leva até alguns segundos.
-/// Nada de IP, MAC, nome do PC, nome do usuário nem SSID.
+/// "momento" é o retrato da hora (bateria, Wi-Fi, ajustes gráficos do Windows). Roda em segundo plano: o WMI leva até alguns segundos.
+/// Nada de IP, MAC, nome do PC, nome do usuário nem SSID. O conjunto é o enxuto da spec 018 (seção 5): sem fabricante e modelo do PC, pentes de RAM,
+/// KB e data de instalação do Windows; rede, áudio, plano de energia, pasta do app e argumentos de abertura só em forma geral. Programas que interferem e
+/// antivírus saem do perfil de rotina e ficam só em <see cref="SobDemanda"/> (sobem com a A6, que decide quando e em quais estados).
 /// </summary>
 public static partial class Perfil
 {
@@ -34,16 +36,13 @@ public static partial class Perfil
             ["audio"] = Tenta(Audio),
             ["rede"] = Tenta(Rede),
         };
+        // HAGS, Modo de Jogo, Game DVR e captura Xbox ficam aqui, não no "estavel" (D26): mudar um deles não pode gerar perfil novo para o índice
         var momento = new JsonObject
         {
             ["hora_utc"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-            ["fuso"] = TimeZoneInfo.Local.BaseUtcOffset.ToString(),
-            ["ligado_ha_h"] = Math.Round(Environment.TickCount64 / 3600000.0, 1),
             ["energia"] = Tenta(Energia),
             ["wifi"] = Tenta(Wifi),
-            ["programas_que_interferem"] = Tenta(Programas),
-            ["antivirus"] = Tenta(Antivirus),
-            ["ram_livre_mb"] = Tenta(() => JsonValue.Create(RamLivreMb())),
+            ["windows_jogo"] = Tenta(WindowsJogo),
         };
         return new JsonObject { ["estavel"] = estavel, ["momento"] = momento };
     }
@@ -89,8 +88,7 @@ public static partial class Perfil
         return new JsonObject
         {
             ["versao"] = Program.Version, ["commit"] = BuildInfo.Commit.Length >= 7 ? BuildInfo.Commit[..7] : "", ["canal"] = BuildInfo.Canal,
-            ["pasta"] = Higiene.Limpar(pasta),
-            // pasta do instalador: Programs\Streemu
+            // só se está instalado (pasta do instalador: Programs\Streemu); o caminho em si não sobe
             ["instalado"] = pasta.Contains(@"\Programs\Streemu", StringComparison.OrdinalIgnoreCase),
             // sem caminho: só diz se é o que vem com o app e bate com o SHA-256 esperado ("embutido"), um de teste ("teste") ou se não pode ser usado ("invalido")
             ["ffmpeg"] = Binarios.Origem(Binario.Ffmpeg), ["ffplay"] = Binarios.Origem(Binario.Ffplay), ["mpv"] = Binarios.Origem(Binario.Mpv),
@@ -118,48 +116,44 @@ public static partial class Perfil
         int build = int.TryParse(k?.GetValue("CurrentBuild")?.ToString(), out var b) ? b : Environment.OSVersion.Version.Build;
         string produto = k?.GetValue("ProductName")?.ToString() ?? "";
         if (build >= 22000) produto = produto.Replace("Windows 10", "Windows 11"); // o registro continua dizendo "10" no 11
-        long instalado = Convert.ToInt64(k?.GetValue("InstallDate") ?? 0L);
+        return new JsonObject
+        {
+            // DisplayVersion ("24H2") só existe a partir do 20H2; antes disso o nome era ReleaseId ("2004")
+            ["produto"] = produto, ["edicao"] = k?.GetValue("EditionID")?.ToString(),
+            ["versao"] = k?.GetValue("DisplayVersion")?.ToString() ?? k?.GetValue("ReleaseId")?.ToString(),
+            // o UBR já diz "uma atualização recente quebrou"; a lista de KBs e a data de instalação do Windows saíram (spec 018, 5.4)
+            ["build"] = build, ["ubr"] = k?.GetValue("UBR") is int ubr ? ubr : null,
+            ["idioma"] = CultureInfo.InstalledUICulture.Name,
+            ["processo_64bits"] = Environment.Is64BitProcess,
+        };
+    }
+
+    /// <summary>Ajustes gráficos e de jogo do Windows (D26): ficam no "momento", porque a pessoa os muda de vez em quando e isso não é PC novo.</summary>
+    static JsonNode WindowsJogo()
+    {
         using var gd = Hklm(@"SYSTEM\CurrentControlSet\Control\GraphicsDrivers");
         using var gameBar = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\GameBar");
         using var dvr = Registry.CurrentUser.OpenSubKey(@"System\GameConfigStore");
         using var captura = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\GameDVR");
         return new JsonObject
         {
-            // DisplayVersion ("24H2") só existe a partir do 20H2; antes disso o nome era ReleaseId ("2004")
-            ["produto"] = produto, ["edicao"] = k?.GetValue("EditionID")?.ToString(),
-            ["versao"] = k?.GetValue("DisplayVersion")?.ToString() ?? k?.GetValue("ReleaseId")?.ToString(),
-            ["build"] = build, ["ubr"] = k?.GetValue("UBR") is int ubr ? ubr : null,
-            ["instalado_em"] = instalado > 0 ? DateTimeOffset.FromUnixTimeSeconds(instalado).ToString("yyyy-MM-dd") : null,
-            ["idioma"] = CultureInfo.InstalledUICulture.Name,
-            ["ultima_atualizacao"] = UltimaAtualizacao(),
             // 2 = ligado, 1 = desligado, ausente = o padrão do driver
             ["agendamento_gpu_hardware"] = gd?.GetValue("HwSchMode") is int h ? (h == 2 ? "ligado" : "desligado") : "padrão",
             ["modo_de_jogo"] = gameBar?.GetValue("AutoGameModeEnabled") is int gm ? gm == 1 : null,
             ["game_dvr"] = dvr?.GetValue("GameDVR_Enabled") is int gd2 ? gd2 == 1 : null,
             ["captura_xbox"] = captura?.GetValue("AppCaptureEnabled") is int ac ? ac == 1 : null,
-            ["processo_64bits"] = Environment.Is64BitProcess,
         };
-    }
-
-    static JsonNode? UltimaAtualizacao()
-    {
-        // Win32_QuickFixEngineering é lento (1–3 s): por isso o perfil todo roda fora da tela
-        var kbs = Wmi("SELECT HotFixID, InstalledOn FROM Win32_QuickFixEngineering")
-            .Select(o => (Id: o["HotFixID"]?.ToString() ?? "", Em: DateTime.TryParse(o["InstalledOn"]?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : DateTime.MinValue))
-            .OrderByDescending(x => x.Em).ToList();
-        if (kbs.Count == 0) return null;
-        return new JsonObject { ["kb"] = kbs[0].Id, ["em"] = kbs[0].Em == DateTime.MinValue ? null : kbs[0].Em.ToString("yyyy-MM-dd"), ["total_kbs"] = kbs.Count };
     }
 
     static JsonNode Maquina()
     {
-        var cs = WmiObrigatorio("SELECT Manufacturer, Model, PCSystemType, TotalPhysicalMemory FROM Win32_ComputerSystem", "sistema").First();
+        var cs = WmiObrigatorio("SELECT PCSystemType FROM Win32_ComputerSystem", "sistema").First();
         var chassi = Wmi("SELECT ChassisTypes FROM Win32_SystemEnclosure").FirstOrDefault()?["ChassisTypes"] as ushort[];
         // notebook: PCSystemType 2 (mobile) ou chassi 8–10, 14, 31, 32 (portátil, laptop, notebook, sub-notebook, conversível, destacável)
         bool notebook = Convert.ToInt32(cs?["PCSystemType"] ?? 0) == 2 || (chassi?.Any(c => c is 8 or 9 or 10 or 14 or 31 or 32) ?? false);
         return new JsonObject
         {
-            ["fabricante"] = cs?["Manufacturer"]?.ToString(), ["modelo"] = cs?["Model"]?.ToString(),
+            // sem fabricante nem modelo do PC (spec 018, 5.4): ninguém lê, e o modelo aponta para o aparelho
             ["tipo"] = notebook ? "notebook" : "desktop",
             ["tem_bateria"] = SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery,
         };
@@ -179,22 +173,9 @@ public static partial class Perfil
 
     static JsonNode Ram()
     {
-        var pentes = WmiObrigatorio("SELECT Capacity, Speed, ConfiguredClockSpeed FROM Win32_PhysicalMemory", "pente de memória");
-        return new JsonObject
-        {
-            ["total_gb"] = Math.Round(pentes.Sum(x => Convert.ToDouble(x["Capacity"])) / (1L << 30), 1),
-            ["pentes"] = new JsonArray(pentes.Select(x => (JsonNode)new JsonObject
-            {
-                ["gb"] = Math.Round(Convert.ToDouble(x["Capacity"]) / (1L << 30), 1),
-                ["mhz"] = Convert.ToInt32(x["ConfiguredClockSpeed"] ?? x["Speed"] ?? 0),
-            }).ToArray()),
-        };
-    }
-
-    static int RamLivreMb()
-    {
-        var m = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
-        return GlobalMemoryStatusEx(ref m) ? (int)(m.ullAvailPhys >> 20) : -1;
+        var pentes = WmiObrigatorio("SELECT Capacity FROM Win32_PhysicalMemory", "pente de memória");
+        // só o total: pentes, clock e RAM livre saíram (spec 018, 5.4)
+        return new JsonObject { ["total_gb"] = Math.Round(pentes.Sum(x => Convert.ToDouble(x["Capacity"])) / (1L << 30), 1) };
     }
 
     static JsonNode Gpus()
@@ -284,7 +265,7 @@ public static partial class Perfil
         {
             string n = nome.ToLowerInvariant();
             if (n.Contains("streemu") || n.EndsWith("ffmpeg.exe") || n.EndsWith("ffplay.exe"))
-                o[Higiene.Limpar(nome)] = k!.GetValue(nome)?.ToString();
+                o[Path.GetFileName(nome)] = k!.GetValue(nome)?.ToString(); // só o nome do exe: a pasta (que a Higiene mascara fora de C:\Users) não importa para a preferência
         }
         return o;
     }
@@ -292,16 +273,22 @@ public static partial class Perfil
     static JsonNode Audio()
     {
         using var e = new MMDeviceEnumerator();
+        // Só o formato (Hz, bits, canais) e a quantidade de saídas sobem; o NOME do fone e do microfone não (spec 018, 5.2: o caso do grave estourado se
+        // resolveu pelo formato). Os nomes só são ensinados à Higiene, que os tira de qualquer linha de log em que apareçam.
+        var nomes = new List<string>();
+        try { foreach (var d in e.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active)) using (d) nomes.Add(d.FriendlyName); } catch { }
+        Higiene.RegistrarDispositivos(nomes);
         JsonNode? Disp(DataFlow f, Role r)
         {
             try
             {
                 using var d = e.GetDefaultAudioEndpoint(f, r);
+                Higiene.RegistrarDispositivos(new[] { d.FriendlyName });
                 using var cliente = d.CreateAudioClient();
                 var fmt = cliente.MixFormat;
-                return new JsonObject { ["nome"] = d.FriendlyName, ["hz"] = fmt.SampleRate, ["bits"] = fmt.BitsPerSample, ["canais"] = fmt.Channels, ["formato"] = fmt.Encoding.ToString() };
+                return new JsonObject { ["hz"] = fmt.SampleRate, ["bits"] = fmt.BitsPerSample, ["canais"] = fmt.Channels, ["formato"] = fmt.Encoding.ToString() };
             }
-            catch (Exception ex) { return new JsonObject { ["erro"] = ex.Message }; }
+            catch (Exception ex) { return new JsonObject { ["erro"] = Higiene.Limpar(ex.Message) }; }
         }
         return new JsonObject
         {
@@ -322,18 +309,11 @@ public static partial class Perfil
             if (n.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
             if (n.OperationalStatus != OperationalStatus.Up) continue;
             string d = n.Description.ToLowerInvariant();
-            bool tem4 = false, temGateway = false;
-            try
-            {
-                var ip = n.GetIPProperties();
-                tem4 = ip.UnicastAddresses.Any(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
-                temGateway = ip.GatewayAddresses.Count > 0;
-            }
-            catch { }
+            // só cabo ou Wi-Fi, a velocidade e se é VPN (spec 018, 5.2): a descrição do adaptador, o IPv4 e o gateway saíram. A descrição só serve aqui para reconhecer a VPN.
             arr.Add(new JsonObject
             {
-                ["tipo"] = n.NetworkInterfaceType.ToString(), ["descricao"] = n.Description, ["mbps"] = n.Speed > 0 ? n.Speed / 1_000_000 : null,
-                ["vpn"] = Vpn.Any(d.Contains), ["ipv4"] = tem4, ["tem_gateway"] = temGateway,
+                ["tipo"] = n.NetworkInterfaceType switch { NetworkInterfaceType.Wireless80211 => "wifi", NetworkInterfaceType.Ethernet or NetworkInterfaceType.GigabitEthernet or NetworkInterfaceType.FastEthernetFx or NetworkInterfaceType.FastEthernetT => "cabo", _ => "outro" },
+                ["mbps"] = n.Speed > 0 ? n.Speed / 1_000_000 : null, ["vpn"] = Vpn.Any(d.Contains),
             });
         }
         return arr;
@@ -374,26 +354,32 @@ public static partial class Perfil
         bool ok = GetSystemPowerStatus(ref p);
         return new JsonObject
         {
-            ["na_tomada"] = ok ? p.ACLineStatus == 1 : null, ["bateria_pct"] = ok && p.BatteryLifePercent <= 100 ? p.BatteryLifePercent : null,
+            // sem a % da bateria (não muda diagnóstico) e com o plano só como categoria (o nome pode ser do fabricante), spec 018, 5.2
+            ["na_tomada"] = ok ? p.ACLineStatus == 1 : null,
             ["economia_de_bateria"] = ok ? p.SystemStatusFlag == 1 : null, ["plano"] = PlanoDeEnergia(),
         };
     }
 
-    /// <summary>Nome do plano de energia ativo pela função do Windows (antes abria o powercfg.exe: outro programa a menos para o antivírus estranhar).</summary>
+    /// <summary>
+    /// O plano de energia ativo como categoria: <c>economia</c>, <c>equilibrado</c>, <c>desempenho</c> ou <c>outro</c> (plano do fabricante ou criado
+    /// pela pessoa). Vem do GUID do plano pela função do Windows (antes abria o powercfg.exe: outro programa a menos para o antivírus estranhar).
+    /// </summary>
     static string? PlanoDeEnergia()
     {
         if (PowerGetActiveScheme(IntPtr.Zero, out var guid) != 0) return null;
-        try
-        {
-            uint tam = 0;
-            PowerReadFriendlyName(IntPtr.Zero, guid, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ref tam);
-            if (tam == 0 || tam > 4096) return null;
-            var buf = Marshal.AllocHGlobal((int)tam);
-            try { return PowerReadFriendlyName(IntPtr.Zero, guid, IntPtr.Zero, IntPtr.Zero, buf, ref tam) == 0 ? Marshal.PtrToStringUni(buf) : null; }
-            finally { Marshal.FreeHGlobal(buf); }
-        }
+        try { return CategoriaDoPlano(Marshal.PtrToStructure<Guid>(guid)); }
+        catch { return null; }
         finally { LocalFree(guid); }
     }
+
+    /// <summary>Os planos padrão do Windows pelo GUID; qualquer outro é "outro" (só o nome do plano de um fabricante já diz a marca do PC).</summary>
+    internal static string CategoriaDoPlano(Guid plano) => plano.ToString() switch
+    {
+        "a1841308-3541-4fab-bc81-f71556f20b4a" => "economia",
+        "381b4222-f694-41f0-9685-ff5bb260df2e" => "equilibrado",
+        "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" or "e9a42b02-d5df-448d-aa00-03f14749eb61" or "ded574b5-45a0-4f42-8737-46345c09c238" => "desempenho",
+        _ => "outro",
+    };
 
     /// <summary>
     /// "netsh wlan show interfaces" (rótulos no idioma do Windows). Sai tudo menos nome da rede, endereços físicos e perfil.
@@ -438,7 +424,9 @@ public static partial class Perfil
     /// </summary>
     internal static JsonObject? WifiDaSaida(byte[] bytes)
     {
-        var o = new JsonObject();
+        // Spec 018, 5.2: do netsh só sobem a banda (2,4 / 5 / 6 GHz) e o sinal em %, que explica perda em P2P. A descrição da placa, o canal, a taxa e o
+        // tipo de rádio ninguém lê. As barreiras de antes ficam: um rótulo de identidade ou um valor com cara de MAC/GUID nunca entra, em qualquer idioma.
+        string? banda = null; int? sinal = null, canal = null;
         foreach (var linha in DecodificarConsole(bytes).Split('\n'))
         {
             int i = linha.IndexOf(':');
@@ -448,9 +436,22 @@ public static partial class Perfil
             if (c.Contains("ssid") || c.Contains("físico") || c.Contains("fisico") || c.Contains("physical") || c.Contains("perfil") || c.Contains("profile")
                 || c.Contains("guid") || c == "nome" || c == "name" || chave.Length > 40) continue;
             if (Higiene.Mac().IsMatch(valor) || Guid().IsMatch(valor)) continue;
-            o[chave] = valor;
+            if (c is "sinal" or "signal") { if (int.TryParse(valor.TrimEnd('%', ' '), NumberStyles.Integer, CultureInfo.InvariantCulture, out int pct) && pct is >= 0 and <= 100) sinal = pct; }
+            else if (c is "banda" or "band") banda = BandaDoTexto(valor) ?? banda;
+            else if (c is "canal" or "channel") { if (int.TryParse(valor, NumberStyles.Integer, CultureInfo.InvariantCulture, out int ch) && ch is > 0 and < 300) canal = ch; }
         }
-        return o.Count == 0 ? null : o;
+        banda ??= canal is int n ? (n <= 14 ? "2,4 GHz" : "5 ou 6 GHz") : null; // versões antigas do netsh só trazem o canal
+        if (banda == null && sinal == null) return null;
+        return new JsonObject { ["banda"] = banda, ["sinal_pct"] = sinal };
+    }
+
+    static string? BandaDoTexto(string v)
+    {
+        string t = v.Replace(',', '.').ToLowerInvariant();
+        if (t.Contains("2.4")) return "2,4 GHz";
+        if (t.Contains('6')) return "6 GHz";
+        if (t.Contains('5')) return "5 GHz";
+        return null;
     }
 
     /// <summary>Localização liberada no Windows inteiro e para apps da área de trabalho (Configurações > Privacidade > Localização).</summary>
@@ -466,12 +467,28 @@ public static partial class Perfil
         catch { return false; }
     }
 
+    /// <summary>
+    /// Lista reduzida (spec 018, 5.3): só o que mexe em captura, overlay, rede virtual e áudio virtual. Saíram Steam, Epic, EA, Battle.net, iCUE, Razer e
+    /// LGHub (quase sempre abertos, sinal fraco, e mostram hábito). Virtual Desktop, Sunshine e Moonlight entraram: aparecem como monitor ou placa virtual
+    /// (LIV-148, 162 e 163).
+    /// </summary>
     static readonly string[] Interferem =
     {
         "obs64", "obs32", "streamlabs obs", "xsplit.core", "bandicam", "action_x64", "nvsphelper64", "nvidia share", "rtss", "msiafterburner",
-        "parsecd", "medal", "overwolf", "outplayed", "wallpaper64", "wallpaper32", "gamebar", "radeonsoftware", "amdrsserv", "lghub",
-        "icue", "razercentralservice", "voicemeeter", "voicemeeterpro", "voicemeeter8", "voicemeeter8x64", "steelseriessonar", "nahimicsvc64",
-        "rvrvpngui", "zerotier_desktop_ui", "hamachi-2-ui", "tailscale-ipn", "steamwebhelper", "epicgameslauncher", "battle.net", "ea desktop",
+        "parsecd", "virtualdesktop.streamer", "sunshine", "moonlight", "medal", "overwolf", "outplayed", "wallpaper64", "wallpaper32", "gamebar",
+        "radeonsoftware", "amdrsserv", "voicemeeter", "voicemeeterpro", "voicemeeter8", "voicemeeter8x64", "steelseriessonar", "nahimicsvc64",
+        "rvrvpngui", "zerotier_desktop_ui", "hamachi-2-ui", "tailscale-ipn",
+    };
+
+    /// <summary>
+    /// O que sobe só sob demanda (spec 018, 5.3): programas que interferem e antivírus, lidos agora, não no perfil de rotina. <b>Ainda sem quem chame:</b>
+    /// a A6 decide os gatilhos (Marcar problema, falha grave de captura ou de rede, relatório do instalador) e os estados em que sobe (nunca por falha no
+    /// Desligado). Lê só a lista de processos, sem WMI.
+    /// </summary>
+    public static JsonObject SobDemanda() => new()
+    {
+        ["programas_que_interferem"] = Tenta(Programas),
+        ["antivirus"] = Tenta(Antivirus),
     };
 
     static JsonNode Programas()
@@ -492,12 +509,7 @@ public static partial class Perfil
     struct SYSTEM_POWER_STATUS { public byte ACLineStatus, BatteryFlag, BatteryLifePercent, SystemStatusFlag; public int BatteryLifeTime, BatteryFullLifeTime; }
     [DllImport("kernel32.dll")] static extern bool GetSystemPowerStatus(ref SYSTEM_POWER_STATUS status);
     [DllImport("powrprof.dll")] static extern uint PowerGetActiveScheme(IntPtr rootPowerKey, out IntPtr activePolicyGuid);
-    [DllImport("powrprof.dll")] static extern uint PowerReadFriendlyName(IntPtr rootPowerKey, IntPtr schemeGuid, IntPtr subGroupGuid, IntPtr settingGuid, IntPtr buffer, ref uint bufferSize);
     [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr mem);
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct MEMORYSTATUSEX { public uint dwLength, dwMemoryLoad; public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile, ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual; }
-    [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX m);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct DEVMODE

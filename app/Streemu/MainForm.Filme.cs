@@ -82,6 +82,7 @@ public partial class MainForm
                 () => _filmeAbertos.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value.Msg).ToArray(),
                 () => _streamTela is { IsDisposed: false } || _streamAbrindo,
                 RetomarStreamFilme, AvatarDaSessao, CapaDe, () => _room?.MyId ?? "", id => _room?.Find(id)?.Nick);
+        _tele?.Essencial("feature_filme"); // uso contado ao abrir a tela do filme (camada essencial, spec 018)
         var tela = _filmeForm = new FilmeTela(lig, teste: TestDir != null || Environment.GetEnvironmentVariable("STREEMU_TEST_VIEW")?.StartsWith("filme") == true);
         tela.Telemetria += (tipo, campos) =>
         {
@@ -175,7 +176,7 @@ public partial class MainForm
                 msg["de"] = from;
                 msg["recebido"] = Environment.TickCount64; // o card anda a posição de quem está rolando a partir daqui
                 _filmeAbertos[from] = (msg, DateTime.Now);
-                if (novo) { Log.Info($"[filme] {nick} abriu \"{msg["nome"]}\"."); AvisoFilme(from, nick, msg["nome"]?.GetValue<string>() ?? "filme"); } // MainForm.Avisos.cs
+                if (novo) { Log.Info($"[filme] {nick} abriu um filme."); AvisoFilme(from, nick, msg["nome"]?.GetValue<string>() ?? "filme"); } // MainForm.Avisos.cs
                 PedirCapaSeFaltar(from, msg); // MainForm.FilmeCapa.cs
                 AtualizarFilmeLateral();
                 break;

@@ -36,6 +36,16 @@ sealed class ServidorFalso : IDisposable
     public const string BilheteAceito = "st1.1.bilhete-ok";
     readonly List<string> _credenciais = new();
     public string[] Credenciais() { lock (_g) return _credenciais.ToArray(); }
+    readonly List<string> _pcsDoCabecalho = new();
+    /// <summary>O cabeçalho HTTP <c>x-streemu-pc</c> de cada pedido de envio (spec 018, A5: no anônimo é o id anônimo, nunca o do PC).</summary>
+    public string[] PcsDoCabecalho() { lock (_g) return _pcsDoCabecalho.ToArray(); }
+    /// <summary>O par de chaves de teste (em memória, só deste processo): o app cifra com a pública (STREEMU_TELEMETRIA_CHAVE_TESTE) e este servidor abre com a privada.</summary>
+    public static readonly ChaveDeTeste Chave = new();
+    /// <summary>Pedaços como chegaram (antes de abrir), por arquivo, na ordem: para o teste ver que não estavam em claro.</summary>
+    readonly List<(string Arq, byte[] Bytes)> _brutos = new();
+    public List<byte[]> PecasBrutas(string arq) { lock (_g) return _brutos.Where(x => x.Arq == arq).Select(x => x.Bytes).ToList(); }
+    /// <summary>Sessão de app antigo que já começou em claro termina em claro: só o caso que testa isso liga.</summary>
+    public volatile bool AceitaClaro;
     readonly TcpListener _l = new(IPAddress.Loopback, 0);
     readonly object _g = new();
     readonly Dictionary<string, MemoryStream> _arq = new();
@@ -102,6 +112,11 @@ sealed class ServidorFalso : IDisposable
             var (linha, cab, corpo) = LerRequisicao(ns);
             if (linha == null) return;
             if (linha.StartsWith("GET /_ctl/resumo")) { Responder(ns, 200, Resumo().ToJsonString()); return; }
+            // a camada essencial (spec 018, B1) é outra rota, outra lista e outro contador: não entra em Pedidos, Credenciais nem BytesRecebidos,
+            // para o teste do Desligado poder exigir "nenhum pedido do diagnóstico" sem se confundir com ela
+            if (linha.StartsWith("POST /telemetria/essencial")) { AtenderEssencial(ns, cab, corpo); return; }
+            // o Apagar de um pacote (spec 018, D37) também é outra rota: fora de Pedidos, para o teste do Desligado e dos disparos contar só os envios
+            if (linha.StartsWith("POST /telemetria/apagar")) { AtenderApagar(ns, cab, corpo); return; }
             Interlocked.Increment(ref _pedidos);
             Interlocked.Add(ref _bytesRecebidos, corpo.Length);
             string cred;
@@ -115,7 +130,7 @@ sealed class ServidorFalso : IDisposable
                 Responder(ns, 200, "{\"ok\":true}");
                 return;
             }
-            lock (_g) _credenciais.Add(cred);
+            lock (_g) { _credenciais.Add(cred); _pcsDoCabecalho.Add(cab.GetValueOrDefault("x-streemu-pc", "")); }
             bool aceita = cred == "token:" + TokenAceito || cred == "bilhete:" + BilheteAceito;
             if (!aceita) { Responder(ns, 401, "credencial recusada"); return; }
             if (!linha.StartsWith("POST /telemetria/enviar")) { Responder(ns, 404, "não encontrado"); return; }
@@ -132,6 +147,99 @@ sealed class ServidorFalso : IDisposable
         }
     }
 
+    // ---------- Apagar um pacote (POST /telemetria/apagar; relay/telemetria.js: apagarPacote) ----------
+
+    readonly List<(string Cred, JsonObject Corpo)> _apagados = new();
+    /// <summary>Os pedidos de Apagar que chegaram, com a credencial ("token:...", "bilhete:...", "" = nenhuma).</summary>
+    public (string Cred, JsonObject Corpo)[] Apagados() { lock (_g) return _apagados.ToArray(); }
+    /// <summary>Quantas vezes responder <c>completo: false</c> antes do <c>true</c> (o Worker apaga em etapas).</summary>
+    public int ApagarIncompletos;
+
+    void AtenderApagar(NetworkStream ns, Dictionary<string, string> cab, byte[] corpo)
+    {
+        string cred = cab.TryGetValue("authorization", out var auth) && auth.StartsWith("Bearer ") ? "token:" + auth[7..]
+            : cab.TryGetValue("x-streemu-bilhete", out var bil) ? "bilhete:" + bil : "";
+        if (cred != "token:" + TokenAceito && cred != "bilhete:" + BilheteAceito) { Responder(ns, 401, "entre na sua conta do Streemu"); return; }
+        JsonObject? b = null;
+        try { b = JsonNode.Parse(Encoding.UTF8.GetString(corpo)) as JsonObject; } catch { }
+        string? pacote = b?["pacote"]?.GetValue<string>();
+        if (b == null || pacote == null || !System.Text.RegularExpressions.Regex.IsMatch(pacote, "^[A-Za-z0-9_-]{6,64}$")) { Responder(ns, 400, "{\"erro\":\"pacote inválido\"}"); return; }
+        lock (_g) _apagados.Add((cred, b));
+        bool completo = Interlocked.Decrement(ref ApagarIncompletos) < 0;
+        Responder(ns, 200, new JsonObject { ["completo"] = completo }.ToJsonString());
+    }
+
+    readonly List<(string Arq, string? Pacote, long Ini, long Fim)> _pecas = new();
+    /// <summary>Cada peça aceita, com o <c>pacote</c> que o app pôs nela (nulo = peça do envio normal).</summary>
+    public (string Arq, string? Pacote, long Ini, long Fim)[] PecasAceitas() { lock (_g) return _pecas.ToArray(); }
+
+    // ---------- camada essencial (POST /telemetria/essencial; o mesmo contrato do Worker, relay/telemetria.js: validarEssencial) ----------
+
+    readonly List<(string Cred, JsonObject Corpo)> _essenciais = new();
+    int _pedidosEssenciais;
+    /// <summary>Os corpos aceitos da camada essencial, com a credencial de cada um ("token:...", "bilhete", "" = nenhuma).</summary>
+    public (string Cred, JsonObject Corpo)[] Essenciais() { lock (_g) return _essenciais.ToArray(); }
+    /// <summary>Todos os pedidos que chegaram na rota essencial, aceitos ou não.</summary>
+    public int PedidosEssenciais => Volatile.Read(ref _pedidosEssenciais);
+    /// <summary>Status a devolver nos próximos pedidos essenciais (um por item; vazia = o normal). Ex.: 500, 401.</summary>
+    public ConcurrentQueue<int> EssencialFila { get; } = new();
+    /// <summary>Os eventos aceitos na rota essencial, já somados como o Worker soma: "evento" ou "evento.detalhe" → quantidade.</summary>
+    public Dictionary<string, int> EssencialSomado()
+    {
+        var r = new Dictionary<string, int>();
+        lock (_g)
+            foreach (var (_, c) in _essenciais)
+                foreach (var e in c["eventos"]!.AsArray())
+                {
+                    string k = e!["evento"]!.GetValue<string>() + (e["detalhe"] != null ? "." + e["detalhe"]!.GetValue<string>() : "");
+                    r[k] = r.GetValueOrDefault(k) + (e["n"]?.GetValue<int>() ?? 1);
+                }
+        return r;
+    }
+
+    void AtenderEssencial(NetworkStream ns, Dictionary<string, string> cab, byte[] corpo)
+    {
+        Interlocked.Increment(ref _pedidosEssenciais);
+        string cred = cab.TryGetValue("authorization", out var auth) && auth.StartsWith("Bearer ") ? "token:" + auth[7..]
+            : cab.ContainsKey("x-streemu-bilhete") ? "bilhete" : "";
+        // de propósito sem bilhete: a camada essencial não é o anônimo (o Worker responde 401 a quem só tem o bilhete)
+        if (cred != "token:" + TokenAceito) { Responder(ns, 401, "entre na sua conta do Streemu"); return; }
+        if (corpo.Length > 4096) { Responder(ns, 413, "corpo grande demais"); return; }
+        if (EssencialFila.TryDequeue(out int status) && status != 200) { Responder(ns, status, "erro de teste"); return; }
+        string? erro = null;
+        JsonObject? b = null;
+        try { b = JsonNode.Parse(Encoding.UTF8.GetString(corpo)) as JsonObject; } catch { }
+        if (b == null) erro = "corpo inválido";
+        else
+        {
+            foreach (var k in b.Select(x => x.Key)) if (k is not ("v" or "versao" or "canal" or "plataforma" or "eventos")) erro ??= $"campo \"{k}\" não é aceito";
+            var eventos = b["eventos"] as JsonArray;
+            if (erro == null && (eventos == null || eventos.Count is 0 or > 20)) erro = "mande de 1 a 20 eventos";
+            if (erro == null)
+                foreach (var e in eventos!)
+                {
+                    if (e is not JsonObject o) { erro = "evento inválido"; break; }
+                    foreach (var k in o.Select(x => x.Key)) if (k is not ("evento" or "detalhe" or "valor" or "n")) erro ??= $"campo \"{k}\" do evento não é aceito";
+                    string? ev = o["evento"]?.GetValue<string>(), det = o["detalhe"]?.GetValue<string>();
+                    bool live = det is "transmite" or "assiste" or "transmite_privada" or "assiste_privada";
+                    bool okEvento = ev switch
+                    {
+                        "app_abriu" or "app_fechou" or "feature_sala" or "feature_filme" or "feature_arquivo" => det == null,
+                        "live_comecou" or "live_acabou" => live,
+                        "falha_grave" => det != null && System.Text.RegularExpressions.Regex.IsMatch(det, "^[a-z0-9_]{1,32}$"),
+                        _ => false,
+                    };
+                    if (!okEvento) erro ??= "evento ou detalhe não aceito: " + ev;
+                    if (o["valor"] is { } v && !(v.GetValue<long>() is >= 0 and <= 10_000_000)) erro ??= "valor inválido";
+                    if (o["n"] is { } nn && !(nn.GetValue<long>() is >= 1 and <= 100)) erro ??= "n inválido";
+                    if (erro != null) break;
+                }
+        }
+        if (erro != null) { Responder(ns, 400, new JsonObject { ["erro"] = erro }.ToJsonString()); return; }
+        lock (_g) _essenciais.Add((cred, b!));
+        Responder(ns, 200, "{\"ok\":true}");
+    }
+
     JsonObject Processar(byte[] corpo, Modo modo)
     {
         int len = (corpo[0] << 24) | (corpo[1] << 16) | (corpo[2] << 8) | corpo[3];
@@ -140,8 +248,10 @@ sealed class ServidorFalso : IDisposable
         lock (_g) _cabecalhos.Add((JsonObject)cab.DeepClone());
         var conf = new JsonObject();
         var rec = new JsonArray();
+        bool cifrado = cab["cifra"] is JsonObject;
         lock (_g)
         {
+            if (!cifrado && !AceitaClaro && cab["pecas"]!.AsArray().Count > 0) _anomalias.Add("pacote com arquivo em claro (o app devia cifrar)");
             foreach (var p in cab["pecas"]!.AsArray())
             {
                 string sessao = p!["sessao"]!.GetValue<string>(), arq = p["arquivo"]!.GetValue<string>();
@@ -149,6 +259,7 @@ sealed class ServidorFalso : IDisposable
                 int tam = p["tam"]!.GetValue<int>();
                 byte[] gz = corpo.AsSpan(off, tam).ToArray();
                 off += tam;
+                _brutos.Add((arq, gz));
                 string chave = $"{sessao}|{arq}";
                 if (_recusar.Contains(arq)) { rec.Add(chave); continue; }
                 // resposta imposta pelo teste para este arquivo, sem gravar (número absurdo, negativo, texto) ou ausente (null = não diz nada)
@@ -157,9 +268,15 @@ sealed class ServidorFalso : IDisposable
                 long atual = ms.Length;
                 // regra do Worker: só grava o que começa exatamente no byte já confirmado
                 if (ini != atual || fim < ini) { conf[chave] = atual; continue; }
+                if (cifrado)
+                {
+                    try { gz = Chave.Decifrar(gz, cab["cifra"]!["chave_v"]!.GetValue<int>()); }
+                    catch (Exception e) { _anomalias.Add($"{chave}: não abriu o quadro ({e.Message})"); conf[chave] = atual; continue; }
+                }
                 byte[] dados = Gunzip(gz);
                 if (dados.Length != fim - ini) _anomalias.Add($"{chave}: o pedaço diz {ini}..{fim} mas descomprimido tem {dados.Length} bytes");
                 _horas.Add((arq, p["h0"]?.GetValue<string>(), p["h1"]?.GetValue<string>()));
+                _pecas.Add((arq, p["pacote"]?.GetValue<string>(), ini, fim));
                 if (Mentir) { conf[chave] = fim; continue; }
                 int guarda = modo == Modo.ConfirmadoMenor ? dados.Length / 2 : dados.Length;
                 ms.Write(dados, 0, guarda);
@@ -242,6 +359,7 @@ sealed class ServidorFalso : IDisposable
     {
         using var srv = new ServidorFalso();
         Console.Out.WriteLine("PORTA=" + srv.Porta);
+        Console.Out.WriteLine("CHAVE=" + Chave.Spki); // só a pública: a carga põe em STREEMU_TELEMETRIA_CHAVE_TESTE
         Console.Out.Flush();
         while (Console.In.ReadLine() != null) { }
         return 0;

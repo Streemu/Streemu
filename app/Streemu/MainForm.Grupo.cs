@@ -267,8 +267,14 @@ public sealed partial class MainForm
 
     // ------------------------------------------------------------------ sala
 
+    /// <summary>A sala em que o uso de "sala" já foi contado na camada essencial (uma vez por sala aberta).</summary>
+    ISala? _salaContadaNaEssencial;
+
     void OnRoomChanged()
     {
+        if (_room is { Connected: true } contada && !ReferenceEquals(contada, _salaContadaNaEssencial))
+        { _salaContadaNaEssencial = contada; _tele?.Essencial("feature_sala"); }
+        EnsinarAmigosAosPseudonimos(); // MainForm.Telemetria.cs: o amigo que acabou de entrar já tem o amigo-N antes da linha de log dele subir
         AdotarNomeDaSala(); // MainForm.Nome.cs: troca de nome feita em outro aparelho
         RefreshMembers();
         AvisosDaSala(); // MainForm.Avisos.cs: "fulano começou uma live"
@@ -424,7 +430,7 @@ public sealed partial class MainForm
         try { link = await PeerLink.CreateAsync(sid, m.Id, m.Nick, iAmSender: false, _localMode, Nick, CarrierIp, LinkRelay, m.Live.StreamId); }
         catch (Exception e) { Notify($"Não deu para preparar a conexão com {NomeNaTela(m)}: {e.Message}"); return; }
         AddLink(link);
-        Log.Info($"Pedindo para assistir {m.Nick} ({m.Live.Game}, {m.Live.Quality}) pelo {origem}.");
+        Log.Info($"Pedindo para assistir {m.Nick} ({m.Live.Quality}) pelo {origem}.");
         await _room.SendTo(m.Id, new JsonObject { ["tipo"] = "quero_assistir", ["sessao"] = sid, ["sala"] = m.Live.StreamId, ["codigo"] = link.MyCode, ["codigo_convite"] = CodigoConviteDe(m.Id, m.Live.StreamId) });
         RefreshMembers();
     }
@@ -735,7 +741,7 @@ public sealed partial class MainForm
         _liveGame = game;
         _sender.PauseCaption = $"{Nick} saiu do jogo por um instante. A stream volta sozinha.";
         _stopLive.Visible = true;
-        Log.Info($"Ao vivo: {game}. Os amigos veem na lista do grupo" + (_discord != null ? " e no seu perfil do Discord." : "."));
+        Log.Info("Ao vivo. Os amigos veem na lista do grupo" + (_discord != null ? " e no seu perfil do Discord." : ".")); // sem o nome do jogo: o log só leva o nome do processo (spec 018, D25)
         TelemetriaLive(comecou: true);
         UpdateLive(force: true);
         TocarSom(Sons.Som.LiveAbriu);

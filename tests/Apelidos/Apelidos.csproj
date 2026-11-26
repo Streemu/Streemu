@@ -9,5 +9,9 @@
     <!-- Só as regras puras: apelidos locais e o filtro do log (plano 019, etapa 7). Sem janela, sem rede, sem estado salvo. -->
     <Compile Include="../../app/Streemu/Util/ApelidosLocais.cs" Link="ApelidosLocais.cs" />
     <Compile Include="../../app/Streemu/Util/Log.cs" Link="Log.cs" />
+    <Compile Include="../../app/Streemu/Telemetria/CofreLocal.cs" Link="CofreLocal.cs" /><!-- o Log cifra cada linha (spec 018, A8) -->
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" /><!-- o DPAPI do CofreLocal; o app tem pelo net10.0-windows -->
   </ItemGroup>
 </Project>

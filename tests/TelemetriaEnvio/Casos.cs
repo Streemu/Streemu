@@ -57,6 +57,11 @@ static class Casos
         Caso("anonimo-troca-nomes-por-pessoa-n-e-tira-identidade-do-evento", AnonimizadorTroca);
         Caso("anonimo-sessao-grava-log-e-series-mas-nao-o-texto-livre", ReduzidaGrava);
         Caso("anonimo-envio-sem-nome-sem-identidade-e-so-depois-da-sala", ReduzidaEnvio);
+        Caso("perfil-enxuto-sem-o-que-a-spec-tirou-e-hags-nao-gera-perfil-novo", PerfilEnxuto);
+        Caso("perfil-o-mesmo-conjunto-no-completo-e-no-anonimo-e-o-anonimo-sem-identidade-nem-id-cru-nem-pc-real", PerfilIgualEAnonimoSemIdentidade);
+        Caso("discord-nao-sobe-em-nenhum-envio-nem-no-cabecalho-nem-no-log", DiscordNaoSobe);
+        Caso("amigo-vira-amigo-n-no-log-e-nos-eventos-e-o-desligado-nao-aparece-no-envio-do-ligado", AmigoViraAmigoN);
+        Caso("amigo-eventos-das-duas-pontas-continuam-ligados-por-transmissao-e-ligacao", AmigoDuasPontasLigadas);
         Caso("conta-token-no-envio-normal-e-conta-no-pacote", ContaTokenNormal);
         Caso("conta-bilhete-no-anonimo-e-token-nunca-sai", ContaBilheteAnonimo);
         Caso("conta-sem-conta-so-sobem-os-eventos-do-login", ContaSemConta);
@@ -66,6 +71,18 @@ static class Casos
         Caso("conta-401-renova-o-token-e-tenta-de-novo", Conta401Renova);
         Caso("aviso-instalacao-nova-nao-envia-antes-de-ler-o-aviso", AguardaOAviso);
         Caso("aviso-texto-bate-com-o-worker-e-diz-o-que-importa", TextoBateComOWorker);
+        Caso("aviso-texto-do-desligado-e-do-anonimo-diz-o-que-mudou-e-nao-promete-demais", TextoDosTresEstados);
+        Caso("aviso-exportar-privacidade-grava-utf8-com-bom-e-crlf-e-sem-caminho-sai-2", ExportarPrivacidade);
+        Caso("estado-antigo-desligado-cai-em-desligado-nunca-liga-o-anonimo-e-a-faixa-vem-uma-vez", MigracaoDesligado);
+        Caso("estado-os-tres-modos-persistem-no-json-e-o-antigo-segue-legivel", ModosPersistem);
+        Caso("desligado-sessao-inteira-so-entrega-a-camada-essencial", DesligadoSoEssencial);
+        Caso("essencial-corpo-so-leva-o-que-a-lista-branca-permite-e-descarta-o-resto", EssencialCorpoMinimo);
+        Caso("essencial-no-anonimo-nao-leva-id-aleatorio-sessao-nem-hora-e-sai-pelo-token", EssencialNoAnonimo);
+        Caso("essencial-no-anonimo-ao-fechar-guarda-e-so-sobe-na-abertura-seguinte", EssencialAnonimoGuarda);
+        Caso("essencial-espera-a-faixa-e-a-conta-e-nao-perde-o-que-ja-contou", EssencialEsperaFaixaEConta);
+        Caso("essencial-falha-nao-mexe-no-indicador-e-recupera-sem-duplicar", EssencialFalhaERecupera);
+        Caso("essencial-401-renova-o-token-e-400-descarta-o-lote", EssencialRenovaEDescarta);
+        Caso("essencial-agrupa-eventos-iguais-em-n-e-respeita-os-limites-do-worker", EssencialAgrupa);
         Caso("pesquisa-convite-so-com-link-valido-apos-dias-de-uso-e-respeita-adiar", ConvitePesquisaRegras);
         Caso("falha-aviso-de-amigo-nao-conta-como-falha", AvisoDeAmigoNaoEFalha);
         Caso("falha-grave-classifica-so-o-que-importa", FalhaGraveClassifica);
@@ -73,6 +90,353 @@ static class Casos
         Caso("cobertura-e-a-hora-do-conteudo-nao-a-do-envio", CoberturaHoraDoConteudo);
         Caso("cobertura-hora-vira-o-dia-e-log-que-comecou-antes-da-meia-noite", CoberturaViradaDoDia);
         Caso("cobertura-arquivo-sem-hora-vai-nulo-e-ancora-sobrevive-ao-reinicio", CoberturaSemHoraEAncora);
+        // gravador local e "Ver o que é enviado" (spec 018, A6 e A7)
+        Caso("gravador-serie-sem-disparo-fica-no-pc-e-a-previa-diz", GravadorSerieSemDisparoFicaNoPc);
+        Caso("gravador-marcacao-libera-a-serie-com-pacote-e-registra-no-historico", GravadorMarcacaoLiberaASerieComPacote);
+        Caso("gravador-fim-da-live-completa-a-serie-no-mesmo-pacote", GravadorFimDaLiveCompletaNoMesmoPacote);
+        Caso("gravador-abertura-seguinte-e-fechar-completam-a-live-marcada", GravadorAberturaSeguinteECompletarAoFechar);
+        Caso("gravador-permite-conforme-o-estado-anonimo-sem-pedido-desligado-nunca", GravadorPermiteConformeOEstado);
+        Caso("gravador-so-quando-marcar-so-a-marcacao-vale", GravadorSoQuandoMarcar);
+        Caso("gravador-disparos-pelos-eventos-e-pacote-unico", GravadorDisparosPelosEventos);
+        Caso("gravador-resumo-com-problema-limiares-e-minutos-seguidos", GravadorResumoComProblemaLimiares);
+        Caso("gravador-serie-guarda-sete-dias-no-pc", GravadorSerieGuardaSeteDiasNoPc);
+        Caso("gravador-uma-serie-por-live-com-pacote-proprio-e-nome-da-serie-por-prefixo", GravadorSerieUmaPorLiveENomes);
+        Caso("gravador-desligado-so-sobe-com-o-clique-anonimo-e-com-pacote", GravadorDesligadoSoSobeComOCliqueEAnonimo);
+        Caso("historico-de-envios-soma-complemento-marca-visto-remove-e-vence-em-30-dias", GravadorHistoricoDeEnvios);
+        Caso("apagar-pacote-no-servidor-em-etapas-identificado-anonimo-sem-conta", ApagarPacoteNoServidor);
+        // spec 018, A8: cifra no PC (D21) e prazos locais (D24). Escritos sem rodar.
+        Caso("cifra-local-linha-cifrada-abre-so-com-a-chave-e-texto-antigo-passa", CifraLocalLinhas);
+        Caso("cifra-local-chave-ilegivel-nao-e-trocada-nas-2-primeiras-aberturas-e-na-3a-vira-antigo-e-chave-nova", CifraLocalChaveIlegivelSoEhTrocadaNaTerceiraAbertura);
+        Caso("cifra-local-abrir-zera-a-contagem-e-chave-que-abre-depois-liga-a-cifra-sem-reiniciar", CifraLocalAbrirZeraAContagemELateAbreSemReiniciar);
+        Caso("cifra-local-sessao-nao-deixa-texto-legivel-e-reabre-depois-de-reiniciar", CifraLocalSessao);
+        Caso("cifra-local-estado-cifra-so-a-identidade-tira-a-relaysenha-e-le-o-estado-antigo", CifraLocalEstado);
+        Caso("cifra-local-historico-de-arquivos-e-de-envios-cifrados-e-o-antigo-em-claro-abre", CifraLocalHistoricos);
+        Caso("prazos-locais-log-30-dias-e-avatar-90-dias-batem-com-o-texto", PrazosLocais);
+        // spec 018, A9: cifra do envio
+        Caso("cifra-log-relatorio-perfil-e-nota-vao-cifrados-e-o-resumo-e-os-eventos-ficam-legiveis", CifraNoEnvio);
+        Caso("cifra-quadro-segue-o-contrato-cada-quadro-tem-chave-propria-e-adulterar-reprova", CifraQuadroEForma);
+        Caso("cifra-chave-embutida-v1-e-a-variavel-de-teste-so-vale-em-teste", CifraChaveEmbutidaEIgnoraTesteForaDeTeste);
+        Caso("cifra-falha-vira-sinal-vermelho-nunca-cai-para-o-claro-e-recupera", CifraFalhaNaoCaiParaOClaro);
+        Caso("cifra-sessao-de-app-antigo-que-ja-comecou-em-claro-termina-em-claro", CifraSessaoAntigaTerminaEmClaro);
+    }
+
+    // ---------- cifra no PC e prazos locais (spec 018, A8, D21 e D24) ----------
+
+    sealed class Desliga : IDisposable { readonly Action _a; public Desliga(Action a) => _a = a; public void Dispose() => _a(); }
+
+    /// <summary>Liga a cifra local com a chave numa pasta do teste (nunca a do usuário) e devolve quem volta ao padrão. Em teste automático a cifra vem desligada.</summary>
+    static IDisposable CifraLigada()
+    {
+        CofreLocal.UsarPasta(Path.Combine(Tmp, "chave-local"));
+        CofreLocal.Forcar(true);
+        return new Desliga(() => { CofreLocal.Forcar(null); CofreLocal.UsarPasta(null); });
+    }
+
+    /// <summary>Como <see cref="Sessao"/>, mas com o log cifrado linha a linha do jeito que o Log.cs grava.</summary>
+    static SessaoLocal SessaoCifrada(int linhas, int eventos)
+    {
+        string id = $"20261126-{DateTime.Now:HHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
+        string pasta = Path.Combine(Tmp, "logs");
+        Directory.CreateDirectory(pasta);
+        string log = Path.Combine(pasta, $"sessao-{id}.log");
+        var sb = new StringBuilder();
+        for (int i = 0; i < linhas; i++) sb.Append(CofreLocal.Linha($"12:00:{i % 60:00}.000 linha {i} texto neutro para o teste de envio")).Append('\n');
+        File.WriteAllText(log, sb.ToString(), new UTF8Encoding(false));
+        var s = SessaoLocal.Criar(id, log, naoEnviar: false);
+        for (int e = 0; e < eventos; e++) s.Evento("teste", new JsonObject { ["n"] = e });
+        Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        return s;
+    }
+
+    static void CifraLocalLinhas()
+    {
+        using var _ = CifraLigada();
+        string claro = "12:00:01.000 Liguei com NOME-DO-AMIGO no jogo JOGO-SECRETO (ação)";
+        string c = CofreLocal.Linha(claro);
+        Exigir(c.StartsWith(CofreLocal.Prefixo) && !c.Contains('\n') && !c.Contains("AMIGO") && !c.Contains("JOGO"), "a linha cifrada devia ter o prefixo, nenhuma quebra e nada do texto: " + c);
+        Exigir(CofreLocal.Abrir(c) == claro, "a linha cifrada não voltou igual");
+        Exigir(CofreLocal.Linha(claro) != c, "o mesmo texto cifrou igual duas vezes (o nonce tem que mudar)");
+        // adulterada: não abre, e o texto lido vira o marcador em vez de bytesRuins
+        var b = Convert.FromBase64String(c[CofreLocal.Prefixo.Length..]); b[^1] ^= 1;
+        string ruim = CofreLocal.Prefixo + Convert.ToBase64String(b);
+        Exigir(CofreLocal.Abrir(ruim) == null && CofreLocal.TextoDaLinha(ruim) == CofreLocal.LinhaIlegivel, "linha adulterada devia virar o marcador");
+        Exigir(CofreLocal.TextoDaLinha("12:00 linha antiga em claro") == "12:00 linha antiga em claro", "texto de antes da A8 devia passar como está");
+        // várias linhas: o texto que o arquivo guarda, e o que o envio recupera dos bytes lidos (linhas antigas em claro misturadas passam)
+        string texto = "primeira SEGREDO-1\nsegunda SEGREDO-2\n";
+        string cifrado = CofreLocal.CifrarLinhas(texto);
+        Exigir(!cifrado.Contains("SEGREDO") && cifrado.Count(ch => ch == '\n') == 2 && cifrado.EndsWith("\n"), "CifrarLinhas devia cifrar cada linha e manter as quebras");
+        Exigir(CofreLocal.DecifrarLinhas(Encoding.UTF8.GetBytes(cifrado)) == texto, "DecifrarLinhas não devolveu o texto");
+        Exigir(CofreLocal.DecifrarLinhas(Encoding.UTF8.GetBytes("antiga em claro\n" + cifrado)) == "antiga em claro\n" + texto, "linha antiga misturada devia passar");
+        // o Log abre o arquivo com Encoding.UTF8, que grava o BOM antes da 1ª linha: ela tem que abrir mesmo assim (em 26/11 o "c1:<base64>" subiu como conteúdo)
+        var comBom = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(cifrado)).ToArray();
+        Exigir(comBom[0] == 0xEF, "o teste devia começar com o BOM");
+        string aberto = CofreLocal.DecifrarLinhas(comBom);
+        Exigir(aberto == texto && !aberto.Contains(CofreLocal.Prefixo), "a 1ª linha cifrada com BOM devia abrir, sem o BOM nem o c1: no que sobe: " + aberto);
+        Exigir(CofreLocal.TextoDaLinha(Encoding.UTF8.GetString(comBom).Split('\n')[0]) == "primeira SEGREDO-1", "TextoDaLinha com BOM não abriu a linha");
+        Exigir(CofreLocal.DecifrarLinhas(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("só em claro\n")).ToArray()) == "só em claro\n", "log em claro com BOM devia subir sem o BOM");
+        // reiniciar: a chave vem do arquivo (DPAPI), não da memória; outra pasta de chave = outra chave, que não abre a linha
+        CofreLocal.Forcar(true);
+        Exigir(CofreLocal.Abrir(c) == claro, "depois de esquecer a chave em memória a linha não abriu (a chave devia vir do arquivo)");
+        Exigir(File.Exists(Path.Combine(Tmp, "chave-local", "chave-local.dat")), "faltou o chave-local.dat");
+        CofreLocal.UsarPasta(Path.Combine(Tmp, "outra-chave"));
+        Exigir(CofreLocal.Abrir(c) == null, "uma chave de outra pasta abriu a linha");
+        CofreLocal.UsarPasta(Path.Combine(Tmp, "chave-local"));
+        CofreLocal.Forcar(false);
+        Exigir(CofreLocal.Linha(claro) == claro && CofreLocal.CifrarLinhas(texto) == texto, "com a cifra desligada o texto devia ir como está");
+    }
+
+    /// <summary>Pasta de chave nova para um caso, com um <c>chave-local.dat</c> que o DPAPI não abre (bytesRuins) quando <paramref name="ilegivel"/>.</summary>
+    static string PastaDeChave(string nome, bool ilegivel)
+    {
+        string pasta = Path.Combine(Tmp, nome);
+        if (Directory.Exists(pasta)) Directory.Delete(pasta, true);
+        Directory.CreateDirectory(pasta);
+        if (ilegivel) File.WriteAllBytes(Path.Combine(pasta, "chave-local.dat"), Encoding.UTF8.GetBytes("isto não é uma chave protegida pelo DPAPI"));
+        return pasta;
+    }
+
+    /// <summary>Uma "abertura do app": esquece a chave em memória, tenta a chave da pasta e espera a thread das tentativas em segundo plano. Devolve o que <see cref="CofreLocal.Linha"/> deu na hora.</summary>
+    static string AberturaDoApp(string pasta, string texto = "linha de teste")
+    {
+        CofreLocal.UsarPasta(pasta);
+        CofreLocal.Forcar(true);
+        string l = CofreLocal.Linha(texto);
+        Exigir(CofreLocal.AguardarTentativas(15_000), "a thread das tentativas em segundo plano não terminou");
+        return l;
+    }
+
+    /// <summary>Põe em <paramref name="pasta"/> um chave-local.dat que abre (uma chave de verdade, criada numa pasta à parte).</summary>
+    static void ColocarChaveValida(string pasta)
+    {
+        string origem = PastaDeChave("chave-valida-origem", ilegivel: false);
+        CofreLocal.UsarPasta(origem); CofreLocal.Forcar(true);
+        CofreLocal.Linha("cria a chave");
+        Exigir(File.Exists(Path.Combine(origem, "chave-local.dat")), "a chave de origem não foi criada");
+        File.Copy(Path.Combine(origem, "chave-local.dat"), Path.Combine(pasta, "chave-local.dat"), overwrite: true);
+    }
+
+    static void CifraLocalChaveIlegivelSoEhTrocadaNaTerceiraAbertura()
+    {
+        string pasta = PastaDeChave("chave-ilegivel", ilegivel: true);
+        string dat = Path.Combine(pasta, "chave-local.dat"), antigo = dat + ".antigo", falhas = Path.Combine(pasta, "chave-local.falhas");
+        byte[] bytesRuins = File.ReadAllBytes(dat);
+        CofreLocal.EsperaDasTentativas(TimeSpan.Zero);
+        try
+        {
+            for (int n = 1; n <= 2; n++)
+            {
+                Exigir(AberturaDoApp(pasta) == "linha de teste", $"abertura {n}: sem chave a linha devia sair em claro");
+                Exigir(CofreLocal.Falha != null, $"abertura {n}: a falha devia estar preenchida (alimenta o diagnóstico)");
+                Exigir(File.ReadAllBytes(dat).SequenceEqual(bytesRuins) && !File.Exists(antigo), $"abertura {n}: a chave ilegível foi trocada cedo demais");
+                Exigir(File.ReadAllText(falhas).Trim() == n.ToString(), $"abertura {n}: o contador devia ser {n}, é '{File.ReadAllText(falhas).Trim()}'");
+            }
+            // 3ª abertura seguida: o arquivo vira .antigo (com os mesmos bytes), nasce chave nova e a cifra volta sozinha
+            AberturaDoApp(pasta);
+            Exigir(File.Exists(antigo) && File.ReadAllBytes(antigo).SequenceEqual(bytesRuins), "na 3ª abertura o chave-local.dat devia ter virado .antigo, com os mesmos bytes");
+            Exigir(File.Exists(dat) && !File.ReadAllBytes(dat).SequenceEqual(bytesRuins), "na 3ª abertura devia existir uma chave nova");
+            Exigir(CofreLocal.Falha == null && CofreLocal.ChaveAberta, "depois de recriar a chave a falha devia estar limpa: " + CofreLocal.Falha);
+            Exigir(!File.Exists(falhas), "depois de recriar o contador devia zerar");
+            string c = CofreLocal.Linha("depois da troca");
+            Exigir(c.StartsWith(CofreLocal.Prefixo) && CofreLocal.Abrir(c) == "depois da troca", "com a chave nova a linha devia cifrar e abrir");
+            // a próxima abertura já abre a chave nova de cara, sem thread
+            string c2 = AberturaDoApp(pasta, "de novo");
+            Exigir(c2.StartsWith(CofreLocal.Prefixo) && CofreLocal.Falha == null && CofreLocal.Abrir(c) == "depois da troca", "a abertura seguinte devia abrir a chave nova e a linha anterior");
+            // um .antigo anterior é sobrescrito
+            File.WriteAllBytes(dat, bytesRuins); File.WriteAllBytes(antigo, new byte[] { 1, 2, 3 });
+            for (int n = 1; n <= 3; n++) AberturaDoApp(pasta);
+            Exigir(File.ReadAllBytes(antigo).SequenceEqual(bytesRuins), "o .antigo anterior devia ser sobrescrito pelo novo");
+        }
+        finally { CofreLocal.EsperaDasTentativas(null); CofreLocal.Forcar(null); CofreLocal.UsarPasta(null); }
+    }
+
+    static void CifraLocalAbrirZeraAContagemELateAbreSemReiniciar()
+    {
+        string pasta = PastaDeChave("chave-zera", ilegivel: true);
+        string dat = Path.Combine(pasta, "chave-local.dat"), antigo = dat + ".antigo", falhas = Path.Combine(pasta, "chave-local.falhas");
+        byte[] bytesRuins = File.ReadAllBytes(dat);
+        CofreLocal.EsperaDasTentativas(TimeSpan.Zero);
+        try
+        {
+            AberturaDoApp(pasta); AberturaDoApp(pasta);
+            Exigir(File.ReadAllText(falhas).Trim() == "2", "duas aberturas sem abrir: o contador devia ser 2");
+            // a chave passa a abrir: zera
+            ColocarChaveValida(pasta);
+            string c = AberturaDoApp(pasta);
+            Exigir(c.StartsWith(CofreLocal.Prefixo) && CofreLocal.Falha == null, "com a chave abrindo a cifra devia valer já na abertura");
+            Exigir(!File.Exists(falhas) && !File.Exists(antigo), "abrir devia zerar o contador e não criar .antigo");
+            // volta a não abrir: recomeça do 1, não da 3ª (sem o zero, esta já recriaria a chave)
+            File.WriteAllBytes(dat, bytesRuins);
+            AberturaDoApp(pasta);
+            Exigir(File.ReadAllText(falhas).Trim() == "1" && !File.Exists(antigo) && File.ReadAllBytes(dat).SequenceEqual(bytesRuins), "depois de abrir, a contagem devia recomeçar do 1 sem trocar a chave");
+
+            // abre DEPOIS, na mesma abertura (perfil carregando): a cifra passa a valer sem reiniciar e a falha some
+            File.Delete(falhas);
+            File.WriteAllBytes(dat, bytesRuins);
+            CofreLocal.EsperaDasTentativas(TimeSpan.FromMilliseconds(400));
+            CofreLocal.UsarPasta(pasta); CofreLocal.Forcar(true);
+            Exigir(CofreLocal.Linha("antes") == "antes" && CofreLocal.Falha != null, "enquanto a chave não abre a linha sai em claro e a falha aparece");
+            ColocarChaveValidaSemMexerNaAbertura(pasta);
+            Exigir(CofreLocal.AguardarTentativas(15_000), "a thread das tentativas não terminou");
+            Exigir(CofreLocal.Falha == null && CofreLocal.ChaveAberta, "a chave abriu em segundo plano: a falha devia ter sumido: " + CofreLocal.Falha);
+            string depois = CofreLocal.Linha("depois");
+            Exigir(depois.StartsWith(CofreLocal.Prefixo) && CofreLocal.Abrir(depois) == "depois", "a cifra devia valer depois que a chave abriu");
+            Exigir(!File.Exists(falhas) && !File.Exists(antigo), "abrir em segundo plano não conta falha nem cria .antigo");
+        }
+        finally { CofreLocal.EsperaDasTentativas(null); CofreLocal.Forcar(null); CofreLocal.UsarPasta(null); }
+    }
+
+    /// <summary>Como <see cref="ColocarChaveValida"/>, mas sem trocar a pasta nem o modo do cofre que o caso está testando (a chave de origem vem de um arquivo gerado antes, sem mexer no estado em memória).</summary>
+    static void ColocarChaveValidaSemMexerNaAbertura(string pasta)
+    {
+        string origem = Path.Combine(Tmp, "chave-valida-origem", "chave-local.dat"); // criada por ColocarChaveValida no passo anterior
+        File.Copy(origem, Path.Combine(pasta, "chave-local.dat"), overwrite: true);
+    }
+
+    static void CifraLocalSessao()
+    {
+        using var _ = CifraLigada();
+        string[] segredos = { "NOME-SECRETO-DO-AMIGO", "REDE-SECRETA-1", "REDE-SECRETA-2", "CPU-SECRETA" };
+        var s = SessaoCifrada(5, 0);
+        s.Evento("teste", new JsonObject { ["nome"] = segredos[0] });
+        s.Acrescentar("rede.ndjson", $"linha {segredos[1]}\nlinha {segredos[2]}");
+        s.Retrato("perfil-abc.json", "{\n  \"cpu\": \"" + segredos[3] + "\"\n}");
+        Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        var arquivos = Directory.EnumerateFiles(s.Dir, "*", SearchOption.AllDirectories).Append(s.E.LogPath!).ToList();
+        Exigir(arquivos.Count >= 5, "faltou arquivo da sessão: " + string.Join(", ", arquivos.Select(Path.GetFileName)));
+        foreach (var f in arquivos)
+        {
+            string t = File.ReadAllText(f);
+            foreach (var seg in segredos.Append("texto neutro").Append(s.E.LogPath!)) Exigir(!t.Contains(seg), $"{Path.GetFileName(f)} tem texto legível: {seg}");
+        }
+        Exigir(File.ReadAllLines(Path.Combine(s.Dir, SessaoLocal.Eventos)).All(l => l.StartsWith(CofreLocal.Prefixo)), "o eventos.ndjson tem linha sem cifra");
+        Exigir(File.ReadAllLines(Path.Combine(s.Dir, "perfil-abc.json")).All(l => l.StartsWith(CofreLocal.Prefixo)), "o perfil tem linha sem cifra");
+        // o app lê o que gravou
+        string Decifrado(string nome) => CofreLocal.DecifrarLinhas(File.ReadAllBytes(Path.Combine(s.Dir, nome)));
+        Exigir(Decifrado("rede.ndjson") == $"linha {segredos[1]}\nlinha {segredos[2]}\n", "rede.ndjson não voltou igual: " + Decifrado("rede.ndjson"));
+        Exigir(Decifrado("perfil-abc.json") == "{\n  \"cpu\": \"" + segredos[3] + "\"\n}\n", "o perfil não voltou igual");
+        Exigir(Decifrado(SessaoLocal.Eventos).Contains(segredos[0]) && JsonNode.Parse(Decifrado(SessaoLocal.Eventos).Split('\n')[0]) is JsonObject, "o evento não voltou como JSON");
+        Exigir(CofreLocal.DecifrarLinhas(File.ReadAllBytes(s.E.LogPath!)).Contains("linha 3 texto neutro"), "o log não voltou");
+        // reiniciar: a chave sai da memória e a sessão reabre pelo sessao.json cifrado, com o mesmo log
+        CofreLocal.Forcar(true);
+        var r = SessaoLocal.Abrir(s.Dir);
+        Exigir(r != null && r.Id == s.Id && r.E.LogPath == s.E.LogPath, "a sessão não reabriu pelo sessao.json cifrado");
+        // sessao.json de antes da A8 (em claro) continua abrindo
+        CofreLocal.Forcar(false);
+        s.Salvar();
+        Exigir(File.ReadAllText(Path.Combine(s.Dir, "sessao.json")).StartsWith("{"), "com a cifra desligada o sessao.json devia ir em claro");
+        CofreLocal.Forcar(true);
+        Exigir(SessaoLocal.Abrir(s.Dir)?.Id == s.Id, "o sessao.json em claro devia abrir com a cifra ligada");
+    }
+
+    static void CifraLocalEstado()
+    {
+        string arq = Path.Combine(Tmp, "estado-cifra", "estado.json");
+        Streemu.Util.AppState.ArquivoParaTeste = arq;
+        try
+        {
+            using var _ = CifraLigada();
+            string[] segredos = { "NICK-SECRETO", "CONTA-NOME-SECRETO", "DISCORD-SECRETO", "123456789012345678", "conta-secreta-1", "dispositivo-secreto-1", "INSTALL-SECRETO", "ANONIMO-SECRETO", "100.90.1.2", "GRUPO-SECRETO", "APELIDO-SECRETO", "amigo-silenciado-x" };
+            var e = new Streemu.Util.AppState
+            {
+                Nick = segredos[0], ContaNome = segredos[1], DiscordNome = segredos[2], DiscordId = segredos[3], ContaId = segredos[4], DispositivoId = segredos[5], InstallId = segredos[6],
+                TelemetriaIdAnonimo = segredos[7], AltEndpoint = segredos[8], Grupos = { new Streemu.Util.GrupoSalvo { Id = "g-secreto", Nome = segredos[9] } },
+                ApelidosLocais = { ["amigo1"] = segredos[10] }, AmigosSilenciados = { segredos[11] },
+                TemaClaro = true, InterfaceScale = 1.25, PlayerVolumePercent = 42,
+            };
+            e.Save();
+            string cru = File.ReadAllText(arq);
+            foreach (var seg in segredos.Append("g-secreto")) Exigir(!cru.Contains(seg), "o estado.json tem texto legível: " + seg);
+            Exigir(cru.Contains("\"TemaClaro\": true") && cru.Contains("1.25") && cru.Contains("\"PlayerVolumePercent\": 42"), "as preferências sem dado pessoal devem seguir legíveis: " + cru[..Math.Min(300, cru.Length)]);
+            Exigir(cru.Contains("IdentidadeCifrada") && !cru.Contains("RelaySenha"), "faltou a identidade cifrada ou a RelaySenha ainda existe");
+            var v = Streemu.Util.AppState.Load();
+            Exigir(v.Nick == segredos[0] && v.ContaNome == segredos[1] && v.DiscordNome == segredos[2] && v.DiscordId == segredos[3] && v.ContaId == segredos[4]
+                   && v.DispositivoId == segredos[5] && v.InstallId == segredos[6] && v.TelemetriaIdAnonimo == segredos[7] && v.AltEndpoint == segredos[8], "a identidade não voltou depois de reiniciar");
+            Exigir(v.Grupos.Count == 1 && v.Grupos[0].Nome == segredos[9] && v.ApelidosLocais["amigo1"] == segredos[10] && v.AmigosSilenciados.SequenceEqual(new[] { segredos[11] }), "grupos, apelidos ou silenciados não voltaram");
+            Exigir(v.TemaClaro && v.InterfaceScale == 1.25 && v.PlayerVolumePercent == 42, "as preferências não voltaram");
+
+            // estado de antes da A8: lido em claro e regravado cifrado, e a RelaySenha antiga vai embora
+            File.WriteAllText(arq, "{\"ContaNome\":\"LEGADO-SECRETO\",\"RelaySenha\":\"SENHA-ANTIGA\",\"TemaClaro\":true}");
+            var l = Streemu.Util.AppState.Load();
+            Exigir(l.ContaNome == "LEGADO-SECRETO" && l.TemaClaro, "o estado antigo em claro devia abrir sem perder nada");
+            string depois = File.ReadAllText(arq);
+            Exigir(!depois.Contains("LEGADO-SECRETO") && !depois.Contains("SENHA-ANTIGA") && depois.Contains("IdentidadeCifrada"), "o estado antigo devia ser regravado cifrado e sem a RelaySenha: " + depois);
+            Exigir(Streemu.Util.AppState.Load().ContaNome == "LEGADO-SECRETO", "o estado regravado não abriu");
+
+            // outro usuário do Windows (ou arquivo estragado): não abre a identidade, mas o resto do estado segue
+            File.WriteAllText(arq, "{\"IdentidadeCifrada\":\"c1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"TemaClaro\":true}");
+            var o = Streemu.Util.AppState.Load();
+            Exigir(o.ContaNome == null && o.ContaId == null && o.TemaClaro, "sem a chave a identidade devia vir vazia e as preferências ficar");
+        }
+        finally { Streemu.Util.AppState.ArquivoParaTeste = null; }
+    }
+
+    static void CifraLocalHistoricos()
+    {
+        // arquivos.json: nome de amigo, nome e caminho do arquivo
+        string arq = Path.Combine(Tmp, "arquivos-cifra.json");
+        Streemu.Arquivos.Historico Abrir() => new(arq, () => DateTime.Now, _ => { });
+        Streemu.Arquivos.ItemHistorico Item(string pedido) => new(Streemu.Arquivos.Sentido.Recebido, pedido, "amigo-id", "APELIDO-DO-AMIGO", "arquivo-secreto.zip", 1234, "ident-" + pedido,
+            DateTime.Now, Streemu.Arquivos.Resultado.Conferido, @"C:\Users\ana\Downloads\Streemu\arquivo-secreto.zip"); // "ana": o único perfil que a trava g do espelho público aceita
+        // de antes da A8: em claro
+        Abrir().Registrar(Item("pedido-antigo"));
+        Exigir(File.ReadAllText(arq).Contains("APELIDO-DO-AMIGO"), "(preparo) o histórico antigo devia estar em claro com a cifra desligada");
+        using (var _ = CifraLigada())
+        {
+            var h = Abrir();
+            Exigir(h.Itens.Count == 1 && h.Itens[0].Pedido == "pedido-antigo", "o arquivos.json em claro devia abrir com a cifra ligada");
+            h.Registrar(Item("pedido-novo"));
+            string cru = File.ReadAllText(arq);
+            foreach (var seg in new[] { "APELIDO-DO-AMIGO", "arquivo-secreto", "Downloads", "pedido-" }) Exigir(!cru.Contains(seg), "o arquivos.json tem texto legível: " + seg);
+            var h2 = Abrir();
+            Exigir(h2.Itens.Count == 2 && h2.Itens[0].Apelido == "APELIDO-DO-AMIGO" && h2.Itens[0].Caminho!.Contains("fulano"), "o histórico cifrado não voltou depois de reiniciar");
+
+            // historico-envios.json
+            HistoricoEnvios.Apagar();
+            HistoricoEnvios.Registrar("pacote-secreto-1", "Marcacao", "Completo", "sessao-secreta", "quadros.csv", 100);
+            string envios = File.ReadAllText(Path.Combine(Pasta.Raiz, "historico-envios.json"));
+            Exigir(envios.StartsWith(CofreLocal.Prefixo) && !envios.Contains("pacote-secreto-1") && !envios.Contains("sessao-secreta") && !envios.Contains("quadros"), "o historico-envios.json tem texto legível");
+            Exigir(HistoricoEnvios.Listar().Count == 1 && HistoricoEnvios.Listar()[0].Pacote == "pacote-secreto-1", "o histórico de envios não voltou");
+            HistoricoEnvios.Apagar();
+        }
+        // o histórico de envios de antes da A8 (JSON em claro) abre e passa a ser gravado cifrado
+        Directory.CreateDirectory(Pasta.Raiz);
+        string antigo = Path.Combine(Pasta.Raiz, "historico-envios.json");
+        File.WriteAllText(antigo, "[{\"Pacote\":\"pacote-antigo\",\"Quando\":\"" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + "\",\"Motivo\":\"Marcacao\",\"Modo\":\"Completo\",\"Sessao\":\"s\",\"Arquivos\":[\"quadros.csv\"],\"Bytes\":5,\"Visto\":false}]");
+        using (var _ = CifraLigada())
+        {
+            Exigir(HistoricoEnvios.Listar().Count == 1, "o histórico de envios em claro devia abrir com a cifra ligada");
+            HistoricoEnvios.MarcarVistos();
+            Exigir(File.ReadAllText(antigo).StartsWith(CofreLocal.Prefixo), "depois de gravar, o histórico de envios devia estar cifrado");
+        }
+        HistoricoEnvios.Apagar();
+    }
+
+    static void PrazosLocais()
+    {
+        // N15: o código e o texto do app dizem os mesmos números (spec 018, seção 9)
+        Exigir(Manutencao.DiasDeLog == 30 && Manutencao.DiasDeAvatar == 90, $"prazos do código: log {Manutencao.DiasDeLog}, avatar {Manutencao.DiasDeAvatar} (a spec diz 30 e 90)");
+        string texto = TextoDiagnostico.Completo;
+        Exigir(texto.Contains("o log fica 30 dias") && texto.Contains("o avatar guardado, 90 dias sem aparecer"), "o texto do app não cita os prazos locais (30 e 90)");
+
+        // avatar: 90 dias sem aparecer (o AvatarStore renova a data ao abrir com ele)
+        string avatares = Path.Combine(Tmp, "avatar-prazo");
+        Directory.CreateDirectory(avatares);
+        var agora = DateTime.Now;
+        File.WriteAllText(Path.Combine(avatares, "meu.png"), "x"); File.SetLastWriteTime(Path.Combine(avatares, "meu.png"), agora.AddDays(-91));
+        File.WriteAllText(Path.Combine(avatares, "meu.tira"), "x"); File.SetLastWriteTime(Path.Combine(avatares, "meu.tira"), agora.AddDays(-89));
+        File.WriteAllText(Path.Combine(avatares, "novo.png"), "x");
+        Exigir(Manutencao.LimparAvatares(avatares, agora) == 1, "devia apagar só o avatar de 91 dias");
+        Exigir(!File.Exists(Path.Combine(avatares, "meu.png")) && File.Exists(Path.Combine(avatares, "meu.tira")) && File.Exists(Path.Combine(avatares, "novo.png")), "o de 89 dias e o novo ficam");
+        Exigir(Manutencao.LimparAvatares(Path.Combine(Tmp, "nao-existe"), agora) == 0 && Manutencao.LimparAvatares(null, agora) == 0, "pasta que não existe ou nula não pode dar erro");
+
+        // log: 30 dias; nunca o desta abertura nem o que ainda falta enviar
+        string logs = Path.Combine(Tmp, "logs-prazo");
+        Directory.CreateDirectory(logs);
+        string F(string nome, int dias) { string c = Path.Combine(logs, nome); File.WriteAllText(c, "x"); File.SetLastWriteTime(c, agora.AddDays(-dias)); return c; }
+        string velho = F("sessao-velho.log", 31), novo = F("sessao-novo.log", 29), atual = F("sessao-atual.log", 40), pendente = F("sessao-pendente.log", 45), outro = F("outro.txt", 45);
+        int apagados = Manutencao.ApagarLogsVelhos(logs, atual, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { pendente }, agora);
+        Exigir(apagados == 1 && !File.Exists(velho), "devia apagar só o log de 31 dias");
+        Exigir(File.Exists(novo) && File.Exists(atual) && File.Exists(pendente) && File.Exists(outro), "o log de 29 dias, o desta abertura, o pendente e o que não é sessao-*.log ficam");
     }
 
     // ---------- contra o Worker de verdade (wrangler dev iniciado pelo scripts/testes-locais.ps1) ----------
@@ -118,6 +482,19 @@ static class Casos
             ExigirBuildNoWorker(url, token, envio.Pc, anteriores[0], "0.1.0", "1234567");
             ExigirBuildNoWorker(url, token, envio.Pc, nova, nova.E.Versao!, nova.E.Commit!);
         });
+        Caso("worker-cifra-no-pc-o-que-sobe-e-o-texto-em-claro-e-o-cursor-segue-o-arquivo-cifrado", () =>
+        {
+            // o servidor falso confirma pelo tamanho do que recebeu; o Worker de verdade confirma pelo `fim` que o app mandou. Só o Worker prova o cursor sobre o arquivo cifrado.
+            using var _ = CifraLigada();
+            var s = SessaoCifrada(300, 40);
+            Exigir(File.ReadAllText(s.E.LogPath!).StartsWith(CofreLocal.Prefixo), "o log do teste devia estar cifrado");
+            using var envio = Criar(url, tokenConta, s);
+            envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora();
+            Exigir(Esperar(() => Converge(s), 30_000), "não confirmou tudo: " + Estado(s));
+            envio.Fechar(TimeSpan.FromSeconds(3));
+            Exigir(Esperar(() => Converge(s), 10_000), "depois de fechar ficou pendente: " + Estado(s));
+            ExigirIgualNoWorker(url, token, envio.Pc, s, cifradoNoPc: true);
+        });
         Caso("worker-token-errado-vira-falha-e-nada-sobe", () =>
         {
             var s = Sessao(50, 5);
@@ -144,7 +521,7 @@ static class Casos
         });
     }
 
-    static void ExigirIgualNoWorker(string url, string token, string pc, SessaoLocal s)
+    static void ExigirIgualNoWorker(string url, string token, string pc, SessaoLocal s, bool cifradoNoPc = false)
     {
         using var http = new HttpClient();
         foreach (var (nome, caminho) in s.Arquivos())
@@ -153,11 +530,16 @@ static class Casos
             req.Headers.Add("x-streemu-token", token);
             using var resp = http.Send(req);
             Exigir(resp.IsSuccessStatusCode, $"{nome}: leitura respondeu {(int)resp.StatusCode}");
-            using var gz = new System.IO.Compression.GZipStream(resp.Content.ReadAsStream(), System.IO.Compression.CompressionMode.Decompress);
+            // o Worker guarda o que o app mandou: quadros cifrados (spec 018, A9). Só a chave de teste abre; o resto é o gzip de vários membros de sempre.
+            byte[] guardado = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            Exigir(guardado.Length > 4 && Encoding.ASCII.GetString(guardado, 0, 4) == "SEC1", $"{nome}: o Worker não guardou um envelope cifrado");
+            using var gz = new System.IO.Compression.GZipStream(new MemoryStream(ServidorFalso.Chave.Decifrar(guardado)), System.IO.Compression.CompressionMode.Decompress);
             var ms = new MemoryStream();
             gz.CopyTo(ms);
             byte[] disco = Ler(caminho);
-            Exigir(disco.AsSpan().SequenceEqual(ms.ToArray()), $"{nome}: o Worker devolveu {ms.Length} bytes diferentes dos {disco.Length} do disco");
+            // arquivo cifrado no PC (A8): o servidor recebe o texto em claro (a cifra do envio é a A9) e o cursor é a posição no arquivo cifrado
+            byte[] esperado = cifradoNoPc ? Encoding.UTF8.GetBytes(CofreLocal.DecifrarLinhas(disco)) : disco;
+            Exigir(esperado.AsSpan().SequenceEqual(ms.ToArray()), $"{nome}: o Worker devolveu {ms.Length} bytes diferentes dos {esperado.Length} esperados");
             Exigir(s.Cursor(nome) == disco.Length, $"{nome}: cursor {s.Cursor(nome)} ≠ tamanho {disco.Length}");
         }
     }
@@ -183,8 +565,13 @@ static class Casos
     {
         Gravador.PausarParaTeste = false; Gravador.MaxItens = 20_000; Gravador.MaxBytes = 32L * 1024 * 1024;
         Gravador.Descarregar(TimeSpan.FromSeconds(10)); // nada do caso anterior chega ao disco depois de a pasta dele ser apagada
+        Envio.EsperaEssencial = TimeSpan.FromSeconds(20);
+        Envio.EsperaEssencialAnonimo = (TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10));
+        Envio.ReavaliarEssencial = TimeSpan.FromSeconds(10);
         string raiz = Pasta.Raiz;
         if (!Directory.Exists(raiz)) return;
+        try { File.Delete(Path.Combine(raiz, "essencial-pendente.json")); } catch { }
+        try { File.Delete(Path.Combine(raiz, "historico-envios.json")); } catch { } // o histórico de 30 dias (A7) não passa de um caso para o outro
         foreach (var f in Directory.EnumerateFiles(raiz, "*", SearchOption.AllDirectories))
             try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
         foreach (var d in Directory.GetDirectories(raiz))
@@ -241,12 +628,12 @@ static class Casos
         return ms.ToArray();
     }
 
-    /// <summary>Todo arquivo da sessão confirmado até o fim e o índice de eventos em dia.</summary>
+    /// <summary>Todo arquivo da sessão confirmado até o fim (as séries por segundo, até o teto que um disparo liberou) e o índice de eventos em dia.</summary>
     static bool Converge(SessaoLocal s) =>
-        s.Arquivos().All(a => s.Cursor(a.Nome) == Tam(a.Caminho)) && s.E.Indexados >= Tam(Path.Combine(s.Dir, SessaoLocal.Eventos));
+        s.Arquivos().All(a => s.Cursor(a.Nome) == s.Limite(a.Nome, Tam(a.Caminho))) && s.E.Indexados >= Tam(Path.Combine(s.Dir, SessaoLocal.Eventos));
 
     static string Estado(SessaoLocal s) =>
-        string.Join(", ", s.Arquivos().Select(a => $"{a.Nome}: cursor {s.Cursor(a.Nome)} de {Tam(a.Caminho)}")) + $", indexados {s.E.Indexados}";
+        string.Join(", ", s.Arquivos().Select(a => $"{a.Nome}: cursor {s.Cursor(a.Nome)} de {Tam(a.Caminho)} (limite {s.Limite(a.Nome, Tam(a.Caminho))})")) + $", indexados {s.E.Indexados}";
 
     /// <summary>O que o servidor remontou tem que ser byte a byte o arquivo do disco (não duplica nem falta).</summary>
     static void ExigirIgual(ServidorFalso srv, SessaoLocal s)
@@ -383,7 +770,7 @@ static class Casos
         using var srv = new ServidorFalso();
         var s = Sessao(100, 10);
         using var envio = Criar(srv, s);
-        envio.Habilitado = false;
+        envio.Modo = ModoEnvio.Desligado;
         envio.Ativo = true;
         envio.Iniciar(Array.Empty<SessaoLocal>());
         envio.Agora();
@@ -698,6 +1085,7 @@ static class Casos
         using var srv = new ServidorFalso();
         var s = Sessao(5, 2);
         s.Acrescentar("quadros.csv", "1,2\n3,4");
+        s.E.Tetos["quadros.csv"] = long.MaxValue; // a série só sobe liberada por um disparo (A6): aqui o que se testa é a hora do conteúdo, não o disparo
         using (var envio = Criar(srv, s)) { envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora(); Exigir(Esperar(() => Converge(s), 20_000), "não convergiu: " + Estado(s)); envio.Fechar(TimeSpan.FromSeconds(1)); }
         var q = srv.Horas("quadros.csv");
         Exigir(q.Count >= 1 && q.All(x => x.H0 == null && x.H1 == null), "arquivo sem hora no conteúdo devia ir com h0/h1 nulos");
@@ -705,6 +1093,371 @@ static class Casos
         long ancora = s.HoraConteudo(SessaoLocal.Log);
         var reaberta = SessaoLocal.Abrir(s.Dir)!;
         Exigir(reaberta.HoraConteudo(SessaoLocal.Log) == ancora && ancora != s.E.Inicio, "a âncora não sobreviveu ao sessao.json");
+    }
+
+    // ---------- gravador local e "Ver o que é enviado" (spec 018, A6 e A7; plano 018, A-III) ----------
+
+    /// <summary>A série da primeira live da sessão (uma série por live: quadros-N.csv; o nome sem número é o formato antigo).</summary>
+    const string Q1 = "quadros-1.csv";
+    static string Quadros(SessaoLocal s) => Path.Combine(s.Dir, Q1);
+    static string ChaveQuadros(SessaoLocal s) => $"{s.Id}|{Q1}";
+    static string LinhasDeQuadros(int de, int ate) => string.Join("\n", Enumerable.Range(de, ate - de).Select(i => $"{i},{i * 2}"));
+
+    /// <summary>Sessão com uma série por segundo de 30 linhas, um envio ligado nela e o gravador local armado; o que não é série já subiu.</summary>
+    static (SessaoLocal S, Envio Envio, GravadorLocal G) SessaoComSerie(ServidorFalso srv, Func<SessaoLocal, Envio>? criar = null)
+    {
+        var s = Sessao(5, 2);
+        s.Acrescentar(Q1, LinhasDeQuadros(0, 30));
+        Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        var envio = criar?.Invoke(s) ?? Criar(srv, s);
+        var g = new GravadorLocal(envio);
+        g.LiveComecou("propria"); // a série é da live: sem live aberta um disparo não tem o que liberar
+        envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora();
+        Exigir(Esperar(() => Converge(s), 20_000), "o resto da sessão não subiu: " + Estado(s));
+        return (s, envio, g);
+    }
+
+    static bool SerieSubiu(SessaoLocal s) => Tam(Quadros(s)) > 0 && s.Cursor(Q1) == Tam(Quadros(s));
+
+    static void GravadorSerieSemDisparoFicaNoPc()
+    {
+        using var srv = new ServidorFalso();
+        var (s, envio, _) = SessaoComSerie(srv);
+        using var _e = envio;
+        Thread.Sleep(1500); envio.Agora(); Thread.Sleep(1500); // mais uma rodada: sem disparo a série continua parada
+        Exigir(srv.Tamanho(ChaveQuadros(s)) == 0 && s.Cursor(Q1) == 0, "a série subiu sem nenhum disparo");
+        Exigir(srv.PecasAceitas().All(p => p.Arq != Q1), "chegou peça da série sem disparo");
+        var previa = envio.Previa();
+        Exigir(previa.Any(i => i.Arquivo == Q1 && !i.Sobe && i.Bytes == Tam(Quadros(s))), "a prévia devia mostrar a série como 'fica só no PC': " + string.Join(" | ", previa.Select(i => $"{i.Arquivo} {i.Bytes} {i.Sobe}")));
+        Exigir(previa.All(i => i.Arquivo != Q1 || !i.Sobe), "a prévia diz que a série sobe sem disparo");
+        envio.Fechar(TimeSpan.FromSeconds(1));
+        Exigir(s.Cursor(Q1) == 0 && srv.Tamanho(ChaveQuadros(s)) == 0, "o último envio ao fechar levou a série sem disparo");
+    }
+
+    static void GravadorMarcacaoLiberaASerieComPacote()
+    {
+        using var srv = new ServidorFalso();
+        var (s, envio, _) = SessaoComSerie(srv);
+        using var _e = envio;
+        s.Evento("marcacao", new JsonObject { ["origem"] = "teste" });
+        Exigir(Esperar(() => SerieSubiu(s), 20_000), "a marcação não liberou a série: " + Estado(s));
+        string? pacote = s.Pacote(Q1);
+        Exigir(pacote != null && System.Text.RegularExpressions.Regex.IsMatch(pacote, "^[A-Za-z0-9_-]{6,64}$"), "pacote ausente ou fora da regra do Worker: " + pacote);
+        Exigir(s.Pacote(SessaoLocal.NomeSincronia(1)) == pacote, "os dois arquivos da live dividem o pacote");
+        var q = srv.PecasAceitas().Where(p => p.Arq == Q1).ToList();
+        Exigir(q.Count >= 1 && q.All(p => p.Pacote == pacote), "as peças da série precisam levar o pacote: " + string.Join(",", q.Select(p => p.Pacote)));
+        Exigir(srv.PecasAceitas().Where(p => p.Arq != Q1).All(p => p.Pacote == null), "peça que não é série levou pacote (o Apagar levaria eventos de outro assunto)");
+        Exigir(Esperar(() => HistoricoEnvios.Listar().Count == 1 && HistoricoEnvios.Listar()[0].Bytes == Tam(Quadros(s)), 5_000), "o histórico não registrou o envio: " + HistoricoEnvios.Listar().Count);
+        var h = HistoricoEnvios.Listar()[0];
+        Exigir(h.Pacote == pacote && h.Motivo == nameof(Disparo.Marcacao) && h.Modo == nameof(ModoEnvio.Completo) && !h.Visto && h.Arquivos.SequenceEqual(new[] { Q1 }), $"entrada do histórico errada: {h.Pacote}/{h.Motivo}/{h.Modo}/{h.Visto}/{string.Join(",", h.Arquivos)}");
+        Exigir(HistoricoEnvios.TemNovo(), "o ponto do botão Diagnóstico devia acender");
+        Exigir(Esperar(() => Converge(s), 10_000), "não convergiu: " + Estado(s));
+        ExigirIgual(srv, s);
+        envio.Fechar(TimeSpan.FromSeconds(1));
+    }
+
+    static void GravadorFimDaLiveCompletaNoMesmoPacote()
+    {
+        using var srv = new ServidorFalso();
+        var (s, envio, g) = SessaoComSerie(srv);
+        using var _e = envio;
+        s.Evento("marcacao");
+        Exigir(Esperar(() => SerieSubiu(s), 20_000), "a marcação não liberou a série: " + Estado(s));
+        string pacote = s.Pacote(Q1)!; long primeiro = Tam(Quadros(s));
+        Exigir(s.E.LiveMarcada, "a live aberta devia ficar marcada para o complemento");
+        s.Acrescentar(Q1, LinhasDeQuadros(30, 60)); Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        envio.Agora(); Thread.Sleep(2500);
+        Exigir(s.Cursor(Q1) == primeiro, $"a série passou do teto com a live ainda aberta ({s.Cursor(Q1)} de {primeiro})");
+        g.LiveAcabou("propria");
+        Exigir(Esperar(() => SerieSubiu(s) && Tam(Quadros(s)) > primeiro, 20_000), "o fim da live não completou a série: " + Estado(s));
+        var q = srv.PecasAceitas().Where(p => p.Arq == Q1).ToList();
+        Exigir(q.Count >= 2 && q.All(p => p.Pacote == pacote), "o complemento precisa ser do mesmo pacote: " + string.Join(",", q.Select(p => p.Pacote)));
+        Exigir(Esperar(() => HistoricoEnvios.Listar().Count == 1 && HistoricoEnvios.Listar()[0].Bytes == Tam(Quadros(s)), 5_000), "o histórico devia ter UM pacote com a soma dos dois envios: " + string.Join(",", HistoricoEnvios.Listar().Select(e => e.Bytes)));
+        Exigir(!s.E.LiveMarcada, "depois do complemento a live deixa de estar marcada");
+        Exigir(Esperar(() => Converge(s), 10_000), "não convergiu: " + Estado(s));
+        ExigirIgual(srv, s);
+        envio.Fechar(TimeSpan.FromSeconds(1));
+    }
+
+    static void GravadorAberturaSeguinteECompletarAoFechar()
+    {
+        // app que morreu (ou fechou) no meio de uma live marcada: na abertura seguinte o resto da série sobe como complemento
+        var anterior = Sessao(3, 1); anterior.E.LiveMarcada = true; anterior.Salvar();
+        GravadorLocal.CompletarSessaoAnterior(anterior);
+        Exigir(!anterior.E.LiveMarcada && anterior.E.TetoPendente, "a sessão anterior com live marcada devia liberar o resto da série");
+        Exigir(SessaoLocal.Abrir(anterior.Dir)!.E.TetoPendente, "a liberação não foi salva no sessao.json");
+        var outra = Sessao(3, 1); GravadorLocal.CompletarSessaoAnterior(outra);
+        Exigir(!outra.E.TetoPendente, "a sessão sem live marcada não devia liberar nada");
+        // fechar o app com a live aberta e marcada faz o mesmo antes do último envio
+        using var srv = new ServidorFalso();
+        var s = Sessao(3, 1);
+        using var envio = Criar(srv, s);
+        var g = new GravadorLocal(envio);
+        g.LiveComecou("propria"); Exigir(g.Disparar(Disparo.Marcacao), "a marcação devia valer no Completo");
+        s.E.TetoPendente = false; // como se a rodada já tivesse aplicado o primeiro teto
+        g.EncerrarTudo();
+        Exigir(!s.E.LiveMarcada && s.E.TetoPendente, "ao fechar, a live marcada devia completar a série");
+    }
+
+    static void GravadorPermiteConformeOEstado()
+    {
+        foreach (Disparo d in Enum.GetValues<Disparo>())
+        {
+            Exigir(GravadorLocal.Permite(ModoEnvio.Completo, d), $"Completo devia permitir {d}");
+            Exigir(GravadorLocal.Permite(ModoEnvio.Anonimo, d) == (d != Disparo.Pedido), $"Anônimo: {d} devia {(d == Disparo.Pedido ? "não valer (sem o pedido da sala)" : "valer")}");
+            Exigir(!GravadorLocal.Permite(ModoEnvio.Desligado, d), $"Desligado nunca sobe sozinho: {d}");
+            Exigir(GravadorLocal.Permite(ModoEnvio.Completo, d, soQuandoMarcar: true) == (d == Disparo.Marcacao), $"só-quando-marcar no Completo: {d}");
+            Exigir(GravadorLocal.Permite(ModoEnvio.Anonimo, d, soQuandoMarcar: true) == (d == Disparo.Marcacao), $"só-quando-marcar no Anônimo: {d}");
+        }
+        using var srv = new ServidorFalso();
+        // Anônimo: o pedido de um amigo não vale, a marcação vale
+        var a = Sessao(3, 1); a.E.Reduzida = true; a.Salvar();
+        using var ea = EnvioEssencial(srv, a, ModoEnvio.Anonimo);
+        var ga = new GravadorLocal(ea);
+        Exigir(!ga.Disparar(Disparo.Pedido) && !a.E.TetoPendente, "o pedido 'agora' não vale no Anônimo");
+        Exigir(ga.Disparar(Disparo.Marcacao) && a.E.TetoPendente, "a marcação devia valer no Anônimo");
+        // Desligado: nem a marcação sobe sozinha
+        var d0 = Sessao(3, 1); d0.E.NaoEnviar = true; d0.Salvar();
+        using var ed = EnvioEssencial(srv, d0, ModoEnvio.Desligado);
+        var gd = new GravadorLocal(ed);
+        gd.LiveComecou("propria");
+        Exigir(!gd.Disparar(Disparo.Marcacao) && !d0.E.TetoPendente && d0.E.Pacotes.Count == 0, "no Desligado nada sobe sozinho");
+        d0.Evento("marcacao");
+        Exigir(!d0.E.TetoPendente, "o evento de marcação no Desligado não pode liberar a série");
+    }
+
+    static void GravadorSoQuandoMarcar()
+    {
+        using var srv = new ServidorFalso();
+        var s = Sessao(3, 1);
+        using var envio = Criar(srv, s);
+        var g = new GravadorLocal(envio) { SoQuandoMarcar = () => true };
+        g.LiveComecou("propria");
+        Exigir(!g.Disparar(Disparo.FalhaGrave) && !g.Disparar(Disparo.Pedido) && !g.Disparar(Disparo.ResumoComProblema), "com 'só quando eu marcar' só a marcação vale");
+        s.Evento("ui_travada");
+        Exigir(!s.E.TetoPendente && s.E.Pacotes.Count == 0, "a interface travada não podia liberar a série");
+        Exigir(g.Disparar(Disparo.Marcacao) && s.E.TetoPendente, "a marcação devia valer");
+    }
+
+    static void GravadorDisparosPelosEventos()
+    {
+        using var srv = new ServidorFalso();
+        var s = Sessao(3, 1);
+        using var envio = Criar(srv, s);
+        var g = new GravadorLocal(envio);
+        g.LiveComecou("propria");
+        s.Evento("falha", new JsonObject { ["tipo_falha"] = "outra" });
+        Exigir(!s.E.TetoPendente, "a falha 'outra' não é falha grave");
+        s.Evento("falha", new JsonObject { ["tipo_falha"] = "captura_travada" });
+        Exigir(s.E.TetoPendente && s.Motivo(Q1) == nameof(Disparo.FalhaGrave) && s.Pacote(Q1) != null, "a falha grave devia disparar: " + s.Motivo(Q1));
+        string primeiro = s.Pacote(Q1)!;
+        s.Evento("ui_travada"); // um segundo disparo antes de a rodada aplicar o primeiro entra no MESMO pacote
+        Exigir(s.Pacote(Q1) == primeiro && s.E.Pacotes.Values.Distinct().Count() == 1, "o segundo disparo abriu outro pacote");
+        s.FixarTetos();
+        // live_resumo: só com problema que durou (o disparo 3 é desligado por padrão até a P8; aqui ligado)
+        GravadorLocal.Disparo3Ligado = true;
+        s.Evento("live_resumo", ResumoDeTeste(CaminhoMidia.Host, Enumerable.Range(0, 3).Select(i => (i, 60, 0, 25, 0)).ToArray()));
+        Exigir(!s.E.TetoPendente, "um resumo sem problema não pode disparar");
+        s.Evento("live_resumo", ResumoDeTeste(CaminhoMidia.Host, Enumerable.Range(0, 3).Select(i => (i, 60, 0, 6, 0)).ToArray()));
+        Exigir(s.E.TetoPendente && s.Motivo(Q1) == nameof(Disparo.FalhaGrave), "o pacote já aberto guarda o motivo do primeiro disparo: " + s.Motivo(Q1));
+        Exigir(s.E.TetoPendente, "um resumo com 3 minutos ruins devia disparar");
+        GravadorLocal.Disparo3Ligado = false;
+    }
+
+    /// <summary>Um <c>live_resumo</c> mínimo: por minuto (m, segundos medidos, segundos de pausa, mediana de quadros novos, pior desvio de áudio e vídeo em ms).</summary>
+    static JsonObject ResumoDeTeste(string lado, (int M, int S, int Pausa, int Quadros, int Av)[] minutos)
+    {
+        var arr = new JsonArray();
+        foreach (var x in minutos)
+            arr.Add(new JsonObject { ["m"] = x.M, ["s"] = x.S, ["pausa_s"] = x.Pausa, ["quadros_novos_mediana"] = x.Quadros, ["av_pior_ms"] = x.Av });
+        return new JsonObject { ["lado"] = lado, ["minutos"] = arr };
+    }
+
+    static void GravadorResumoComProblemaLimiares()
+    {
+        double fps = GravadorLocal.FpsMinimo; int av = GravadorLocal.AvMaximoMs, seg = GravadorLocal.MinutosSeguidos; bool ligado = GravadorLocal.Disparo3Ligado;
+        try
+        {
+            GravadorLocal.Disparo3Ligado = false;
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(CaminhoMidia.Host, [(0, 60, 0, 6, 0), (1, 60, 0, 6, 0), (2, 60, 0, 6, 0)])), "o disparo 3 fica desligado por padrão até a calibragem (P8)");
+            GravadorLocal.Disparo3Ligado = true;
+            GravadorLocal.FpsMinimo = 10; GravadorLocal.AvMaximoMs = 1500; GravadorLocal.MinutosSeguidos = 3; // os padrões, fixos para o caso não depender do ambiente
+            const string H = CaminhoMidia.Host, V = CaminhoMidia.Viewer;
+            Exigir(GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 60, 0, 6, 0), (1, 60, 0, 6, 0), (2, 60, 0, 6, 0)])), "3 minutos seguidos com 6 quadros por segundo devia disparar");
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 60, 0, 6, 0), (1, 60, 0, 6, 0)])), "2 minutos ruins ainda é pouco");
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 60, 0, 6, 0), (1, 60, 0, 6, 0), (2, 60, 0, 25, 0), (3, 60, 0, 6, 0)])), "minutos ruins separados por um bom não somam");
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 60, 0, 6, 0), (1, 60, 0, 6, 0), (3, 60, 0, 6, 0)])), "um minuto sem amostra no meio recomeça a conta");
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 20, 0, 6, 0), (1, 20, 0, 6, 0), (2, 20, 0, 6, 0)])), "minuto com menos de 30 s medidos não prova nada");
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 60, 40, 0, 0), (1, 60, 40, 0, 0), (2, 60, 40, 0, 0)])), "minuto quase todo em pausa de privacidade não conta");
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 60, 0, 25, 9999), (1, 60, 0, 25, 9999), (2, 60, 0, 25, 9999)])), "quem transmite: o desvio de áudio e vídeo não conta, só os quadros");
+            Exigir(GravadorLocal.ResumoComProblema(ResumoDeTeste(V, [(0, 60, 0, 25, 2000), (1, 60, 0, 25, 2000), (2, 60, 0, 25, 2000)])), "quem assiste: 3 minutos com desvio acima de 1500 ms devia disparar");
+            Exigir(!GravadorLocal.ResumoComProblema(ResumoDeTeste(V, [(0, 60, 0, 1, 900), (1, 60, 0, 1, 900), (2, 60, 0, 1, 900)])), "quem assiste: poucos quadros não é problema dele, só o desvio conta");
+            Exigir(!GravadorLocal.ResumoComProblema(new JsonObject { ["lado"] = H }), "resumo sem minutos");
+            GravadorLocal.MinutosSeguidos = 2;
+            Exigir(GravadorLocal.ResumoComProblema(ResumoDeTeste(H, [(0, 60, 0, 6, 0), (1, 60, 0, 6, 0)])), "a quantidade de minutos é configurável (STREEMU_GRAVADOR_MINUTOS)");
+        }
+        finally { GravadorLocal.FpsMinimo = fps; GravadorLocal.AvMaximoMs = av; GravadorLocal.MinutosSeguidos = seg; GravadorLocal.Disparo3Ligado = ligado; }
+    }
+
+    static void GravadorSerieGuardaSeteDiasNoPc()
+    {
+        // série passou de 7 dias: sai do PC tenha subido ou não, e a sessão pendente fica; a de 5 dias com série fica mais que as sem série (3 dias)
+        var velhaPendente = Fabricar("r1", 24 * 8, 1000, "pendente");
+        var recenteComSerie = Fabricar("r2", 24 * 5, 1000, "concluida");
+        var recenteSemSerie = Fabricar("r3", 24 * 5, 1000, "concluida");
+        var velhaConcluida = Fabricar("r4", 24 * 8, 1000, "concluida");
+        var atual = Fabricar("r5", 0, 1000, "aberta");
+        foreach (var x in new[] { velhaPendente, recenteComSerie, velhaConcluida, atual }) File.WriteAllText(Quadros(x), LinhasDeQuadros(0, 10));
+        // uma série por live: as de outras lives e o formato antigo (sem número) saem junto; arquivo que só parece série não
+        foreach (var extra in new[] { "quadros-2.csv", "sincronia-1.ndjson", "sincronia-12.ndjson", "quadros.csv", "sincronia.ndjson" }) File.WriteAllText(Path.Combine(velhaPendente.Dir, extra), "1,2\n");
+        File.WriteAllText(Path.Combine(velhaPendente.Dir, "quadros-x.csv"), "1,2\n");
+        Manutencao.Limpar(null, atual);
+        Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        Exigir(new[] { "quadros-2.csv", "sincronia-1.ndjson", "sincronia-12.ndjson", "quadros.csv", "sincronia.ndjson" }.All(n => !File.Exists(Path.Combine(velhaPendente.Dir, n))), "a série de cada live (e a do formato antigo) devia sair com a de mais de 7 dias");
+        Exigir(File.Exists(Path.Combine(velhaPendente.Dir, "quadros-x.csv")), "arquivo que não é série (quadros-x.csv) não podia sair");
+        Exigir(Existe(velhaPendente) && !File.Exists(Quadros(velhaPendente)) && File.Exists(Path.Combine(velhaPendente.Dir, "dados.csv")), "a série de mais de 7 dias devia sair, e só ela");
+        Exigir(Existe(recenteComSerie) && File.Exists(Quadros(recenteComSerie)), "a sessão de 5 dias com série devia ficar (a guarda dela é de 7)");
+        Exigir(!Existe(recenteSemSerie), "a sessão enviada de 5 dias sem série devia sair (a guarda é de 3)");
+        Exigir(!Existe(velhaConcluida), "a sessão enviada de 8 dias devia sair inteira");
+        Exigir(Existe(atual) && File.Exists(Quadros(atual)), "a sessão atual nunca perde a série");
+    }
+
+    static void GravadorSerieUmaPorLiveENomes()
+    {
+        // o nome da série: por live (com número) ou o formato antigo; nada que só pareça
+        foreach (var n in new[] { "quadros.csv", "quadros-1.csv", "quadros-12.csv", "sincronia.ndjson", "sincronia-3.ndjson", SessaoLocal.NomeQuadros(2), SessaoLocal.NomeSincronia(9) })
+            Exigir(SessaoLocal.Serie(n), $"{n} devia ser série");
+        foreach (var n in new[] { "quadros-.csv", "quadros-x.csv", "quadros-1a.csv", "quadros-1.csv.tmp", "quadros-1234567.csv", "sincronia-1.csv", "relatorios/quadros-1.csv", "log.txt", "eventos.ndjson", "quadros.ndjson" })
+            Exigir(!SessaoLocal.Serie(n), $"{n} não é série");
+
+        using var srv = new ServidorFalso();
+        var (s, envio, g) = SessaoComSerie(srv); // a live 1 já está aberta
+        using var _e = envio;
+        Exigir(s.ArquivoQuadros == Q1 && s.ArquivoSincronia == SessaoLocal.NomeSincronia(1), "a primeira live usa os arquivos 1");
+        s.Evento("marcacao");
+        Exigir(Esperar(() => SerieSubiu(s), 20_000), "a marcação da live 1 não liberou a série: " + Estado(s));
+        string p1 = s.Pacote(Q1)!;
+        g.LiveAcabou("propria");
+        Exigir(Esperar(() => Converge(s), 20_000), "não convergiu depois da live 1: " + Estado(s));
+        // live 2 da mesma sessão: arquivos novos; sem disparo a série dela fica no PC
+        g.LiveComecou("propria");
+        string q2 = SessaoLocal.NomeQuadros(2);
+        Exigir(s.ArquivoQuadros == q2, "a segunda live devia abrir " + q2 + ", abriu " + s.ArquivoQuadros);
+        s.Acrescentar(q2, LinhasDeQuadros(0, 20)); Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        envio.Agora(); Thread.Sleep(2000);
+        string chave2 = $"{s.Id}|{q2}";
+        Exigir(srv.Tamanho(chave2) == 0 && s.Pacote(q2) == null && s.Cursor(q2) == 0, "a série da live 2 subiu sem disparo");
+        Exigir(s.Pacote(Q1) == p1, "o pacote da live 1 não pode mudar");
+        // marcou na live 2: pacote próprio (o Apagar da segunda não depende da primeira)
+        s.Evento("marcacao");
+        Exigir(Esperar(() => Tam(Path.Combine(s.Dir, q2)) > 0 && s.Cursor(q2) == Tam(Path.Combine(s.Dir, q2)), 20_000), "a marcação da live 2 não liberou a série dela: " + Estado(s));
+        string p2 = s.Pacote(q2)!;
+        Exigir(p2 != null && p2 != p1, $"cada live marcada precisa do seu pacote ({p1} / {p2})");
+        var pecas = srv.PecasAceitas();
+        Exigir(pecas.Where(p => p.Arq == Q1).All(p => p.Pacote == p1) && pecas.Where(p => p.Arq == q2).All(p => p.Pacote == p2) && pecas.Any(p => p.Arq == q2), "as peças de cada live precisam levar o pacote dela: " + string.Join(",", pecas.Where(p => SessaoLocal.Serie(p.Arq)).Select(p => p.Arq + "=" + p.Pacote)));
+        Exigir(Esperar(() => HistoricoEnvios.Listar().Any(e => e.Pacote == p1) && HistoricoEnvios.Listar().Any(e => e.Pacote == p2 && e.Arquivos.SequenceEqual(new[] { q2 })), 5_000), "o histórico devia ter um pacote por live");
+        envio.Fechar(TimeSpan.FromSeconds(1));
+    }
+
+    static void GravadorDesligadoSoSobeComOCliqueEAnonimo()
+    {
+        using var srv = new ServidorFalso();
+        Anonimizador.Reiniciar();
+        var s = Sessao(5, 2); s.E.NaoEnviar = true; s.Salvar();
+        s.Acrescentar(Q1, LinhasDeQuadros(0, 30));
+        Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Desligado);
+        var g = new GravadorLocal(envio);
+        g.LiveComecou("propria");
+        envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora();
+        Thread.Sleep(1500);
+        Exigir(!g.Disparar(Disparo.Marcacao) && srv.PecasAceitas().Length == 0, "no Desligado nada sobe sem o clique");
+        Exigir(g.ArquivosDaMarcacaoDesligada().SequenceEqual(new[] { SessaoLocal.Log, SessaoLocal.Eventos, Q1 }), "a lista da janela: " + string.Join(",", g.ArquivosDaMarcacaoDesligada()));
+        // nomes dos amigos ainda não carregados: recusa com o motivo, sem enviar
+        var (ok0, msg0) = g.EnviarMarcacaoDesligada();
+        Exigir(!ok0 && msg0.Length > 0 && srv.PecasAceitas().Length == 0, "sem os nomes carregados não devia enviar: " + msg0);
+        Anonimizador.MarcarPronto();
+        var (ok, msg) = g.EnviarMarcacaoDesligada();
+        Exigir(ok, "o envio único devia dar certo: " + msg);
+        var pecas = srv.PecasAceitas();
+        var nomes = pecas.Select(p => p.Arq).Distinct().ToList();
+        Exigir(nomes.Count > 0 && nomes.All(n => n is SessaoLocal.Log or SessaoLocal.Eventos || n == Q1), "só o log, os eventos e a série da live: " + string.Join(",", nomes));
+        Exigir(nomes.Contains(Q1) && pecas.All(p => p.Pacote != null), "todo arquivo leva pacote (para o Apagar): " + string.Join(",", pecas.Select(p => p.Arq + "=" + p.Pacote)));
+        Exigir(pecas.First(p => p.Arq == Q1).Pacote != pecas.First(p => p.Arq != Q1).Pacote, "a série da live tem pacote próprio, separado do log");
+        Exigir(srv.Credenciais().All(c => c == "bilhete:" + ServidorFalso.BilheteAceito), "o envio único é anônimo: só o bilhete, nunca o token: " + string.Join(",", srv.Credenciais().Distinct()));
+        Exigir(envio.Modo == ModoEnvio.Desligado && !s.E.TetoPendente, "o envio único não muda o modo nem liga nada para depois");
+        string pacoteSerie = s.Pacote(Q1)!;
+        Exigir(HistoricoEnvios.Listar().Any(e => e.Pacote == pacoteSerie && e.Modo == nameof(ModoEnvio.Anonimo)), "o histórico devia ter o pacote como anônimo, para o Apagar");
+        // depois do clique o laço continua parado: nada novo sobe sozinho
+        int antes = srv.PecasAceitas().Length;
+        s.Acrescentar(Q1, LinhasDeQuadros(30, 40)); Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        envio.Agora(); Thread.Sleep(1500);
+        Exigir(srv.PecasAceitas().Length == antes, "o laço do Desligado voltou a enviar sozinho");
+        Anonimizador.Reiniciar();
+    }
+
+    static void GravadorHistoricoDeEnvios()
+    {
+        HistoricoEnvios.Registrar("pacote-aaaaaa", "Marcacao", "Completo", "s1", Q1, 100);
+        HistoricoEnvios.Registrar("pacote-aaaaaa", "Marcacao", "Completo", "s1", "sincronia.ndjson", 50); // complemento do mesmo pacote
+        HistoricoEnvios.Registrar("pacote-bbbbbb", "FalhaGrave", "Anonimo", "s2", Q1, 10);
+        HistoricoEnvios.Registrar("pacote-cccccc", "Marcacao", "Completo", "s3", Q1, 0); // nada subiu: nada registrado
+        var l = HistoricoEnvios.Listar();
+        Exigir(l.Count == 2, $"esperava 2 pacotes, vieram {l.Count}");
+        var a = l.First(e => e.Pacote == "pacote-aaaaaa");
+        Exigir(a.Bytes == 150 && a.Arquivos.Count == 2, $"o complemento devia somar no mesmo pacote: {a.Bytes} bytes, {a.Arquivos.Count} arquivos");
+        Exigir(HistoricoEnvios.TemNovo(), "devia haver pacote não visto");
+        HistoricoEnvios.MarcarVistos();
+        Exigir(!HistoricoEnvios.TemNovo() && HistoricoEnvios.Listar().All(e => e.Visto), "abrir o histórico devia marcar tudo como visto");
+        HistoricoEnvios.Registrar("pacote-aaaaaa", "Marcacao", "Completo", "s1", Q1, 5);
+        Exigir(HistoricoEnvios.TemNovo(), "um complemento é novidade de novo");
+        HistoricoEnvios.Remover("pacote-aaaaaa");
+        Exigir(HistoricoEnvios.Listar().Select(e => e.Pacote).SequenceEqual(new[] { "pacote-bbbbbb" }), "Remover devia tirar só o pacote apagado");
+        // passou de 30 dias: sai sozinho
+        string arq = Path.Combine(Pasta.Raiz, "historico-envios.json");
+        var json = JsonNode.Parse(File.ReadAllText(arq))!.AsArray();
+        json[0]!["Quando"] = DateTime.UtcNow.AddDays(-31).ToString("yyyy-MM-ddTHH:mm:ssZ");
+        File.WriteAllText(arq, json.ToJsonString());
+        Exigir(HistoricoEnvios.Listar().Count == 0, "o pacote de 31 dias devia sair do histórico");
+        HistoricoEnvios.Apagar();
+    }
+
+    static void ApagarPacoteNoServidor()
+    {
+        using var srv = new ServidorFalso();
+        var s = Sessao(3, 1);
+        // identificado: token da conta + o PC
+        using (var envio = EnvioEssencial(srv, s, ModoEnvio.Completo))
+        {
+            srv.ApagarIncompletos = 2; // o Worker apaga em etapas: o app repete até completo
+            var (ok, msg) = envio.ApagarPacote("pacote-aaaaaa", nameof(ModoEnvio.Completo));
+            Exigir(ok, "devia apagar: " + msg);
+            var ap = srv.Apagados();
+            Exigir(ap.Length == 3, $"esperava 3 pedidos (2 incompletos + 1 completo), vieram {ap.Length}");
+            Exigir(ap.All(x => x.Cred == "token:" + ServidorFalso.TokenPadrao && x.Corpo["pacote"]!.GetValue<string>() == "pacote-aaaaaa" && x.Corpo["pc"]!.GetValue<string>() == envio.Pc && x.Corpo["chave"] == null), "o pedido identificado tem token, pacote e pc, e nada de chave: " + string.Join(" | ", ap.Select(x => x.Corpo.ToJsonString())));
+        }
+        // anônimo: a chave local + o bilhete (ou o token), nunca o pc identificado
+        using (var envio = EnvioEssencial(srv, s, ModoEnvio.Anonimo))
+        {
+            var (ok, msg) = envio.ApagarPacote("pacote-bbbbbb", nameof(ModoEnvio.Anonimo));
+            Exigir(ok, "devia apagar o anônimo: " + msg);
+            var ult = srv.Apagados().Last();
+            Exigir(ult.Cred == "bilhete:" + ServidorFalso.BilheteAceito && ult.Corpo["chave"] != null && ult.Corpo["pc"] == null, "o pedido anônimo usa chave e bilhete, sem pc: " + ult.Corpo.ToJsonString());
+        }
+        // sem conta: não faz o pedido e diz o que fazer
+        int antes = srv.Apagados().Length;
+        using (var envio = EnvioEssencial(srv, s, ModoEnvio.Completo, token: _ => null))
+        {
+            var (ok, msg) = envio.ApagarPacote("pacote-cccccc", nameof(ModoEnvio.Completo));
+            Exigir(!ok && msg.Contains("conta") && srv.Apagados().Length == antes, "sem conta não devia haver pedido: " + msg);
+        }
+        // servidor recusa: a mensagem diz o motivo e o pacote continua
+        srv.TokenAceito = "outro-token";
+        using (var envio = EnvioEssencial(srv, s, ModoEnvio.Completo))
+        {
+            var (ok, msg) = envio.ApagarPacote("pacote-dddddd", nameof(ModoEnvio.Completo));
+            Exigir(!ok && msg.Contains("401"), "o 401 devia aparecer na frase: " + msg);
+        }
     }
 
     // ---------- gravação fora das threads de quem chama e custo (etapa 8) ----------
@@ -891,6 +1644,7 @@ static class Casos
 
     static void RedePorLigacao()
     {
+        Pseudonimos.Reiniciar(); // o "Ana" de Uma() é o primeiro amigo desta abertura: amigo-1
         var s = Sessao(0, 0);
         var r = new SerieRede(s);
         // linha de base (conectada): 1000 recebidos, 0% perda
@@ -903,7 +1657,7 @@ static class Casos
         Exigir(u["enviado_kbps"]!.GetValue<double>() == 1000 && u["recebido_kbps"]!.GetValue<double>() == 2000, "taxas: " + u.ToJsonString());
         Exigir(u["pacotes_recebidos"]!.GetValue<long>() == 500 && u["pacotes_perdidos"]!.GetValue<long>() == 100, "pacotes: " + u.ToJsonString());
         Exigir(Math.Abs(u["perda_pct"]!.GetValue<double>() - 16.67) < 0.05, "perda do intervalo: " + u.ToJsonString());
-        Exigir(u["caminho"]!.GetValue<string>() == "direto" && u["amigo"]!.GetValue<string>() == "Ana" && u["transmissao"]!.GetValue<string>() == "live1", "identificação: " + u.ToJsonString());
+        Exigir(u["caminho"]!.GetValue<string>() == "direto" && u["amigo"]!.GetValue<string>() == "amigo-1" && u["transmissao"]!.GetValue<string>() == "live1", "identificação: " + u.ToJsonString());
         // quem transmite não tem perda para informar
         r.Amostrar(10_000, () => Uma("L2", Leit("Connected", 0, 0, 0, 0, assisto: false), "transmite"));
         r.Amostrar(15_000, () => Uma("L2", Leit("Connected", 1_250_000, 0, 0, 0, assisto: false, caminho: "meu_relay"), "transmite"));
@@ -1207,7 +1961,7 @@ static class Casos
 
     static Envio EnvioComConta(ServidorFalso srv, SessaoLocal s, Func<bool, string?>? token, Func<string?>? bilhete, bool anonimo = false) =>
         new($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade(null, null, "teste", "instalacao-de-teste", "c-abcdefghijkl"), "id-anonimo-de-teste")
-        { Token = token, Bilhete = bilhete, Habilitado = !anonimo };
+        { Token = token, Bilhete = bilhete, Modo = anonimo ? ModoEnvio.Anonimo : ModoEnvio.Completo };
 
     static void ContaTokenNormal()
     {
@@ -1346,7 +2100,7 @@ static class Casos
         s.Evento("sessao_inicio", new JsonObject { ["versao"] = "9.9.9" });
         s.Evento("live", new JsonObject { ["jogo"] = "jogo do Fulano", ["outro_install"] = "id-da-amiga", ["outro_apelido"] = "Amigona" });
         Gravador.Descarregar(TimeSpan.FromSeconds(5));
-        using var envio = new Envio($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade("123456", "Fulano", "ApelidoFulano", "instalacao-de-teste"), "id-anonimo-de-teste") { Habilitado = false, Bilhete = () => ServidorFalso.BilheteAceito };
+        using var envio = new Envio($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade("123456", "Fulano", "ApelidoFulano", "instalacao-de-teste"), "id-anonimo-de-teste") { Modo = ModoEnvio.Anonimo, Bilhete = () => ServidorFalso.BilheteAceito };
         envio.Ativo = true;
         envio.Iniciar(new[] { completa });
         envio.DefinirPerfil(new JsonObject { ["gpu"] = "placa de Fulano" }, "hardware-x");
@@ -1365,11 +2119,216 @@ static class Casos
         foreach (var c in srv.Cabecalhos())
         {
             Exigir(c["discord_id"] == null && c["discord_nome"] == null && c["apelido"] == null && c["hw"] == null, "cabeçalho com identidade: " + c.ToJsonString());
-            Exigir(c["install"]!.GetValue<string>() == "id-anonimo-de-teste" && c["pc"]!.GetValue<string>() == envio.PcAnonimo && c["pc"]!.GetValue<string>() != envio.Pc, "ids do modo anônimo: " + c["pc"] + "/" + c["install"]);
+                // A5/N5: nem o ID aleatório cru sobe mais (era o `install` de todo pacote anônimo): só o id de PC derivado dele
+            Exigir(c["install"] == null && c["pc"]!.GetValue<string>() == envio.PcAnonimo && c["pc"]!.GetValue<string>() != envio.Pc && !c.ToJsonString().Contains("id-anonimo-de-teste"), "ids do modo anônimo: " + c["pc"] + "/" + c["install"]);
             if (c["perfil"] != null) Exigir(!c["perfil"]!.ToJsonString().Contains("Fulano"), "perfil com nome: " + c["perfil"]);
         }
         Exigir(envio.Situacao().Estado != EstadoEnvio.Ok, "o indicador não pode ficar verde \"em dia\" no modo anônimo");
         Anonimizador.Reiniciar();
+    }
+
+    // ---------- spec 018, A-II: log limpo, perfil enxuto, anônimo sem identidade e o amigo como amigo-N (N4, N5, N8, N17, N18, N22) ----------
+
+    static SessaoLocal SessaoComLog(string logTexto, bool reduzida)
+    {
+        string id = $"20261126-{DateTime.Now:HHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
+        string log = Path.Combine(Tmp, "logs", $"sessao-{id}.log");
+        Directory.CreateDirectory(Path.GetDirectoryName(log)!);
+        File.WriteAllText(log, logTexto, new UTF8Encoding(false));
+        return SessaoLocal.Criar(id, log, naoEnviar: false, reduzida: reduzida);
+    }
+
+    /// <summary>Todas as chaves de um JSON, em qualquer profundidade.</summary>
+    static IEnumerable<string> Chaves(JsonNode? n)
+    {
+        if (n is JsonObject o) foreach (var (k, v) in o) { yield return k; foreach (var f in Chaves(v)) yield return f; }
+        else if (n is JsonArray a) foreach (var item in a) foreach (var f in Chaves(item)) yield return f;
+    }
+
+    /// <summary>N8 e N17. Lê o perfil do PC que roda o teste (só leitura, nada sobe) e confere o que NÃO pode estar nele.</summary>
+    static void PerfilEnxuto()
+    {
+        var p = Perfil.Coletar();
+        var chaves = Chaves(p).ToHashSet();
+        foreach (var proibida in new[] { "fuso", "ligado_ha_h", "ram_livre_mb", "ultima_atualizacao", "instalado_em", "pasta", "bateria_pct", "programas_que_interferem", "antivirus",
+                                         "pentes", "fabricante_pc", "modelo", "ssid", "bssid", "mac", "gateway", "ip", "descricao", "taxa_mbps", "radio" }) // "canal" fica de fora: é o canal de lançamento do app em estavel.app (spec 018, 5.1); o do Wi-Fi é conferido abaixo
+            Exigir(!chaves.Contains(proibida), $"o perfil ainda leva \"{proibida}\" (spec 018, 5.4)");
+        var estavel = (JsonObject)p["estavel"]!; var momento = (JsonObject)p["momento"]!;
+        Exigir(momento.Select(kv => kv.Key).All(k => k is "hora_utc" or "energia" or "wifi" or "windows_jogo"), "o momento tem chave fora da lista: " + string.Join(",", momento.Select(kv => kv.Key)));
+        // o nome do fone e do microfone não sobem: o áudio só tem formato e quantidade
+        Exigir(!Chaves(estavel["audio"]).Contains("nome") && !Chaves(estavel["audio"]).Contains("id"), "o áudio leva nome de dispositivo: " + estavel["audio"]);
+        // a rede só tem tipo, velocidade e VPN
+        if (estavel["rede"] is JsonArray rede)
+            Exigir(rede.All(r => r is JsonObject ro && ro.Select(kv => kv.Key).All(k => k is "tipo" or "mbps" or "vpn")), "a rede leva mais que tipo, mbps e vpn: " + rede.ToJsonString());
+        if (estavel["maquina"] is JsonObject maq)
+            Exigir(maq.Select(kv => kv.Key).All(k => k is "tipo" or "tem_bateria" or "erro"), "a máquina leva mais que o tipo: " + maq.ToJsonString());
+        if (estavel["ram"] is JsonObject ram)
+            Exigir(ram.Select(kv => kv.Key).All(k => k is "total_gb" or "erro"), "a RAM leva mais que o total: " + ram.ToJsonString());
+        if (momento["energia"] is JsonObject en)
+            Exigir(en["plano"] == null || en["plano"]!.GetValue<string>() is "economia" or "equilibrado" or "desempenho" or "outro", "o plano de energia não é uma categoria: " + en["plano"]);
+        if (momento["wifi"] is JsonObject wf)
+            Exigir(wf.Select(kv => kv.Key).All(k => k is "banda" or "sinal_pct" or "sem_detalhes" or "erro"), "o Wi-Fi leva mais que banda e sinal: " + wf.ToJsonString());
+
+        // N17: HAGS, Modo de Jogo, Game DVR e captura Xbox vivem no "momento": trocar um deles não muda o hash (perfil novo no índice)
+        string antes = Perfil.Hash(p);
+        var igual = (JsonObject)JsonNode.Parse(p.ToJsonString())!;
+        var jogo = igual["momento"]!["windows_jogo"] as JsonObject ?? new JsonObject();
+        jogo["agendamento_gpu_hardware"] = jogo["agendamento_gpu_hardware"]?.GetValue<string>() == "ligado" ? "desligado" : "ligado";
+        jogo["modo_de_jogo"] = jogo["modo_de_jogo"]?.GetValue<bool>() != true;
+        igual["momento"]!["windows_jogo"] = jogo;
+        igual["momento"]!["hora_utc"] = "2000-01-01T00:00:00Z";
+        Exigir(Perfil.Hash(igual) == antes, "trocar HAGS/Modo de Jogo ou a hora gerou outro hash do perfil");
+        Exigir(!estavel.ToJsonString().Contains("agendamento_gpu_hardware") && !estavel.ToJsonString().Contains("modo_de_jogo"), "o HAGS voltou para o \"estavel\"");
+        // e uma mudança de verdade no estável (driver novo) muda o hash
+        var novo = (JsonObject)JsonNode.Parse(p.ToJsonString())!;
+        novo["estavel"]!["windows"] = new JsonObject { ["ubr"] = 999999 };
+        Exigir(Perfil.Hash(novo) != antes, "mudar o Windows não mudou o hash");
+        Higiene.EsquecerDispositivos();
+    }
+
+    /// <summary>N4 e N5: o mesmo perfil no Completo e no Anônimo; o anônimo não leva identidade, nem o ID aleatório cru, nem o id real do PC (nem no cabeçalho HTTP).</summary>
+    static void PerfilIgualEAnonimoSemIdentidade()
+    {
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
+        var perfil = new JsonObject
+        {
+            ["estavel"] = new JsonObject { ["cpu"] = new JsonObject { ["nome"] = "CPU de teste" }, ["ram"] = new JsonObject { ["total_gb"] = 16 }, ["rede"] = new JsonArray(new JsonObject { ["tipo"] = "cabo", ["mbps"] = 1000, ["vpn"] = false }) },
+            ["momento"] = new JsonObject { ["hora_utc"] = "2026-11-26T12:00:00Z", ["wifi"] = new JsonObject { ["banda"] = "5 GHz", ["sinal_pct"] = 80 } },
+        };
+        JsonObject Enviar(bool anonimo)
+        {
+            using var srv = new ServidorFalso();
+            var s = SessaoComLog("12:00:00.000 linha neutra\n", reduzida: anonimo);
+            s.Evento("sessao_inicio", new JsonObject { ["versao"] = "9.9.9", ["args"] = "normal" });
+            Gravador.Descarregar(TimeSpan.FromSeconds(5));
+            if (anonimo) Anonimizador.MarcarPronto();
+            var ident = new Identidade("123456789012345678", "DiscordDoFulano", "ApelidoDoFulano", "instalacao-de-teste", "c-abcdefghijkl");
+            using var envio = new Envio($"http://127.0.0.1:{srv.Porta}", s, () => ident, "id-anonimo-de-teste")
+            { Modo = anonimo ? ModoEnvio.Anonimo : ModoEnvio.Completo, Token = _ => ServidorFalso.TokenPadrao, Bilhete = () => ServidorFalso.BilheteAceito };
+            envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>());
+            envio.DefinirPerfil((JsonObject)JsonNode.Parse(perfil.ToJsonString())!, "hardware-x");
+            envio.Agora();
+            Exigir(Esperar(() => srv.Cabecalhos().Any(c => c["perfil"] != null), 20_000), "o perfil não chegou ao servidor");
+            envio.Fechar(TimeSpan.FromSeconds(2));
+            string pcDoEnvio = anonimo ? envio.PcAnonimo : envio.Pc;
+            Exigir(srv.PcsDoCabecalho().All(x => x == pcDoEnvio), "o cabeçalho x-streemu-pc devia ser " + pcDoEnvio + ": " + string.Join(",", srv.PcsDoCabecalho()));
+            if (anonimo) Exigir(!srv.PcsDoCabecalho().Contains(envio.Pc), "o id real do PC foi no cabeçalho HTTP do anônimo");
+            return srv.Cabecalhos().First(c => c["perfil"] != null);
+        }
+        var completo = Enviar(false);
+        var anon = Enviar(true);
+        // N4: o perfil é o mesmo conjunto de campos nos dois estados
+        Exigir(Chaves(completo["perfil"]).SequenceEqual(Chaves(anon["perfil"])), "perfil do Completo e do Anônimo com campos diferentes: " + completo["perfil"] + " | " + anon["perfil"]);
+        // N5: o anônimo sem identidade, sem o ID aleatório cru, sem hardware ligável
+        Exigir(anon["install"] == null && anon["conta"] == null && anon["apelido"] == null && anon["hw"] == null && anon["discord_id"] == null && anon["discord_nome"] == null,
+            "cabeçalho anônimo com identidade: " + anon.ToJsonString());
+        Exigir(!anon.ToJsonString().Contains("id-anonimo-de-teste") && !anon.ToJsonString().Contains("instalacao-de-teste") && !anon.ToJsonString().Contains("DiscordDoFulano"), "cabeçalho anônimo com ID cru: " + anon.ToJsonString());
+        Exigir(completo["hw"]?.GetValue<string>() == "hardware-x" && completo["conta"]?.GetValue<string>() == "c-abcdefghijkl", "o Completo devia seguir identificado: " + completo.ToJsonString());
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
+    }
+
+    /// <summary>N18: o Discord (id e nome) não sobe em estado nenhum, mesmo quando o app o conhece.</summary>
+    static void DiscordNaoSobe()
+    {
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
+        foreach (var anonimo in new[] { false, true })
+        {
+            using var srv = new ServidorFalso();
+            var s = SessaoComLog("12:00:00.000 linha neutra\n", reduzida: anonimo);
+            s.Evento("sessao_inicio", new JsonObject { ["versao"] = "9.9.9" });
+            Gravador.Descarregar(TimeSpan.FromSeconds(5));
+            if (anonimo) Anonimizador.MarcarPronto();
+            using var envio = new Envio($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade("987654321098765432", "DiscordDoFulano", "ApelidoDoFulano", "instalacao-de-teste", "c-abcdefghijkl"), "id-anonimo-de-teste")
+            { Modo = anonimo ? ModoEnvio.Anonimo : ModoEnvio.Completo, Token = _ => ServidorFalso.TokenPadrao, Bilhete = () => ServidorFalso.BilheteAceito };
+            envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>());
+            envio.DefinirPerfil(new JsonObject { ["estavel"] = new JsonObject(), ["momento"] = new JsonObject() }, "hardware-x");
+            envio.Agora();
+            Exigir(Esperar(() => srv.Cabecalhos().Length > 0 && srv.VeioEvento("sessao_inicio"), 20_000), "nada chegou ao servidor");
+            envio.Fechar(TimeSpan.FromSeconds(2));
+            foreach (var c in srv.Cabecalhos())
+            {
+                string cab = c.ToJsonString();
+                Exigir(!c.ContainsKey("discord_id") && !c.ContainsKey("discord_nome") && !cab.Contains("987654321098765432") && !cab.Contains("DiscordDoFulano"), $"o Discord subiu no cabeçalho ({(anonimo ? "anônimo" : "completo")}): {cab}");
+            }
+            string log = Encoding.UTF8.GetString(srv.Conteudo($"{s.Id}|log.txt"));
+            Exigir(!log.Contains("987654321098765432"), "o id do Discord subiu no log");
+        }
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
+    }
+
+    /// <summary>
+    /// D32 e N22. O app registra o amigo (id e nome) e, no envio, ele vira amigo-N no log e nos eventos do Completo e do Anônimo, sempre o mesmo número. O
+    /// outro lado (B, em Desligado) não manda nada do diagnóstico; o que A manda sobre B é só amigo-N: nem o nome nem o id de B chegam ao servidor.
+    /// </summary>
+    static void AmigoViraAmigoN()
+    {
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
+        const string idB = "id-do-amigo-b-0123456789", nickB = "BrunoDoFundo";
+        Pseudonimos.Registrar(idB, nickB);
+        string numero = Pseudonimos.Para(idB, nickB)!;
+        Exigir(numero == "amigo-1" && Pseudonimos.Para(null, nickB) == numero && Pseudonimos.Para(idB, null) == numero, "o mesmo amigo devia ter um número só: " + numero);
+        Exigir(Pseudonimos.Para("convidado") == "convidado", "o convidado da live privada devia ficar como está");
+        foreach (var anonimo in new[] { false, true })
+        {
+            using var srv = new ServidorFalso();
+            var s = SessaoComLog($"12:00:00.000 Ligação com {nickB} conectada\n12:00:01.000 {idB} pediu para assistir; bruno dofundo entrou\n", reduzida: anonimo);
+            s.Evento("live", new JsonObject { ["transmissao"] = "LIV-9", ["ligacao"] = "L-1", ["papel"] = "envia", ["outro_install"] = numero, ["outro_apelido"] = numero, ["nota"] = $"{nickB} abriu" });
+            Gravador.Descarregar(TimeSpan.FromSeconds(5));
+            if (anonimo) Anonimizador.MarcarPronto();
+            using var envio = new Envio($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade(null, null, "Eu", "instalacao-de-teste", "c-abcdefghijkl"), "id-anonimo-de-teste")
+            { Modo = anonimo ? ModoEnvio.Anonimo : ModoEnvio.Completo, Token = _ => ServidorFalso.TokenPadrao, Bilhete = () => ServidorFalso.BilheteAceito };
+            envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora();
+            Exigir(Esperar(() => srv.VeioEvento("live") && srv.Tamanho($"{s.Id}|log.txt") > 0, 20_000), "o servidor não recebeu o log e o evento");
+            envio.Fechar(TimeSpan.FromSeconds(2));
+            string log = Encoding.UTF8.GetString(srv.Conteudo($"{s.Id}|log.txt"));
+            string modo = anonimo ? "anônimo" : "completo";
+            Exigir(!log.Contains(nickB, StringComparison.OrdinalIgnoreCase) && !log.Contains(idB) && log.Contains(numero), $"o log ({modo}) tem o amigo pelo nome ou pelo id: " + log);
+            var live = srv.UltimoEvento("live")!;
+            string ev = live.ToJsonString();
+            Exigir(!ev.Contains(nickB, StringComparison.OrdinalIgnoreCase) && !ev.Contains(idB) && ev.Contains(numero), $"o evento da live ({modo}) tem o amigo pelo nome ou pelo id: " + ev);
+            Exigir(live["transmissao"]?.GetValue<string>() == "LIV-9" && live["ligacao"]?.GetValue<string>() == "L-1", "a transmissão e a ligação (a junção das duas pontas) não podem mudar: " + ev);
+            foreach (var c in srv.Cabecalhos()) Exigir(!c.ToJsonString().Contains(nickB, StringComparison.OrdinalIgnoreCase) && !c.ToJsonString().Contains(idB), "o amigo apareceu no cabeçalho: " + c.ToJsonString());
+        }
+        // B em Desligado: nenhum pedido do diagnóstico saiu do PC dele, então nada dele (nem o id) chega ao servidor por ele
+        using (var srvB = new ServidorFalso())
+        {
+            var sb = SessaoComLog("12:00:00.000 Ligação com o amigo A conectada\n", reduzida: false); sb.E.NaoEnviar = true; sb.Salvar();
+            using var envioB = EnvioEssencial(srvB, sb, ModoEnvio.Desligado);
+            envioB.Ativo = true; envioB.Iniciar(Array.Empty<SessaoLocal>()); envioB.Agora();
+            Thread.Sleep(2500);
+            envioB.Fechar(TimeSpan.FromSeconds(2));
+            Exigir(srvB.Pedidos == 0 && srvB.BytesRecebidos == 0 && srvB.Cabecalhos().Length == 0, "o Desligado mandou diagnóstico");
+        }
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
+    }
+
+    /// <summary>
+    /// N22, o outro lado: com as duas pontas Ligadas, cada uma só diz amigo-N sobre a outra, mas as duas gravam a mesma transmissão e a mesma ligação, que é
+    /// por onde o Worker (B5) e o painel as juntam. O amigo-1 de uma não precisa ser o amigo-1 da outra.
+    /// </summary>
+    static void AmigoDuasPontasLigadas()
+    {
+        Anonimizador.Reiniciar();
+        var vistos = new List<JsonObject>();
+        foreach (var (eu, outro, idOutro, papel) in new[] { ("Alice", "BrunoDoFundo", "id-b-0123456789", "envia"), ("BrunoDoFundo", "Alice", "id-a-0123456789", "assiste") })
+        {
+            Pseudonimos.Reiniciar();
+            Pseudonimos.Registrar(idOutro, outro);
+            using var srv = new ServidorFalso();
+            var s = SessaoComLog("12:00:00.000 linha neutra\n", reduzida: false);
+            s.Evento("live", new JsonObject { ["transmissao"] = "LIV-42", ["ligacao"] = "L-7", ["papel"] = papel, ["outro_install"] = Pseudonimos.Para(idOutro, outro), ["outro_conta"] = Pseudonimos.Para(idOutro, outro), ["outro_apelido"] = Pseudonimos.Para(idOutro, outro) });
+            Gravador.Descarregar(TimeSpan.FromSeconds(5));
+            using var envio = new Envio($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade(null, null, eu, "instalacao-de-" + eu, "c-abcdefghijkl"), "id-anonimo-de-teste") { Token = _ => ServidorFalso.TokenPadrao };
+            envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora();
+            Exigir(Esperar(() => srv.VeioEvento("live"), 20_000), "o evento da live não chegou");
+            envio.Fechar(TimeSpan.FromSeconds(2));
+            var live = srv.UltimoEvento("live")!;
+            Exigir(!live.ToJsonString().Contains(outro, StringComparison.OrdinalIgnoreCase) && !live.ToJsonString().Contains(idOutro), "a ponta " + eu + " mandou o nome ou o id da outra: " + live.ToJsonString());
+            vistos.Add(live);
+        }
+        Pseudonimos.Reiniciar();
+        Exigir(vistos[0]["transmissao"]?.ToString() == vistos[1]["transmissao"]?.ToString() && vistos[0]["ligacao"]?.ToString() == vistos[1]["ligacao"]?.ToString(), "as duas pontas não têm a mesma transmissão e ligação: " + vistos[0] + " | " + vistos[1]);
+        Exigir(vistos[0]["papel"]?.ToString() == "envia" && vistos[1]["papel"]?.ToString() == "assiste", "os papéis das pontas não bateram");
     }
 
     // ---------- "Sobre o diagnóstico" e o aviso (etapa 14) ----------
@@ -1438,10 +2397,466 @@ static class Casos
         var m = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(js!), @"SESSAO_GUARDA_MS\s*=\s*(\d+)\s*\*\s*86400e3");
         Exigir(m.Success && int.Parse(m.Groups[1].Value) == TextoDiagnostico.DiasDeGuarda, $"o Worker guarda {m.Groups[1].Value} dias e o texto diz {TextoDiagnostico.DiasDeGuarda}");
         string todo = TextoDiagnostico.Completo;
-        foreach (var trecho in new[] { "120 dias", "5 dias úteis", "ANÔNIMO", "equipe do Streemu", "Ver o que é enviado", "sem prazo", "pessoa-1", "o MAC" })
-            Exigir(todo.Contains(trecho), "o texto completo não cita: " + trecho);
-        Exigir(TextoDiagnostico.Aviso(false).Contains("120 dias") && TextoDiagnostico.Aviso(false).Contains("desligar"), "aviso curto (ligado)");
-        Exigir(TextoDiagnostico.Aviso(true).Contains("ANÔNIMO") && !TextoDiagnostico.Aviso(true).Contains("Desligar diagnóstico"), "aviso curto (quem tinha desligado)");
-        Exigir(TextoDiagnostico.Aviso(false).Length < 600 && TextoDiagnostico.Aviso(true).Length < 600, "o aviso curto passou de 600 caracteres");
+        // spec 018, N15: os prazos do texto são os do Worker. O de 180 dias (perfil do PC) é a limpeza B4: se o Worker já tem a constante, tem que bater
+        var perfil = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(js!), @"PERFIL_(?:GUARDA|SEM_CONTATO)\w*\s*=\s*(\d+)\s*\*\s*86400e3");
+        if (perfil.Success) Exigir(int.Parse(perfil.Groups[1].Value) == TextoDiagnostico.DiasDePerfil, $"o Worker apaga o perfil em {perfil.Groups[1].Value} dias e o texto diz {TextoDiagnostico.DiasDePerfil}");
+        else Console.WriteLine("      (o Worker ainda não tem a constante dos 180 dias do perfil, B4: o texto cita o número, mas não há com o que comparar)");
+        // A2: o texto completo cita base legal, IP visto pelo amigo, Discord, anônimo, apagar, IA e os prazos (120 e 180)
+        foreach (var trecho in new[] { "120 dias", "180 dias", "5 dias úteis", "LGPD", "legítimo interesse", "execução do contrato", "endereço de rede (IP)", "Discord", "anônimo", "Anônimo não é anonimato completo",
+                     "APAGAR", "equipe do Streemu", "Ver o que é enviado", "pessoa-1", "o MAC", "USA IA", "não treinar", "CAMADA ESSENCIAL" })
+            Exigir(todo.Contains(trecho, StringComparison.OrdinalIgnoreCase), "o texto completo não cita: " + trecho);
+        Exigir(!todo.Contains("Cid" + "ão") && !todo.Contains("Ra" + "pha"), "o texto cita nome de pessoa (D35): a equipe é sempre \"a equipe do Streemu\"");
+        Exigir(TextoDiagnostico.Aviso(ModoEnvio.Completo).Contains("120 dias") && TextoDiagnostico.Aviso(ModoEnvio.Completo).Contains("desligar"), "aviso curto (ligado)");
+        foreach (var modo in new[] { ModoEnvio.Completo, ModoEnvio.Anonimo, ModoEnvio.Desligado })
+            Exigir(TextoDiagnostico.Aviso(modo).Length < 800 && TextoDiagnostico.Faixa(modo).Length < 420, $"o aviso ou a faixa ({modo}) passou do tamanho");
+    }
+
+    static void TextoDosTresEstados()
+    {
+        string desligado = TextoDiagnostico.Aviso(ModoEnvio.Desligado), faixaDesligado = TextoDiagnostico.Faixa(ModoEnvio.Desligado);
+        Exigir(!desligado.Contains("ANÔNIMO") && !faixaDesligado.Contains("ainda manda um diagnóstico anônimo"), "o texto do Desligado ainda promete o anônimo que não existe mais");
+        foreach (var t in new[] { desligado, faixaDesligado }) Exigir(t.Contains("não desliga") || t.Contains("Isso não desliga"), "o texto do Desligado não diz que a camada essencial não desliga: " + t);
+        Exigir(desligado.Contains("não guarda quem foi"), "o Desligado devia dizer que a contagem não guarda a pessoa (D38)");
+        Exigir(!desligado.Contains("Cid" + "ão") && !desligado.Contains("Ra" + "pha"), "nome de pessoa no aviso");
+        Exigir(TextoDiagnostico.Aviso(ModoEnvio.Anonimo).Contains("não é anonimato completo"), "o aviso do anônimo devia dizer que não é anonimato completo (D16)");
+        Exigir(TextoDiagnostico.Faixa(ModoEnvio.Anonimo).Contains("não é anonimato completo"), "a faixa do anônimo devia dizer que não é anonimato completo");
+        string ligado = TextoDiagnostico.Faixa(ModoEnvio.Completo);
+        Exigir(ligado.Contains("Cada PC é de um jeito") && ligado.Contains("Pode desligar"), "a faixa do Ligado não é a frase da spec (D13): " + ligado);
+        Exigir(TextoDiagnostico.TextoDoLink == "Como cuidamos dos seus dados" && TextoDiagnostico.UrlPolitica.StartsWith("https://"), "o link discreto da faixa");
+        Exigir(TextoDiagnostico.LinhaDaIa.Contains("IA") && TextoDiagnostico.LinhaDaIa.Contains("sem o seu nome"), "a linha da IA em Ajustes");
+        Exigir(TextoDiagnostico.VersaoDoAviso >= 3, "a versão do aviso precisa subir para quem já viu a de antes ver a faixa nova uma vez");
+    }
+
+    static void ExportarPrivacidade()
+    {
+        string arq = Path.Combine(Tmp, "privacidade.txt");
+        Exigir(TextoDiagnostico.Exportar(arq) == 0, "Exportar não devolveu 0");
+        byte[] bytes = File.ReadAllBytes(arq);
+        Exigir(bytes.Length > 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF, "sem BOM UTF-8 (o Inno Setup lê como ANSI sem ele e estraga os acentos)");
+        string texto = Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+        Exigir(texto.StartsWith(TextoDiagnostico.TituloDoAviso) && texto.Contains("POR QUE PODEMOS") && texto.Contains("não"), "o arquivo não tem o texto do app (ou os acentos quebraram)");
+        Exigir(!texto.Replace("\r\n", "").Contains('\n'), "o fim de linha não é CRLF");
+        Exigir(TextoDiagnostico.Exportar(null) == 2 && TextoDiagnostico.Exportar("  ") == 2, "sem caminho devia sair com 2");
+        Exigir(TextoDiagnostico.Exportar(Path.Combine(Tmp, "pasta-que-nao-existe-" + Guid.NewGuid().ToString("N"), "y.txt")) == 1, "caminho impossível devia sair com 1");
+    }
+
+    // ---------- três estados e migração (spec 018, A1; N3 e N28) ----------
+
+    static void MigracaoDesligado()
+    {
+        // quem tinha desligado antes dos três estados: só TelemetriaDesligada existe no json
+        var antigo = System.Text.Json.JsonSerializer.Deserialize<Streemu.Util.AppState>("{\"TelemetriaDesligada\":true,\"TelemetriaAvisoVisto\":true,\"TelemetriaAvisoVersao\":2}")!;
+        Exigir(Envio.ModoDosAjustes(antigo) == ModoEnvio.Desligado, "o estado antigo desligado devia cair em Desligado, não em anônimo");
+        Exigir(TextoDiagnostico.AvisoPendente(antigo), "quem já tinha visto a versão 2 do texto devia ver a faixa nova (versão " + TextoDiagnostico.VersaoDoAviso + ")");
+        Exigir(Envio.ModoDosAjustes(System.Text.Json.JsonSerializer.Deserialize<Streemu.Util.AppState>("{}")!) == ModoEnvio.Completo, "estado vazio devia ser Completo");
+        // a faixa vem uma vez só e a escolha continua
+        TextoDiagnostico.MarcarVisto(antigo);
+        Exigir(!TextoDiagnostico.AvisoPendente(antigo), "a faixa continua pendente depois de vista");
+        string json = System.Text.Json.JsonSerializer.Serialize(antigo);
+        var reaberto = System.Text.Json.JsonSerializer.Deserialize<Streemu.Util.AppState>(json)!;
+        Exigir(Envio.ModoDosAjustes(reaberto) == ModoEnvio.Desligado, "a segunda abertura não é mais Desligado");
+        Exigir(!TextoDiagnostico.AvisoPendente(reaberto), "a segunda abertura mostraria a faixa de novo (N28)");
+        Exigir(TextoDiagnostico.Faixa(Envio.ModoDosAjustes(reaberto)).Contains("não desliga"), "a faixa do migrado não explica a camada essencial");
+        // o app nunca liga o anônimo sozinho, nem com o Completo gravado como "completo"
+        Exigir(Envio.ModoDosAjustes(new Streemu.Util.AppState { TelemetriaDesligada = true }) != ModoEnvio.Anonimo, "o app ligou o anônimo sozinho");
+    }
+
+    static void ModosPersistem()
+    {
+        foreach (var modo in new[] { ModoEnvio.Completo, ModoEnvio.Anonimo, ModoEnvio.Desligado })
+        {
+            var estado = new Streemu.Util.AppState();
+            Envio.GravarModo(estado, modo);
+            var volta = System.Text.Json.JsonSerializer.Deserialize<Streemu.Util.AppState>(System.Text.Json.JsonSerializer.Serialize(estado))!;
+            Exigir(Envio.ModoDosAjustes(volta) == modo, $"o modo {modo} não persistiu: {Envio.ModoDosAjustes(volta)}");
+            // a forma antiga continua coerente para uma versão anterior que abrir o mesmo estado: só o Completo é "ligado"
+            Exigir(volta.TelemetriaDesligada == (modo != ModoEnvio.Completo), $"TelemetriaDesligada incoerente com {modo}");
+        }
+    }
+
+    // ---------- camada essencial (spec 018, A1; B1 no Worker) ----------
+
+    /// <summary>Esperas curtas para o teste não levar minutos (o app usa 20 s, e no anônimo de 2 a 10 min).</summary>
+    static void EsperasCurtas()
+    {
+        Envio.EsperaEssencial = TimeSpan.FromMilliseconds(150);
+        Envio.EsperaEssencialAnonimo = (TimeSpan.FromMilliseconds(150), TimeSpan.FromMilliseconds(300));
+        Envio.ReavaliarEssencial = TimeSpan.FromMilliseconds(300);
+    }
+
+    static Envio EnvioEssencial(ServidorFalso srv, SessaoLocal s, ModoEnvio modo, Func<bool, string?>? token = null) =>
+        new($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade("123456", "Fulano", "ApelidoFulano", "instalacao-de-teste", "c-abcdefghijkl"), "id-anonimo-de-teste")
+        { Token = token ?? (_ => ServidorFalso.TokenPadrao), Bilhete = () => ServidorFalso.BilheteAceito, Modo = modo };
+
+    static void DesligadoSoEssencial()
+    {
+        EsperasCurtas();
+        using var srv = new ServidorFalso();
+        // como o app abre no Desligado: a sessão fica só no PC, e a de uma abertura anterior (anônima, de antes dos três estados) também não sobe
+        var s = Sessao(100, 10); s.E.NaoEnviar = true; s.Salvar();
+        var anterior = Sessao(60, 5); anterior.E.Reduzida = true; anterior.Salvar();
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Desligado);
+        envio.Ativo = true;
+        envio.Iniciar(new[] { anterior });
+        envio.DefinirPerfil(new JsonObject { ["gpu"] = "placa de Fulano" }, "hardware-x");
+        envio.Essencial("app_abriu");
+        envio.Essencial("live_comecou", "transmite");
+        envio.Essencial("falha_grave", "captura_travada");
+        envio.Essencial("falha_grave", "C:\\Users\\ana\\jogo.exe travou"); // texto livre: a lista fechada não deixa nem sair do app
+        envio.Agora();
+        Exigir(Esperar(() => srv.EssencialSomado().Count >= 3, 20_000), "a camada essencial não chegou ao servidor: " + string.Join(",", srv.EssencialSomado().Keys));
+        Thread.Sleep(2500); // dá tempo de um pedido do diagnóstico sair, se algum fosse sair
+        var somado = srv.EssencialSomado();
+        Exigir(somado.GetValueOrDefault("app_abriu") == 1 && somado.GetValueOrDefault("live_comecou.transmite") == 1 && somado.GetValueOrDefault("falha_grave.captura_travada") == 1, "contagens: " + string.Join(", ", somado.Select(kv => kv.Key + "=" + kv.Value)));
+        Exigir(somado.Count == 3, "o evento com texto livre chegou ao servidor: " + string.Join(",", somado.Keys));
+        // N2: nenhum pedido do diagnóstico (log, eventos, perfil, séries, nem os passos do login) numa sessão inteira
+        Exigir(srv.Pedidos == 0 && srv.Credenciais().Length == 0 && srv.Logins().Length == 0 && srv.BytesRecebidos == 0, $"o Desligado fez pedido do diagnóstico: {srv.Pedidos} pedido(s), {srv.BytesRecebidos} bytes");
+        Exigir(srv.Cabecalhos().Length == 0 && srv.Tamanho($"{s.Id}|log.txt") == 0 && srv.Tamanho($"{anterior.Id}|log.txt") == 0 && srv.ContarEventos("teste") == 0, "log, perfil ou eventos subiram no Desligado");
+        Exigir(s.Cursor(SessaoLocal.Log) == 0 && anterior.Cursor(SessaoLocal.Log) == 0, "cursor andou sem envio");
+        var sit = envio.Situacao();
+        Exigir(sit.Estado == EstadoEnvio.Neutro && sit.Titulo == "Diagnóstico desligado", "indicador: " + sit.Titulo);
+        // fechar no Desligado também não sobe o diagnóstico (nem o custo da telemetria, nem o sessao_fim)
+        envio.Fechar(TimeSpan.FromSeconds(2));
+        Exigir(srv.Pedidos == 0 && srv.BytesRecebidos == 0, "o fechamento mandou diagnóstico no Desligado");
+        // mesma coisa com a sessão completa NÃO marcada (o modo muda no meio da sessão): o modo manda, não a marca
+        var viva = Sessao(40, 4);
+        using var envio2 = EnvioEssencial(srv, viva, ModoEnvio.Desligado);
+        envio2.Ativo = true; envio2.Iniciar(Array.Empty<SessaoLocal>()); envio2.Agora();
+        Thread.Sleep(2500);
+        envio2.Fechar(TimeSpan.FromSeconds(2));
+        Exigir(srv.Pedidos == 0 && srv.Tamanho($"{viva.Id}|log.txt") == 0, "uma sessão sem a marca subiu com o modo Desligado");
+    }
+
+    static void EssencialCorpoMinimo()
+    {
+        EsperasCurtas();
+        using var srv = new ServidorFalso();
+        var s = Sessao(5, 1);
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Completo);
+        envio.Iniciar(Array.Empty<SessaoLocal>());
+        envio.Essencial("app_abriu");
+        envio.Essencial("live_acabou", "assiste_privada", 4321);
+        envio.Essencial("evento_inventado");                 // fora da lista
+        envio.Essencial("app_fechou", "detalhe-que-nao-existe"); // detalhe onde não cabe
+        envio.Essencial("live_comecou", "jogo do Fulano");   // texto livre no lugar do papel
+        Exigir(Esperar(() => srv.Essenciais().Length > 0, 20_000), "nada chegou");
+        envio.Fechar(TimeSpan.FromSeconds(2));
+        foreach (var (cred, corpo) in srv.Essenciais())
+        {
+            Exigir(cred == "token:" + ServidorFalso.TokenPadrao, "a camada essencial devia ir com o token da conta: " + cred);
+            Exigir(corpo.Select(x => x.Key).All(k => k is "v" or "versao" or "canal" or "plataforma" or "eventos"), "campo fora da lista branca: " + corpo.ToJsonString());
+            Exigir(corpo["plataforma"]!.GetValue<string>() == "windows" && corpo["v"]!.GetValue<int>() == 1, "plataforma ou versão do formato: " + corpo.ToJsonString());
+            string json = corpo.ToJsonString();
+            foreach (var proibido in new[] { "Fulano", "123456", "instalacao-de-teste", "id-anonimo-de-teste", "c-abcdefghijkl", envio.Pc, envio.PcAnonimo, s.Id })
+                Exigir(!json.Contains(proibido), "a camada essencial levou " + proibido + ": " + json);
+        }
+        var somado = srv.EssencialSomado();
+        Exigir(somado.Count == 2 && somado.ContainsKey("app_abriu") && somado.ContainsKey("live_acabou.assiste_privada"), "o que chegou: " + string.Join(",", somado.Keys));
+        var live = srv.Essenciais().SelectMany(e => e.Corpo["eventos"]!.AsArray()).First(e => e!["evento"]!.GetValue<string>() == "live_acabou")!;
+        Exigir(live["valor"]!.GetValue<int>() == 4321, "a duração da live não foi: " + live);
+    }
+
+    static void EssencialNoAnonimo()
+    {
+        EsperasCurtas();
+        Anonimizador.Reiniciar();
+        using var srv = new ServidorFalso();
+        var s = SessaoReduzida();
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Anonimo);
+        envio.Iniciar(Array.Empty<SessaoLocal>());
+        var antes = DateTime.UtcNow;
+        envio.Essencial("app_abriu");
+        Exigir(Esperar(() => srv.Essenciais().Length > 0, 20_000), "a camada essencial não subiu no anônimo");
+        Exigir(DateTime.UtcNow - antes >= TimeSpan.FromMilliseconds(120), "no anônimo a essencial devia esperar o tempo sorteado, não sair no mesmo instante");
+        envio.Fechar(TimeSpan.FromSeconds(2));
+        // sempre pela conta, nunca pelo bilhete do anônimo: o envio identificado não pode se ligar ao anônimo por nenhum campo
+        foreach (var (cred, corpo) in srv.Essenciais())
+        {
+            Exigir(cred == "token:" + ServidorFalso.TokenPadrao, "no anônimo a essencial devia ir pelo token da conta, veio: " + cred);
+            string json = corpo.ToJsonString();
+            foreach (var proibido in new[] { "id-anonimo-de-teste", envio.PcAnonimo, envio.Pc, s.Id, "sessao", "pc", "install", "relogio", "hora", "quando" })
+                Exigir(!json.Contains("\"" + proibido + "\"") && !json.Contains(proibido) || proibido.Length < 4, "a essencial do anônimo levou " + proibido + ": " + json);
+            Exigir(corpo.Select(x => x.Key).All(k => k is "v" or "versao" or "canal" or "plataforma" or "eventos"), "campo fora da lista branca: " + json);
+        }
+        // e o diagnóstico anônimo, esse sim, não usa o token
+        Exigir(srv.Credenciais().All(c => c.StartsWith("bilhete:")), "o diagnóstico anônimo usou o token: " + string.Join(",", srv.Credenciais()));
+        Anonimizador.Reiniciar();
+    }
+
+    static void EssencialAnonimoGuarda()
+    {
+        EsperasCurtas();
+        Envio.EsperaEssencialAnonimo = (TimeSpan.FromHours(1), TimeSpan.FromHours(2)); // nada sai sozinho antes de fechar
+        using var srv = new ServidorFalso();
+        var s = SessaoReduzida();
+        using (var envio = EnvioEssencial(srv, s, ModoEnvio.Anonimo))
+        {
+            envio.Iniciar(Array.Empty<SessaoLocal>());
+            envio.Essencial("app_abriu");
+            envio.Essencial("live_comecou", "transmite");
+            envio.Fechar(TimeSpan.FromSeconds(2));
+        }
+        Exigir(srv.PedidosEssenciais == 0, "no anônimo, ao fechar, a essencial não pode sair junto com o fim da sessão: " + srv.PedidosEssenciais);
+        Exigir(File.Exists(Path.Combine(Pasta.Raiz, "essencial-pendente.json")), "a essencial devia ficar guardada para a próxima abertura");
+        // próxima abertura: carrega, espera o tempo sorteado e sobe
+        EsperasCurtas();
+        var s2 = SessaoReduzida();
+        using var envio2 = EnvioEssencial(srv, s2, ModoEnvio.Anonimo);
+        envio2.Iniciar(Array.Empty<SessaoLocal>());
+        Exigir(Esperar(() => srv.EssencialSomado().Count >= 2, 20_000), "a essencial guardada não subiu na abertura seguinte: " + string.Join(",", srv.EssencialSomado().Keys));
+        Exigir(!File.Exists(Path.Combine(Pasta.Raiz, "essencial-pendente.json")), "o arquivo guardado devia sumir depois de carregar");
+        envio2.Fechar(TimeSpan.FromSeconds(2));
+        var somado = srv.EssencialSomado();
+        Exigir(somado.GetValueOrDefault("app_abriu") == 1 && somado.GetValueOrDefault("live_comecou.transmite") == 1, "contagens depois da reabertura: " + string.Join(",", somado.Select(kv => kv.Key + "=" + kv.Value)));
+    }
+
+    static void EssencialEsperaFaixaEConta()
+    {
+        EsperasCurtas();
+        using var srv = new ServidorFalso();
+        var s = Sessao(10, 2);
+        bool logou = false;
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Desligado, _ => logou ? ServidorFalso.TokenPadrao : null);
+        envio.AguardandoEssencial = true; // a faixa desta versão do texto ainda não foi vista (quem migrou do estado antigo)
+        envio.Iniciar(Array.Empty<SessaoLocal>());
+        envio.Essencial("app_abriu");
+        Thread.Sleep(1500);
+        Exigir(srv.PedidosEssenciais == 0, "a essencial saiu antes de a pessoa ver a faixa");
+        Exigir(envio.EssencialPendentes == 1, "a contagem se perdeu enquanto esperava a faixa");
+        envio.AguardandoEssencial = false; envio.Agora();
+        Thread.Sleep(1500);
+        Exigir(srv.PedidosEssenciais == 0, "a essencial saiu sem conta (o token ainda não existe)");
+        Exigir(envio.EssencialPendentes == 1, "a contagem se perdeu enquanto esperava a conta");
+        logou = true; envio.Agora();
+        Exigir(Esperar(() => srv.EssencialSomado().GetValueOrDefault("app_abriu") == 1, 20_000), "depois do login a essencial devia subir: " + string.Join(",", srv.EssencialSomado().Keys));
+        envio.Fechar(TimeSpan.FromSeconds(2));
+        Exigir(envio.EssencialPendentes == 0, "ficou na fila depois de confirmada");
+    }
+
+    static void EssencialFalhaERecupera()
+    {
+        EsperasCurtas();
+        using var srv = new ServidorFalso();
+        var s = Sessao(10, 2);
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Completo);
+        envio.Iniciar(Array.Empty<SessaoLocal>());
+        // a camada essencial falha (500 duas vezes); o indicador do diagnóstico não pode ficar vermelho por causa dela
+        srv.EssencialFila.Enqueue(500); srv.EssencialFila.Enqueue(500);
+        envio.Essencial("app_abriu");
+        bool viuErro = false;
+        Exigir(Esperar(() => srv.EssencialSomado().GetValueOrDefault("app_abriu") == 1, 60_000, () => viuErro |= envio.UltimoErro != null), "não recuperou depois do 500");
+        Exigir(srv.PedidosEssenciais >= 3, "devia ter tentado de novo: " + srv.PedidosEssenciais);
+        Exigir(!viuErro, "uma falha da camada essencial apareceu como erro do diagnóstico: " + envio.UltimoErro);
+        Exigir(srv.EssencialSomado().GetValueOrDefault("app_abriu") == 1, "contou a mesma abertura mais de uma vez: " + srv.EssencialSomado().GetValueOrDefault("app_abriu"));
+        envio.Fechar(TimeSpan.FromSeconds(2));
+    }
+
+    static void EssencialRenovaEDescarta()
+    {
+        EsperasCurtas();
+        using var srv = new ServidorFalso();
+        var s = Sessao(10, 2);
+        var pediuRenovar = new List<bool>();
+        string atual = "tok-velho";
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Desligado, renovar => { lock (pediuRenovar) pediuRenovar.Add(renovar); if (renovar) atual = ServidorFalso.TokenPadrao; return atual; });
+        envio.Iniciar(Array.Empty<SessaoLocal>());
+        envio.Essencial("app_abriu");
+        Exigir(Esperar(() => srv.EssencialSomado().GetValueOrDefault("app_abriu") == 1, 60_000), "depois do 401 devia renovar o token e subir");
+        lock (pediuRenovar) Exigir(pediuRenovar.Contains(true), "não pediu token novo depois do 401");
+        // 400: o Worker não aceitou o conteúdo; repetir não resolve, então o lote some (e a fila não trava)
+        srv.EssencialFila.Enqueue(400);
+        envio.Essencial("app_fechou");
+        Exigir(Esperar(() => envio.EssencialPendentes == 0, 30_000), "o lote recusado com 400 ficou na fila para sempre");
+        Exigir(srv.EssencialSomado().GetValueOrDefault("app_fechou") == 0, "o lote recusado foi contado");
+        envio.Essencial("live_comecou", "assiste");
+        Exigir(Esperar(() => srv.EssencialSomado().GetValueOrDefault("live_comecou.assiste") == 1, 30_000), "depois de descartar o lote a fila devia seguir");
+        envio.Fechar(TimeSpan.FromSeconds(2));
+    }
+
+    static void EssencialAgrupa()
+    {
+        EsperasCurtas();
+        using var srv = new ServidorFalso();
+        var s = Sessao(5, 1);
+        using var envio = EnvioEssencial(srv, s, ModoEnvio.Completo);
+        // tudo na fila antes de o laço rodar, para sair junto
+        Envio.EsperaEssencial = TimeSpan.FromSeconds(2);
+        for (int i = 0; i < 30; i++) envio.Essencial("falha_grave", "captura_travada");
+        for (int i = 0; i < 25; i++) envio.Essencial("live_acabou", "transmite", 60 + i); // com valor: um item por evento, 25 > 20 por pedido
+        envio.Iniciar(Array.Empty<SessaoLocal>());
+        Exigir(Esperar(() => srv.EssencialSomado().GetValueOrDefault("falha_grave.captura_travada") == 30 && srv.EssencialSomado().GetValueOrDefault("live_acabou.transmite") == 25, 60_000),
+            "as contagens não bateram: " + string.Join(",", srv.EssencialSomado().Select(kv => kv.Key + "=" + kv.Value)));
+        envio.Fechar(TimeSpan.FromSeconds(2));
+        foreach (var (_, corpo) in srv.Essenciais())
+        {
+            Exigir(corpo["eventos"]!.AsArray().Count <= 20, "mais de 20 eventos num pedido");
+            Exigir(corpo.ToJsonString().Length <= 4096, "corpo acima de 4096 bytes");
+        }
+        Exigir(srv.PedidosEssenciais >= 2, "25 eventos com valor não cabem em um pedido de 20: " + srv.PedidosEssenciais);
+    }
+
+    // ---------- cifra do envio (spec 018, 7.2; plano A9) ----------
+
+    static JsonObject PerfilCompleto() => new()
+    {
+        ["estavel"] = new JsonObject
+        {
+            ["plataforma"] = "windows",
+            ["cpu"] = new JsonObject { ["nome"] = "AMD Ryzen 5 5600", ["nucleos"] = 6, ["threads"] = 12 },
+            ["ram"] = new JsonObject { ["total_gb"] = 16 },
+            ["windows"] = new JsonObject { ["produto"] = "Windows 11 Pro", ["versao"] = "24H2", ["build"] = 26100, ["ubr"] = 2894 },
+            ["gpus"] = new JsonArray(new JsonObject { ["nome"] = "NVIDIA GeForce RTX 4060", ["fabricante"] = "NVIDIA", ["driver"] = "32.0.15.6094", ["driver_data"] = "2026-10-01", ["vram_mb"] = 8192, ["integrada"] = false, ["pci"] = "10de:2882" }),
+            ["audio"] = new JsonArray(new JsonObject { ["nome"] = "FONES-DA-PESSOA-XYZ" }),
+            ["rede"] = new JsonArray(new JsonObject { ["descricao"] = "ADAPTADOR-DE-REDE-XYZ" }),
+            ["telas"] = new JsonArray(new JsonObject { ["nome"] = "TELA-XYZ" }),
+        },
+        ["momento"] = new JsonObject { ["hora_utc"] = "2026-11-26T12:00:00Z", ["programas_que_interferem"] = new JsonArray("PROGRAMA-XYZ.exe") },
+    };
+
+    static bool Contem(byte[] bytes, string texto) => bytes.AsSpan().IndexOf(Encoding.UTF8.GetBytes(texto)) >= 0;
+
+    static void CifraNoEnvio()
+    {
+        using var srv = new ServidorFalso();
+        var s = Sessao(120, 5);
+        const string NOTA = "NOTA-PRIVADA-DA-PESSOA-777";
+        s.Evento("marcacao", new JsonObject { ["marca"] = "m1", ["por"] = "botão", ["texto"] = NOTA });
+        s.Evento("marcacao_nota", new JsonObject { ["marca"] = "m1", ["texto"] = NOTA });
+        s.Evento("falha", new JsonObject { ["tipo_falha"] = "outra", ["linha"] = "Falha ao iniciar a transmissão: nenhum encoder funcionou." });
+        s.Retrato("relatorios/rel-1.txt", "relatório com " + NOTA);
+        s.Retrato("perfil-teste.json", PerfilCompleto().ToJsonString());
+        Gravador.Descarregar(TimeSpan.FromSeconds(10));
+        using var envio = Criar(srv, s);
+        envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>());
+        envio.DefinirPerfil(PerfilCompleto(), "hw-teste");
+        Exigir(Esperar(() => Converge(s), 30_000), "não confirmou tudo: " + Estado(s));
+        envio.Fechar(TimeSpan.FromSeconds(3));
+        ExigirIgual(srv, s); // o servidor abriu os quadros com a chave de teste e remontou byte a byte (e não houve pacote em claro)
+
+        // todo pedaço chegou como envelope cifrado, sem texto legível do log, do relatório nem da nota
+        foreach (var (nome, _) in s.Arquivos())
+            foreach (var bruto in srv.PecasBrutas($"{s.Id}|{nome}"))
+                Exigir(bruto.Length > 100 && Encoding.ASCII.GetString(bruto, 0, 4) == "SEC1" && !Contem(bruto, "linha") && !Contem(bruto, NOTA), $"{nome}: pedaço não está cifrado");
+        Exigir(Encoding.UTF8.GetString(srv.Conteudo($"{s.Id}|{SessaoLocal.Eventos}")).Contains(NOTA), "o arquivo de eventos, aberto, devia ter a nota (a investigação a fundo precisa dela)");
+        Exigir(Encoding.UTF8.GetString(srv.Conteudo($"{s.Id}|relatorios/rel-1.txt")).Contains(NOTA), "o relatório aberto devia ter a nota");
+
+        foreach (var c in srv.Cabecalhos())
+        {
+            string json = c.ToJsonString();
+            Exigir(c["cifra"]?["v"]?.GetValue<int>() == 1 && c["cifra"]?["chave_v"]?.GetValue<int>() == CifraEnvio.VersaoAtual, "cabeçalho sem cifra {v:1, chave_v}: " + c["cifra"]);
+            Exigir(!json.Contains(NOTA), "a nota apareceu legível no cabeçalho");
+            foreach (var segredo in new[] { "FONES-DA-PESSOA-XYZ", "ADAPTADOR-DE-REDE-XYZ", "TELA-XYZ", "PROGRAMA-XYZ", "10de:2882" })
+                Exigir(!json.Contains(segredo), $"{segredo} saiu legível no cabeçalho");
+        }
+        // o legível: resumo do perfil (CPU, RAM, Windows, GPUs) e a hora, mais o evento enxuto; marcação e nota sem o texto livre
+        var comPerfil = srv.Cabecalhos().First(c => c["perfil"] != null);
+        var estavel = comPerfil["perfil"]!["estavel"]!;
+        Exigir(estavel["cpu"]!["nome"]!.GetValue<string>() == "AMD Ryzen 5 5600" && estavel["ram"]!["total_gb"]!.GetValue<double>() == 16 && estavel["windows"]!["build"]!.GetValue<int>() == 26100
+            && estavel["gpus"]![0]!["nome"]!.GetValue<string>() == "NVIDIA GeForce RTX 4060" && comPerfil["perfil"]!["momento"]!["hora_utc"]!.GetValue<string>() == "2026-11-26T12:00:00Z", "o resumo legível do perfil não veio: " + comPerfil["perfil"]);
+        Exigir(estavel["audio"] == null && estavel["rede"] == null && estavel["telas"] == null && estavel["gpus"]![0]!["pci"] == null && comPerfil["perfil"]!["momento"]!["programas_que_interferem"] == null, "o perfil legível passou do que a spec deixa: " + comPerfil["perfil"]);
+        var aberto = JsonNode.Parse(Encoding.UTF8.GetString(ServidorFalso.Chave.Decifrar(Convert.FromBase64String(comPerfil["perfil_cifrado"]!.GetValue<string>()))))!;
+        Exigir(aberto["estavel"]!["audio"]![0]!["nome"]!.GetValue<string>() == "FONES-DA-PESSOA-XYZ" && aberto["momento"]!["programas_que_interferem"]![0]!.GetValue<string>() == "PROGRAMA-XYZ.exe", "o perfil completo, aberto, não bate: " + aberto);
+        Exigir(srv.UltimoEvento("marcacao") is { } m && m["marca"]!.GetValue<string>() == "m1" && m["texto"] == null && m["por"]!.GetValue<string>() == "botão", "marcacao legível errada: " + srv.UltimoEvento("marcacao"));
+        Exigir(srv.UltimoEvento("marcacao_nota") is { } n && n["marca"]!.GetValue<string>() == "m1" && n["texto"] == null, "marcacao_nota subiu com o texto livre: " + srv.UltimoEvento("marcacao_nota"));
+        Exigir(srv.UltimoEvento("falha") is { } f && f["tipo_falha"]!.GetValue<string>() == "outra" && f["linha"]!.GetValue<string>()!.StartsWith("Falha ao iniciar"), "a falha (tipo e linha) tem que continuar legível: " + srv.UltimoEvento("falha"));
+        Exigir(srv.ContarEventos("teste") == 5, "os eventos enxutos tinham que chegar legíveis ao índice");
+    }
+
+    static void CifraQuadroEForma()
+    {
+        byte[] claro = Encoding.UTF8.GetBytes("diagnóstico de teste, com acento");
+        byte[] q = CifraEnvio.Quadro(claro), q2 = CifraEnvio.Quadro(claro);
+        Exigir(Encoding.ASCII.GetString(q, 0, 4) == "SEC1" && q[4] == 0 && q[5] == CifraEnvio.VersaoAtual && q[6] == 0x04, "cabeçalho do quadro fora do contrato");
+        Exigir(System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(q.AsSpan(83)) == claro.Length + 16 && q.Length == 87 + claro.Length + 16, "tamanho do quadro não bate");
+        Exigir(!q.AsSpan(7, 64).SequenceEqual(q2.AsSpan(7, 64)) && !q.AsSpan(71, 12).SequenceEqual(q2.AsSpan(71, 12)), "cada quadro precisa de chave efêmera e IV próprios");
+        Exigir(ServidorFalso.Chave.Decifrar(q).AsSpan().SequenceEqual(claro), "decifrou algo diferente");
+        Exigir(ServidorFalso.Chave.Decifrar(q.Concat(q2).ToArray()).Length == claro.Length * 2, "dois quadros colados devem abrir em sequência");
+        // adulterar qualquer parte (texto, etiqueta, IV, versão que entra no AAD) tem que reprovar a etiqueta do AES-GCM
+        foreach (int pos in new[] { 90, q.Length - 1, 75, 5 })
+        {
+            var ruim = (byte[])q.Clone(); ruim[pos] ^= 1;
+            bool falhou = false;
+            try { ServidorFalso.Chave.Decifrar(ruim, pos == 5 ? 257 : 1); } catch { falhou = true; }
+            Exigir(falhou, $"quadro adulterado no byte {pos} foi aceito");
+        }
+        // outra chave não abre
+        bool outra = false;
+        try { new ChaveDeTeste().Decifrar(q); } catch { outra = true; }
+        Exigir(outra, "outra chave abriu o quadro");
+        // versão da chave de teste vai no quadro e no cabeçalho
+        string? antes = Environment.GetEnvironmentVariable(CifraEnvio.VarVersaoTeste);
+        try
+        {
+            Environment.SetEnvironmentVariable(CifraEnvio.VarVersaoTeste, "7");
+            var q7 = CifraEnvio.Quadro(claro);
+            Exigir(q7[4] == 0 && q7[5] == 7 && CifraEnvio.Cabecalho()["chave_v"]!.GetValue<int>() == 7 && ServidorFalso.Chave.Decifrar(q7, 7).Length == claro.Length, "versão 7 não acompanhou a chave");
+        }
+        finally { Environment.SetEnvironmentVariable(CifraEnvio.VarVersaoTeste, antes); }
+    }
+
+    static void CifraChaveEmbutidaEIgnoraTesteForaDeTeste()
+    {
+        const string Esperada = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESEcqlyDQK1cdRXBAOri4KP1K5v5zPhE2ddbvkXtZqrmY8v4pf61ItcEacaZSEtlKVcITlHUA54up7yBltUOogQ==";
+        bool teste = Streemu.Net.RelayConfig.ModoTeste;
+        try
+        {
+            Streemu.Net.RelayConfig.ModoTeste = false; // como no app de verdade: a variável de teste é ignorada
+            var (v, spki) = CifraEnvio.ChaveAtual();
+            Exigir(v == 1 && Convert.ToBase64String(spki) == Esperada, "fora de teste a chave tem que ser a embutida (v1)");
+            using var p256 = System.Security.Cryptography.ECDiffieHellman.Create();
+            p256.ImportSubjectPublicKeyInfo(spki, out _);
+            Exigir(p256.KeySize == 256, "a chave embutida não é P-256");
+            bool recusou = false;
+            try { ServidorFalso.Chave.Decifrar(CifraEnvio.Quadro(new byte[] { 1, 2, 3 })); } catch { recusou = true; }
+            Exigir(recusou, "fora de teste o quadro foi cifrado para a chave de teste");
+        }
+        finally { Streemu.Net.RelayConfig.ModoTeste = teste; }
+        Exigir(Convert.ToBase64String(CifraEnvio.ChaveAtual().Spki) == ServidorFalso.Chave.Spki, "em teste a chave de teste tem que valer");
+    }
+
+    static void CifraFalhaNaoCaiParaOClaro()
+    {
+        using var srv = new ServidorFalso();
+        var s = Sessao(40, 3);
+        string? antes = Environment.GetEnvironmentVariable(CifraEnvio.VarChaveTeste);
+        try
+        {
+            Environment.SetEnvironmentVariable(CifraEnvio.VarChaveTeste, Convert.ToBase64String(new byte[] { 1, 2, 3, 4 })); // não é uma chave
+            using var envio = Criar(srv, s);
+            envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora();
+            Exigir(Esperar(() => envio.UltimoErro != null, 15_000), "o app não percebeu que não conseguiu cifrar");
+            Exigir(envio.UltimoErro!.Contains("não consegui cifrar") && envio.UltimoErro.Contains("nada sai em claro"), "mensagem inesperada: " + envio.UltimoErro);
+            Exigir(envio.Situacao().Estado == EstadoEnvio.Falha, "o indicador devia ficar vermelho");
+            Exigir(srv.Cabecalhos().Length == 0 && srv.Tamanho($"{s.Id}|log.txt") == 0 && s.Cursor(SessaoLocal.Log) == 0, "algo subiu sem cifra");
+            // a chave volta: o envio se recupera sozinho e entrega tudo
+            Environment.SetEnvironmentVariable(CifraEnvio.VarChaveTeste, antes);
+            envio.Agora();
+            Exigir(Esperar(() => Converge(s), 45_000, () => envio.Agora()), "não recuperou depois da chave voltar: " + Estado(s));
+            envio.Fechar(TimeSpan.FromSeconds(3));
+            ExigirIgual(srv, s);
+        }
+        finally { Environment.SetEnvironmentVariable(CifraEnvio.VarChaveTeste, antes); }
+    }
+
+    static void CifraSessaoAntigaTerminaEmClaro()
+    {
+        using var srv = new ServidorFalso { AceitaClaro = true };
+        var nova = Sessao(30, 3);
+        var velha = Sessao(60, 4);
+        velha.E.Fechou = "normal"; velha.E.Cifrada = false; velha.SetCursor(SessaoLocal.Log, 10); velha.Salvar(); // de um app antigo que já mandou parte do log em claro
+        var intacta = Sessao(20, 2);
+        intacta.E.Fechou = "normal"; intacta.E.Cifrada = false; intacta.Salvar(); // de app antigo, mas sem nada enviado: pode subir cifrada
+        using var envio = Criar(srv, nova);
+        envio.Ativo = true; envio.Iniciar(new[] { velha, intacta });
+        Exigir(intacta.E.Cifrada && !velha.E.Cifrada, "a sessão antiga sem nada enviado vira cifrada; a que já começou em claro, não");
+        envio.DefinirPerfil(PerfilCompleto(), "hw-teste");
+        envio.Agora();
+        Exigir(Esperar(() => Converge(nova) && Converge(velha) && Converge(intacta), 40_000, () => envio.Agora()), "não subiu tudo: " + Estado(nova) + " | " + Estado(velha) + " | " + Estado(intacta));
+        envio.Fechar(TimeSpan.FromSeconds(3));
+        ExigirIgual(srv, nova); ExigirIgual(srv, velha); ExigirIgual(srv, intacta);
+        Exigir(srv.PecasBrutas($"{nova.Id}|log.txt").All(b => b[0] == (byte)'S') && srv.PecasBrutas($"{intacta.Id}|log.txt").All(b => b[0] == (byte)'S'), "as sessões de agora têm que subir cifradas");
+        Exigir(srv.PecasBrutas($"{velha.Id}|log.txt").All(b => b[0] == 0x1f && b[1] == 0x8b), "a sessão que começou em claro tem que terminar em claro (o servidor não mistura)");
+        Exigir(srv.Cabecalhos().Where(c => c["cifra"] == null).All(c => c["perfil"] == null && c["perfil_cifrado"] == null), "o pacote em claro não pode levar o perfil");
+        Exigir(srv.Cabecalhos().Any(c => c["cifra"] != null && c["perfil_cifrado"] != null), "o perfil cifrado devia ter ido no pacote cifrado");
     }
 }

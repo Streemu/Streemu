@@ -64,7 +64,7 @@ public sealed class SerieRede
             long dRec = Math.Max(0, l.Recebidos - a.Recebidos), dPerd = Math.Max(0, perdidos - a.Perdidos);
             var o = new JsonObject
             {
-                ["hora_utc"] = DateTime.UtcNow.ToString("O"), ["transmissao"] = string.IsNullOrEmpty(live) ? null : live, ["ligacao"] = id, ["amigo"] = amigo, ["papel"] = papel,
+                ["hora_utc"] = DateTime.UtcNow.ToString("O"), ["transmissao"] = string.IsNullOrEmpty(live) ? null : live, ["ligacao"] = id, ["amigo"] = Pseudonimos.Para(amigo), ["papel"] = papel,
                 // "caminho" é o do instante da amostra; "tempo_relay_pct" e "trocas_caminho" cobrem o intervalo (o caminho oscilava entre direto e relay e a foto de 5 s escondia isso).
                 // "caminho_confirmado" falso = o destino ainda é o padrão (o direto) porque nenhum ping voltou: não é prova de que o direto funciona.
                 ["caminho"] = l.Caminho, ["caminho_confirmado"] = l.CaminhoConfirmado, ["rtt_ms"] = l.RttMs < 0 ? null : Math.Round(l.RttMs, 1),

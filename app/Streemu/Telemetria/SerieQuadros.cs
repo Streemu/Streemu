@@ -4,7 +4,7 @@ namespace Streemu.Telemetria;
 
 /// <summary>
 /// Grava, por segundo de transmissão, quantos quadros novos a captura entregou e quantos o encoder soltou, com a hora,
-/// em <c>quadros.csv</c> na pasta da sessão (sobe como o log). Motivo (telemetria de 10/11, live de um PC do grupo no Hookshot):
+/// em <c>quadros-N.csv</c> (um por live, <see cref="SessaoLocal.ArquivoQuadros"/>) na pasta da sessão. Motivo (telemetria de 10/11, live de um PC do grupo no Hookshot):
 /// o relatório só tinha mín/mediana/máx da live inteira, e os avisos do vigia só aparecem depois de vários segundos
 /// ruins; não dava para dizer quando a captura começou a cair nem se bateu com alguém entrando ou com um Alt+Tab.
 /// Não vira evento: um por segundo lotaria o índice do servidor e a linha do tempo do LEIA-ME.
@@ -12,20 +12,17 @@ namespace Streemu.Telemetria;
 /// </summary>
 public sealed class SerieQuadros
 {
-    public const string Arquivo = "quadros.csv";
     const int Bloco = 10;
 
     readonly SessaoLocal _sessao;
     readonly object _gate = new();
     readonly StringBuilder _pendente = new();
     int _linhas;
+    /// <summary>O arquivo (da live) em que o texto pendente vai cair, e se ele já tem o cabeçalho. Muda quando abre a live seguinte.</summary>
+    string _arquivo = "";
     bool _cabecalho;
 
-    public SerieQuadros(SessaoLocal sessao)
-    {
-        _sessao = sessao;
-        _cabecalho = File.Exists(Path.Combine(sessao.Dir, Arquivo));
-    }
+    public SerieQuadros(SessaoLocal sessao) => _sessao = sessao;
 
     /// <param name="espectadores">Quantos envios a live tem agora (para cruzar a queda com alguém entrando).</param>
     /// <param name="captura">Método da captura agora (ex.: ddagrab, gfxcapture-janela): o vigia troca no meio da live.</param>
@@ -37,7 +34,7 @@ public sealed class SerieQuadros
     /// <param name="gpu">Uso da placa (3D total, 3D do jogo, codificador), em %; nulo = sem leitura.</param>
     public void Segundo(long novos, long saindo, int espectadores, string? captura, bool foco, string medida = "sensor", UsoGpu.Amostra? gpu = null)
     {
-        string? gravar = null;
+        string? gravar = null, antigo = null, arquivoAntigo = null; string arquivo;
         var carga = CargaRecente.Host; // valores que já estão na linha deste segundo (nulo = sem leitura, não entra)
         carga.Registrar("gpu_3d_pct", gpu?.Total3d); carga.Registrar("gpu_jogo_3d_pct", gpu?.Jogo3d); carga.Registrar("gpu_encoder_pct", gpu?.Encoder);
         carga.Registrar("gpu_decoder_pct", gpu?.Decoder); carga.Registrar("gpu_app_3d_pct", gpu?.App3d);
@@ -45,6 +42,14 @@ public sealed class SerieQuadros
         SomarNoResumo(ResumoLive.Host, novos, espectadores, medida, gpu); // mesmos valores, agregados por minuto para o live_resumo
         lock (_gate)
         {
+            arquivo = _sessao.ArquivoQuadros;
+            if (arquivo != _arquivo)
+            {
+                // abriu outra live: o que sobrou da anterior fecha no arquivo dela, e o novo começa com o cabeçalho (ou sem, se o arquivo já existia: app reaberto na mesma pasta)
+                if (_pendente.Length > 0) { arquivoAntigo = _arquivo; antigo = Tirar(); }
+                _arquivo = arquivo;
+                _cabecalho = File.Exists(Path.Combine(_sessao.Dir, arquivo));
+            }
             if (!_cabecalho)
             {
                 _pendente.Append("hora;quadros_novos_s;quadros_saindo_s;espectadores;captura;jogo_na_frente;medida;gpu_3d_pct;gpu_jogo_3d_pct;gpu_encoder_pct;gpu_decoder_pct;gpu_app_3d_pct;gpu_dwm_3d_pct;cpu_app_nucleo_pct;cpu_jogo_nucleo_pct\n");
@@ -60,7 +65,8 @@ public sealed class SerieQuadros
                 .Append(';').Append(gpu?.AppCpu.ToString() ?? "").Append(';').Append(gpu?.JogoCpu.ToString() ?? "").Append('\n');
             if (++_linhas >= Bloco) gravar = Tirar();
         }
-        if (gravar != null) _sessao.Acrescentar(Arquivo, gravar);
+        if (antigo != null) _sessao.Acrescentar(arquivoAntigo!, antigo);
+        if (gravar != null) _sessao.Acrescentar(arquivo, gravar);
     }
 
     /// <summary>
@@ -79,9 +85,9 @@ public sealed class SerieQuadros
     /// <summary>Grava o que estiver na memória (fim da live, saída do app).</summary>
     public void Descarregar()
     {
-        string? gravar;
-        lock (_gate) gravar = _linhas > 0 || _pendente.Length > 0 ? Tirar() : null;
-        if (gravar != null) _sessao.Acrescentar(Arquivo, gravar);
+        string? gravar; string arquivo;
+        lock (_gate) { arquivo = _arquivo; gravar = _linhas > 0 || _pendente.Length > 0 ? Tirar() : null; }
+        if (gravar != null) _sessao.Acrescentar(arquivo, gravar);
     }
 
     string Tirar()

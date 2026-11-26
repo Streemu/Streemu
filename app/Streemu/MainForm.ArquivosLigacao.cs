@@ -61,6 +61,7 @@ public partial class MainForm
         string id = m["filme"]?.GetValue<string>() ?? "";
         if (p.Terminado || p.Link == null || !p.Caminhos.TryGetValue(id, out var caminho)) return;
         if (p.EnvioDe != id) TrocarEnvio(p, id, caminho);
+        if (p.Fase != FaseArquivo.Transferindo) _tele?.Essencial("feature_arquivo"); // uso contado uma vez por pedido (camada essencial, spec 018)
         p.Fase = FaseArquivo.Transferindo;
         p.Envio!.Responder();
     }
@@ -102,9 +103,10 @@ public partial class MainForm
 
     async Task ReceberArquivosAsync(PedidoEmCurso p)
     {
-        if (!await EsperarLigacaoAsync(p)) { EncerrarEAvisar(p, FaseArquivo.Falhou, $"Não consegui conectar com {p.Apelido} em 25 s. Tente de novo."); return; }
+        if (!await EsperarLigacaoAsync(p)) { EncerrarEAvisar(p, FaseArquivo.Falhou, $"Não consegui conectar com {p.Apelido} em 25 s. Tente de novo.", causa: "sem_conexao"); return; }
         if (!await LiberadoPeloRelayAsync(p)) return;
         p.Fase = FaseArquivo.Transferindo;
+        _tele?.Essencial("feature_arquivo"); // uso contado uma vez por pedido (camada essencial, spec 018)
         AvisarMudancaArquivos();
         string pasta = HistoricoArquivos.PastaRecebidos;
         try
@@ -143,7 +145,7 @@ public partial class MainForm
         if (decisao == DecisaoRelay.Livre) return true;
         if (decisao == DecisaoRelay.Bloquear)
         {
-            EncerrarEAvisar(p, FaseArquivo.Bloqueado, $"A conexão com {p.Apelido} só funciona pelo relay de reserva, e lá o limite é {RegraRelay.Teto / 1e9:N0} GB por envio ({p.Oferta.Total / 1e9:N1} GB aqui). Tente de outra rede ou divida os arquivos.");
+            EncerrarEAvisar(p, FaseArquivo.Bloqueado, $"A conexão com {p.Apelido} só funciona pelo relay de reserva, e lá o limite é {RegraRelay.Teto / 1e9:N0} GB por envio ({p.Oferta.Total / 1e9:N1} GB aqui). Tente de outra rede ou divida os arquivos.", causa: "relay_acima_do_teto");
             return false;
         }
         p.Fase = FaseArquivo.ConfirmandoRelay;
@@ -152,7 +154,7 @@ public partial class MainForm
         Log.Info($"[arquivo] a ligação com {p.Apelido} passa pelo relay: esperando confirmar {p.Oferta.Total / 1e6:N0} MB da cota.");
         AvisarMudancaArquivos();
         bool seguir = await p.RespostaRelay.Task;
-        if (!seguir) EncerrarEAvisar(p, FaseArquivo.Cancelado, $"{Nick} preferiu não usar a cota do relay de reserva.");
+        if (!seguir) EncerrarEAvisar(p, FaseArquivo.Cancelado, $"{Nick} preferiu não usar a cota do relay de reserva.", causa: "cota_recusada");
         return seguir;
     }
 
@@ -178,19 +180,19 @@ public partial class MainForm
     // ------------------------------------------------------------------ fim
 
     /// <summary>Encerra e avisa o outro lado pela sala (a ligação pode já ter caído). <paramref name="paraOAmigo"/>: sem ele, vai o mesmo motivo.</summary>
-    void EncerrarEAvisar(PedidoEmCurso p, FaseArquivo fase, string motivo, string? paraOAmigo = null)
+    void EncerrarEAvisar(PedidoEmCurso p, FaseArquivo fase, string motivo, string? paraOAmigo = null, string? causa = null)
     {
         if (p.Terminado) return;
         _ = _room?.SendTo(p.AmigoId, MensagemArquivo.Simples(MensagemArquivo.Cancelado, p.Pedido, paraOAmigo ?? motivo));
-        TerminarPedido(p, fase, motivo);
+        TerminarPedido(p, fase, motivo, causa);
     }
 
     /// <summary>O fim de um pedido, qualquer que seja: para o que estiver rodando, fecha a ligação e registra no histórico e na telemetria.</summary>
-    void TerminarPedido(PedidoEmCurso p, FaseArquivo fase, string? motivo)
+    void TerminarPedido(PedidoEmCurso p, FaseArquivo fase, string? motivo, string? causa = null)
     {
         if (p.Terminado) return;
         string? caminho = p.Link?.Tunnel.Target is { } alvo ? (alvo.Kind == CandKind.Direct && !TesteArquivoRelay ? "direto" : "relay") : null;
-        p.Fase = fase; p.Motivo = motivo; p.TerminouEm = DateTime.Now;
+        p.Fase = fase; p.Motivo = motivo; p.Causa = causa; p.TerminouEm = DateTime.Now;
         p.Parar.Cancel();
         p.RespostaRelay?.TrySetResult(false);
         FecharLigacaoArquivo(p);
@@ -235,6 +237,7 @@ public partial class MainForm
             ["caminho"] = caminho,
             ["resultado"] = p.Fase.ToString(),
             ["pedacos_refeitos"] = p.PedacosRefeitos,
+            ["motivo"] = p.Causa,
         });
     }
 }

@@ -17,6 +17,12 @@ public sealed class CaptureSource
     public string ProcessName { get; init; } = "";
     public override string ToString() => Label;
 
+    /// <summary>
+    /// Como a fonte aparece no log (spec 018, D25): o nome do processo (<c>chrome</c>, <c>valorant</c>) ou, no monitor, o próprio rótulo. Nunca o título da
+    /// janela, que traz a aba, o documento ou a partida aberta. O <see cref="Label"/> continua só para a interface do app.
+    /// </summary>
+    public string ParaLog => !IsWindow ? Label : string.IsNullOrWhiteSpace(ProcessName) ? "janela" : "janela de " + ProcessName;
+
     /// <summary>A mesma fonte com outro identificador: o Windows pode recriar o monitor com outro HMONITOR depois de uma troca de modo (ver VoltaDaCaptura).</summary>
     public CaptureSource WithHandle(IntPtr handle) => new()
     {

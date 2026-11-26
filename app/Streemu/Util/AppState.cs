@@ -32,8 +32,7 @@ public sealed class AppState
     public string? AltEndpoint { get; set; }
     /// <summary>Servidor do grupo (Worker da Cloudflare) que entrega credenciais do relay de reserva.</summary>
     public string? RelayUrl { get; set; }
-    /// <summary>OBSOLETO (spec 022): a senha do grupo acabou. Fica só para o estado.json antigo continuar abrindo; ninguém lê nem grava.</summary>
-    public string? RelaySenha { get; set; }
+    // A RelaySenha (spec 022) saiu na A8 do plano 018: o estado.json antigo continua abrindo (o leitor ignora campo que a classe não tem) e o próximo Save a leva embora.
     /// <summary>Volume do player (0 a 100) e mudo, guardados entre transmissões.</summary>
     public int PlayerVolumePercent { get; set; } = 100;
     public bool PlayerMuted { get; set; }
@@ -97,12 +96,22 @@ public sealed class AppState
     public Dictionary<string, string> ApelidosLocais { get; set; } = new();
     /// <summary>Telemetria (spec 009): ligada por padrão; a pessoa desliga em Ajustes > Diagnóstico.</summary>
     public bool TelemetriaDesligada { get; set; }
+    /// <summary>
+    /// Estado do diagnóstico escolhido em Ajustes (spec 018, D14): "completo", "anonimo" ou "desligado". Nulo = estado salvo antes dos três estados:
+    /// vale <see cref="TelemetriaDesligada"/> (verdadeiro = Desligado; o app nunca liga o anônimo sozinho). Ver <c>Envio.ModoDosAjustes</c>.
+    /// <see cref="TelemetriaDesligada"/> continua gravada junto (verdadeira no Anônimo e no Desligado) para o que ainda lê só ela.
+    /// </summary>
+    public string? TelemetriaModo { get; set; }
     /// <summary>Id aleatório do diagnóstico anônimo (quando a pessoa desliga o diagnóstico): não vem do Windows, do Discord nem do InstallId, então não liga o que sobe anônimo ao que já subiu com o nome.</summary>
     public string? TelemetriaIdAnonimo { get; set; }
     /// <summary>Já viu o aviso de que o app manda diagnóstico (mostrado uma vez, na primeira abertura com a telemetria).</summary>
     public bool TelemetriaAvisoVisto { get; set; }
     /// <summary>Qual versão do aviso de diagnóstico a pessoa já leu (<see cref="Telemetria.TextoDiagnostico.VersaoDoAviso"/>): o aviso volta uma vez quando o texto muda de um jeito que importa.</summary>
     public int TelemetriaAvisoVersao { get; set; }
+    /// <summary>"Só enviar a série da live quando eu marcar" (spec 018, D37): a resposta da pergunta única depois do primeiro Apagar. Só o disparo da marcação sobe a série (<see cref="Telemetria.GravadorLocal"/>). Nunca desliga o diagnóstico.</summary>
+    public bool TelemetriaSoQuandoMarcar { get; set; }
+    /// <summary>A pergunta de depois do primeiro Apagar já foi feita (uma vez só, seja qual for a resposta).</summary>
+    public bool TelemetriaPerguntouApagar { get; set; }
     /// <summary>Hash do perfil do PC que o servidor já tem: o perfil completo só vai de novo quando muda (ou a cada 7 dias).</summary>
     /// <summary>Dia do primeiro uso (para o convite da pesquisa esperar alguns dias). Gravado uma vez.</summary>
     public DateTime PrimeiroUsoEm { get; set; }
@@ -126,8 +135,58 @@ public sealed class AppState
     public string? TelemetriaPerfilHash { get; set; }
     public DateTime TelemetriaPerfilEm { get; set; }
     public DateTime SavedAt { get; set; }
+    /// <summary>
+    /// Os campos de identidade (<see cref="CamposDeIdentidade"/>) cifrados pelo <see cref="Telemetria.CofreLocal"/> (spec 018, D21). Só existe no arquivo: ao ler, o conteúdo volta
+    /// para os campos de sempre e este fica nulo; ao gravar, os campos saem do JSON em claro e vão para cá. Preferências e escolhas da interface seguem legíveis.
+    /// </summary>
+    public string? IdentidadeCifrada { get; set; }
 
-    static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Streemu", "estado.json");
+    /// <summary>O que identifica a pessoa, a conta ou os amigos dela e por isso vai cifrado no estado.json (D21).</summary>
+    sealed class CamposDeIdentidade
+    {
+        public string? Nick { get; set; }
+        public string? ContaNome { get; set; }
+        public string? DiscordNome { get; set; }
+        public string? DiscordId { get; set; }
+        public string? DiscordAvatar { get; set; }
+        public string? AltEndpoint { get; set; }
+        public string? InstallId { get; set; }
+        public string? ContaId { get; set; }
+        public string? DispositivoId { get; set; }
+        public string? TelemetriaIdAnonimo { get; set; }
+        public List<GrupoSalvo>? Grupos { get; set; }
+        public Dictionary<string, string>? ApelidosLocais { get; set; }
+        public List<string>? AmigosSilenciados { get; set; }
+    }
+
+    CamposDeIdentidade TirarIdentidade() => new()
+    {
+        Nick = Nick, ContaNome = ContaNome, DiscordNome = DiscordNome, DiscordId = DiscordId, DiscordAvatar = DiscordAvatar, AltEndpoint = AltEndpoint,
+        InstallId = InstallId, ContaId = ContaId, DispositivoId = DispositivoId, TelemetriaIdAnonimo = TelemetriaIdAnonimo,
+        Grupos = Grupos, ApelidosLocais = ApelidosLocais, AmigosSilenciados = AmigosSilenciados,
+    };
+
+    void ZerarIdentidade()
+    {
+        Nick = ContaNome = DiscordNome = DiscordId = DiscordAvatar = AltEndpoint = InstallId = ContaId = DispositivoId = TelemetriaIdAnonimo = null;
+        Grupos = new(); ApelidosLocais = new(); AmigosSilenciados = new();
+    }
+
+    bool TemIdentidadeEmClaro() =>
+        new[] { Nick, ContaNome, DiscordNome, DiscordId, DiscordAvatar, AltEndpoint, InstallId, ContaId, DispositivoId, TelemetriaIdAnonimo }.Any(x => !string.IsNullOrEmpty(x))
+        || Grupos.Count > 0 || ApelidosLocais.Count > 0 || AmigosSilenciados.Count > 0;
+
+    void AplicarIdentidade(CamposDeIdentidade i)
+    {
+        Nick = i.Nick; ContaNome = i.ContaNome; DiscordNome = i.DiscordNome; DiscordId = i.DiscordId; DiscordAvatar = i.DiscordAvatar; AltEndpoint = i.AltEndpoint;
+        InstallId = i.InstallId; ContaId = i.ContaId; DispositivoId = i.DispositivoId; TelemetriaIdAnonimo = i.TelemetriaIdAnonimo;
+        Grupos = i.Grupos ?? new(); ApelidosLocais = i.ApelidosLocais ?? new(); AmigosSilenciados = i.AmigosSilenciados ?? new();
+    }
+
+    /// <summary>Só os testes: troca o arquivo do estado (e liga a leitura e a gravação mesmo com STREEMU_NOSTATE=1) para provar o que fica no disco sem tocar no estado.json do usuário.</summary>
+    public static string? ArquivoParaTeste { get; set; }
+
+    static string FilePath => ArquivoParaTeste ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Streemu", "estado.json");
 
     /// <summary>STREEMU_NOSTATE=1: não lê nem grava o estado (testes que não podem mexer no código salvo do usuário).</summary>
     static readonly bool Disabled = Environment.GetEnvironmentVariable("STREEMU_NOSTATE") == "1";
@@ -136,7 +195,7 @@ public sealed class AppState
 
     public static AppState Load()
     {
-        if (Disabled) return new AppState();
+        if (Disabled && ArquivoParaTeste == null) return new AppState();
         try
         {
             if (File.Exists(FilePath))
@@ -144,6 +203,17 @@ public sealed class AppState
                 var s = JsonSerializer.Deserialize<AppState>(File.ReadAllText(FilePath));
                 if (s != null)
                 {
+                    if (s.IdentidadeCifrada != null)
+                    {
+                        // gravado pela A8: a identidade volta para os campos de sempre. Se este usuário do Windows não abre (outro PC, outra conta), a pessoa entra como nova.
+                        var i = Telemetria.CofreLocal.Abrir(s.IdentidadeCifrada) is { } json ? JsonSerializer.Deserialize<CamposDeIdentidade>(json) : null;
+                        // não abriu: o campo fica como veio (o Save sem chave o mantém) e a próxima abertura com a chave devolve a conta
+                        if (i != null) { s.AplicarIdentidade(i); s.IdentidadeCifrada = null; }
+                        // chave aberta e a identidade não abre com ela (arquivo de outro PC ou a chave foi recriada, CofreLocal): nunca vai abrir, a pessoa entra como nova
+                        else if (Telemetria.CofreLocal.ChaveAberta) { s.IdentidadeCifrada = null; Log.Info("A identidade guardada no estado não abre com a chave deste PC (outro PC ou chave recriada); entro como nova."); }
+                        else Log.Info("Não consegui abrir a identidade guardada no estado (outro usuário do Windows, perfil ainda carregando ou arquivo estragado).");
+                    }
+                    else if (Telemetria.CofreLocal.Ligado && s.TemIdentidadeEmClaro()) s.Save(); // estado de antes da A8: lido em claro e regravado cifrado, sem perder nada
                     // migração única (issue #173): todo mundo cai em Original, inclusive quem já tinha 1080 salvo; depois disso a escolha da pessoa vale
                     if (!s.GoLiveOriginalPadrao) { s.GoLiveHeight = 0; s.GoLiveOriginalPadrao = true; }
                     return s;
@@ -156,7 +226,7 @@ public sealed class AppState
 
     public void Save()
     {
-        if (Disabled) return;
+        if (Disabled && ArquivoParaTeste == null) return;
         try
         {
             SavedAt = DateTime.Now;
@@ -165,9 +235,34 @@ public sealed class AppState
             // pegava o arquivo pela metade, o Load falhava e o app voltava "zerado", com apelido sumido e InstallId NOVO
             // (uma pessoa virava várias na sala do grupo; ver DESCOBERTAS 2026-11-08).
             string temp = FilePath + "." + Environment.ProcessId + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(temp, JsonSerializer.Serialize(ParaOArquivo(), new JsonSerializerOptions { WriteIndented = true }));
             File.Move(temp, FilePath, overwrite: true);
         }
         catch (Exception e) { Log.Info("Não consegui salvar o estado: " + e.Message); }
+    }
+
+    /// <summary>A cópia que vai para o disco: com a identidade cifrada e fora dos campos em claro. Sem a chave local (ou com a cifra desligada) vai tudo como antes.</summary>
+    AppState ParaOArquivo()
+    {
+        if (!Telemetria.CofreLocal.Ligado) return this;
+        // a chave abriu depois do Load (CofreLocal tenta de novo em segundo plano): a conta guardada volta antes de a identidade atual, que é só a de uma pessoa nova, a sobrescrever
+        if (IdentidadeCifrada != null)
+        {
+            try
+            {
+                if (Telemetria.CofreLocal.Abrir(IdentidadeCifrada) is { } json && JsonSerializer.Deserialize<CamposDeIdentidade>(json) is { } i)
+                {
+                    AplicarIdentidade(i); IdentidadeCifrada = null;
+                    Log.Info("A chave local abriu depois da abertura do app; a conta guardada voltou.");
+                }
+            }
+            catch { }
+        }
+        string cifrada = Telemetria.CofreLocal.Linha(JsonSerializer.Serialize(TirarIdentidade()));
+        if (!cifrada.StartsWith(Telemetria.CofreLocal.Prefixo, StringComparison.Ordinal)) return this; // sem chave: prefere guardar do jeito de antes a perder a conta
+        var copia = JsonSerializer.Deserialize<AppState>(JsonSerializer.Serialize(this))!;
+        copia.ZerarIdentidade();
+        copia.IdentidadeCifrada = cifrada;
+        return copia;
     }
 }

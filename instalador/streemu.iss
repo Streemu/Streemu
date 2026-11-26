@@ -76,6 +76,13 @@ WizardImageBackColorDynamicDark=#2A2640
 #else
   #pragma message "Inno Setup anterior ao 6.5.2: o instalador sai sem a Mumu (PNG). Atualize com: winget upgrade JRSoftware.InnoSetup"
 #endif
+; página "Privacidade e diagnóstico" antes de instalar (spec 018, D7). O texto é o mesmo do app: o build-release.ps1 o tira do próprio exe
+; (Streemu.exe --exportar-privacidade) e passa /DPrivacidade=<arquivo>. Sem ele, o instalador sai sem a página.
+#ifdef Privacidade
+InfoBeforeFile={#Privacidade}
+#else
+  #pragma message "Sem /DPrivacidade: o instalador sai sem a página de privacidade (use o scripts/build-release.ps1)"
+#endif
 ; fecha o app (e o ffmpeg/ffplay dele) antes de trocar os arquivos; o app sai de verdade no fim de sessão
 CloseApplications=yes
 CloseApplicationsFilter={#Exe},ffmpeg.exe,ffplay.exe
@@ -86,6 +93,9 @@ Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Messages]
 WelcomeLabel2=Isto instala o [name/ver] neste PC, só para o seu usuário (não precisa de administrador).%n%nA Mumu já pegou o controle. Clique em Avançar.
+WizardInfoBefore=Privacidade e diagnóstico
+InfoBeforeLabel=O que o Streemu envia, para quê, quem vê e como desligar.
+InfoBeforeClickLabel=Dá para ler de novo no app, em Configurações > Diagnóstico > "Sobre o diagnóstico". Clique em Avançar para continuar.
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDescription: "Atalhos:"

@@ -10,12 +10,20 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 ## Não lançado
 
 ### Novo
+- **Seus dados no PC ficam cifrados:** o log do app, o histórico e o que o diagnóstico guarda no seu PC agora ficam cifrados, e só a sua conta do Windows abre. O avatar guardado some depois de 90 dias sem aparecer e os logs, depois de 30.
+- **Ver o que foi enviado, e apagar:** em Configurações > Diagnóstico, "Ver o que é enviado" mostra o que sobe e o que fica no PC; o histórico de 30 dias abre ou apaga cada envio. Depois de um envio automático, um ponto discreto avisa, sem janela nem som.
+- **Gráficos por segundo ficam no seu PC:** os dados por segundo da live ficam 7 dias no PC e só sobem quando você marca um problema, algo grave acontece ou um amigo da live pede. Desligado, nada sobe sem você confirmar.
+- **Diagnóstico em três estados:** em Configurações > Diagnóstico, escolha ligado, anônimo ou desligado. Desligado, nenhum log nem dado do PC sai; só contamos que o app abriu ou que uma live aconteceu, sem guardar quem foi.
+- **Faixa sobre o diagnóstico:** depois de entrar num grupo, uma faixa no topo explica o diagnóstico, com Tudo certo, Desligar e o link da política. Quem já tinha desligado vê a faixa uma vez e continua desligado.
+- **Privacidade no instalador:** antes de instalar, o Streemu mostra o que envia, para quê, quem vê e como desligar. É o mesmo texto de Configurações > Diagnóstico > Sobre o diagnóstico.
 - **Denunciar uma live:** a bandeira vermelha na barra do player denuncia só aquela live, mesmo com várias abertas. Quem transmite não fica sabendo quem denunciou.
 - **90 e 120 FPS (beta):** em Transmitir, escolha 90 ou 120 FPS para uma imagem mais fluida, até 1440p. Se o seu monitor tem menos Hz, o Streemu usa o que ele aguenta.
 - **Seu nome é da conta:** em Configurações > Perfil, "Nome da conta" é como seus amigos veem você em todos os aparelhos. Troque num e vale em todos. O nome do Discord não troca mais o seu nome.
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias
+- **Diagnóstico enxuto e mais privado:** o log e o perfil do PC mandam menos coisa: saem caminhos de pastas, o filme ou o jogo aberto, o nome do Discord e dos fones. Os amigos viram "amigo-1", "amigo-2". No anônimo, nada liga os envios a você.
+- **Diagnóstico cifrado no envio:** o log, os relatórios e os dados do seu PC saem do app cifrados, e só a equipe do Streemu consegue abri-los, com uma chave que não fica no servidor.
 - **Barra lateral desliza também nas Configurações:** a barra abre e recolhe com animação em todas as telas sem vídeo, sem piscar. As opções "Manter a barra sempre aberta" e "Abrir a barra ao passar o mouse" saíram de Configurações: o botão de painel basta.
 - **Painel de Atividade mais bonito:** o painel do ícone de pulso agora tem cantos arredondados como o resto do app, é mais largo e não mostra mais a barra de rolagem horizontal. A hora e o grupo de cada linha aparecem inteiros.
 - **Enviar arquivos diz o que falta:** com o botão apagado, o texto ao lado avisa se falta escolher um amigo ou os arquivos. Em Grupos, os botões dos cartões ficam alinhados.

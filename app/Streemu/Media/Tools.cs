@@ -117,7 +117,7 @@ public static class Tools
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
         // com vários espectadores há uma senha por túnel: esconde qualquer passphrase=..., não só a última
-        string shown = System.Text.RegularExpressions.Regex.Replace(string.Join(' ', psi.ArgumentList.Select(Quote)), "passphrase=[^&\"\\s]+", "passphrase=***");
+        string shown = System.Text.RegularExpressions.Regex.Replace(ArgsParaLog(psi.ArgumentList), "passphrase=[^&\"\\s]+", "passphrase=***");
         Log.Info($"[{tag}] {Path.GetFileName(exe)} {(string.IsNullOrEmpty(PassphraseHint) ? shown : shown.Replace(PassphraseHint, "***"))}");
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var filter = new ChildLogFilter(tag);
@@ -156,7 +156,53 @@ public static class Tools
     {
         var timeout = TimeSpan.FromMilliseconds(50);
         l = System.Text.RegularExpressions.Regex.Replace(l, @"\[(?:warning|error|fatal|panic)\] ", "", System.Text.RegularExpressions.RegexOptions.None, timeout);
-        return System.Text.RegularExpressions.Regex.Replace(l, "passphrase=[^&\"'\\s]+", "passphrase=***", System.Text.RegularExpressions.RegexOptions.None, timeout);
+        l = System.Text.RegularExpressions.Regex.Replace(l, "passphrase=[^&\"'\\s]+", "passphrase=***", System.Text.RegularExpressions.RegexOptions.None, timeout);
+        return TirarIdentificacao(l);
+    }
+
+    /// <summary>"Metadata:" que o ffmpeg e o ffplay imprimem ao abrir um arquivo ("    title           : Nome do Filme"): o valor identifica o que a pessoa assiste.</summary>
+    static readonly Regex MetadadoNoLog = new(@"^(\s*)(title|artist|album_artist|album|comment|author|copyright|description|synopsis|show|episode_id|network|genre|composer|performer|publisher)(\s*:\s*).+$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+    /// <summary>"Input #0, matroska,webm, from 'D:\x.mkv':" e "Error opening input file ...": nome do arquivo do filme.</summary>
+    static readonly Regex ArquivoEntre = new(@"(from\s+|input file\s+|Opening\s+)(['""])(?!pipe:|srt:|udp:|tcp:|http|-)[^'""\r\n]+\2", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    /// <summary>
+    /// Tira do que o ffmpeg, o ffplay e o mpv escrevem o que identifica o que a pessoa assiste (caminho do arquivo, título, metadados do arquivo) e o
+    /// convite do grupo. <b>A linha continua inteira</b>: o código de erro (ex.: 887a0026), "SRT RCV-DROPPED" e o motivo ficam, só o nome sai (spec 018, D25).
+    /// </summary>
+    internal static string TirarIdentificacao(string l)
+    {
+        try
+        {
+            l = MetadadoNoLog.Replace(l, "$1$2$3<oculto>");
+            l = ArquivoEntre.Replace(l, m => m.Groups[1].Value + m.Groups[2].Value + "<arquivo>" + m.Groups[2].Value);
+            return Telemetria.Higiene.SemConvite(Telemetria.Higiene.SemCaminhos(l));
+        }
+        catch (RegexMatchTimeoutException) { return "<linha com texto longo demais para limpar>"; }
+    }
+
+    /// <summary>
+    /// Os argumentos como vão para o log: sem o arquivo de entrada (<c>-i D:\Filmes\x.mkv</c>), sem título de janela (<c>-i title=...</c>), sem
+    /// <c>-metadata</c> nem <c>--title=</c> e sem caminho de disco. URLs (srt://, a senha vira *** adiante), pipes e filtros ficam: são o que explica o erro.
+    /// </summary>
+    internal static string ArgsParaLog(IEnumerable<string> args)
+    {
+        var l = args.ToList();
+        var saida = new List<string>(l.Count);
+        for (int i = 0; i < l.Count; i++)
+        {
+            string a = l[i], antes = i > 0 ? l[i - 1] : "";
+            if (antes.StartsWith("-metadata", StringComparison.OrdinalIgnoreCase)) { int k = a.IndexOf('='); a = k > 0 ? a[..(k + 1)] + "<oculto>" : "<oculto>"; }
+            else if (antes is "-window_title" or "-title") a = "<oculto>";
+            else if (a.StartsWith("--", StringComparison.Ordinal) && a.Contains("title", StringComparison.OrdinalIgnoreCase) && a.IndexOf('=') is > 0 and int e) a = a[..(e + 1)] + "<oculto>";
+            else if (antes == "-i")
+            {
+                if (a.StartsWith("title=", StringComparison.OrdinalIgnoreCase)) a = "title=<janela>";
+                else if (!(a == "-" || a.Contains("://") || a.StartsWith("pipe:", StringComparison.OrdinalIgnoreCase) || a.Contains('='))) a = "<arquivo>";
+            }
+            saida.Add(Quote(TirarIdentificacao(a)));
+        }
+        return string.Join(' ', saida);
     }
 
     /// <summary>Senha atual do SRT, escondida nos logs.</summary>

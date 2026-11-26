@@ -10,7 +10,8 @@ static class Program
     static void Main(string[] args)
     {
         Log.Init();
-        Log.Info($"Streemu {Version} iniciando. Args: {string.Join(' ', args)}");
+        // o argumento pode ser um link de convite (streemu://grupo/<código>), que é a chave do grupo: só a máscara vai para o log (spec 018, D25)
+        Log.Info($"Streemu {Version} iniciando. Args: {Telemetria.Higiene.SemCaminhos(Telemetria.Higiene.SemConvite(string.Join(' ', args)))}");
         Log.Info($"Build: {Util.Updater.CurrentLabel}, canal {BuildInfo.Canal}, commit {(BuildInfo.Commit.Length >= 7 ? BuildInfo.Commit[..7] : "?")}.");
         Application.ThreadException += (_, e) => Log.Info("ERRO (UI): " + e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Info("ERRO (fatal): " + e.ExceptionObject);
@@ -41,6 +42,13 @@ static class Program
         if (args.Any(a => a.Equals("--higiene-check", StringComparison.OrdinalIgnoreCase)))
         {
             Environment.ExitCode = Telemetria.HigieneCheck.Run();
+            return;
+        }
+        // Grava o texto "Sobre o diagnóstico" num arquivo, para a página de privacidade do instalador (spec 018, D7): --exportar-privacidade <arquivo>
+        int pi = Array.FindIndex(args, a => a.Equals("--exportar-privacidade", StringComparison.OrdinalIgnoreCase));
+        if (pi >= 0)
+        {
+            Environment.ExitCode = Telemetria.TextoDiagnostico.Exportar(pi + 1 < args.Length ? args[pi + 1] : null);
             return;
         }
         // Confere se o Discord aceita o Streemu (handshake do Rich Presence), sem mostrar nada no perfil: --discord-check

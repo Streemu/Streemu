@@ -97,7 +97,7 @@ public sealed class Mpv : IDisposable
             catch (TimeoutException) when (sw.ElapsedMilliseconds < 8000 && !p.HasExited) { }
             catch (TimeoutException) { try { p.Kill(); } catch { } throw new InvalidOperationException("o mpv não respondeu (antivírus bloqueando?)"); }
         }
-        Log.Info($"[filme] mpv aberto em {sw.ElapsedMilliseconds} ms: {(file.StartsWith("srt://", StringComparison.Ordinal) ? "(fluxo do anfitrião)" : Path.GetFileName(file))}"); // a URL do fluxo leva a senha do túnel: nunca no log
+        Log.Info($"[filme] mpv aberto em {sw.ElapsedMilliseconds} ms: {(file.StartsWith("srt://", StringComparison.Ordinal) ? "(fluxo do anfitrião)" : "(arquivo local)")}"); // o nome do arquivo é da pessoa e não vai ao log (spec 018); a URL do fluxo leva a senha do túnel: nunca no log
         return new Mpv(p, client);
     }
 

@@ -36,6 +36,25 @@ public sealed class SessaoLocal
         public string? Versao { get; set; }
         public string? Commit { get; set; }
         public string? Canal { get; set; }
+        /// <summary>
+        /// Gravador local (spec 018, seção 6): quanto de cada série por segundo (<see cref="Serie"/>) pode subir, em bytes. Sem entrada o teto é 0: a série
+        /// fica só no PC. Um disparo (<see cref="GravadorLocal"/>) sobe o teto até o fim do arquivo naquele momento; o cursor nunca passa dele.
+        /// </summary>
+        public Dictionary<string, long> Tetos { get; set; } = new();
+        /// <summary>Um disparo pediu para subir a série, mas o teto só é fixado na próxima rodada do envio (depois que a fila de gravação chegou ao disco).</summary>
+        public bool TetoPendente { get; set; }
+        /// <summary>Houve disparo numa live que ainda não acabou: o fim dela (ou a abertura seguinte, se o app morrer) completa a série do mesmo pacote.</summary>
+        public bool LiveMarcada { get; set; }
+        /// <summary>
+        /// O pacote do Apagar (spec 018, D37) de cada arquivo que sobe pelo gravador, e o disparo que o abriu. Por arquivo, não por sessão: o Worker guarda um
+        /// pacote por arquivo (o do primeiro envio), então a série de cada live (<see cref="NomeQuadros"/>, <see cref="NomeSincronia"/>) precisa do seu para o
+        /// Apagar de uma live não levar a de outra. Os dois arquivos da mesma live dividem o pacote.
+        /// </summary>
+        public Dictionary<string, string> Pacotes { get; set; } = new();
+        public Dictionary<string, string> Motivos { get; set; } = new();
+        /// <summary>Criada por um app que cifra o envio (spec 018, A9): os arquivos dela sobem cifrados. Sessão de app antigo (campo ausente no sessao.json) continua em claro, porque o
+        /// servidor não aceita um arquivo que começou em claro e seguiu cifrado.</summary>
+        public bool Cifrada { get; set; }
     }
 
     public const string Log = "log.txt", Eventos = "eventos.ndjson";
@@ -102,7 +121,7 @@ public sealed class SessaoLocal
         {
             Id = id, Inicio = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), LogPath = logPath, Reduzida = reduzida,
             Pid = me.Id, PidInicio = me.StartTime.ToUniversalTime().Ticks, NaoEnviar = naoEnviar,
-            Versao = Program.Version, Commit = BuildInfo.Commit.Length >= 7 ? BuildInfo.Commit[..7] : "", Canal = BuildInfo.Canal,
+            Versao = Program.Version, Commit = BuildInfo.Commit.Length >= 7 ? BuildInfo.Commit[..7] : "", Canal = BuildInfo.Canal, Cifrada = true,
         });
         s.Salvar();
         return s;
@@ -112,7 +131,7 @@ public sealed class SessaoLocal
     {
         try
         {
-            var e = JsonSerializer.Deserialize<Estado>(File.ReadAllText(Path.Combine(dir, "sessao.json")));
+            var e = JsonSerializer.Deserialize<Estado>(CofreLocal.LerArquivo(Path.Combine(dir, "sessao.json"))); // cifrado desde a A8 (tem o caminho do log, com o nome do usuário); o antigo, em claro, também abre
             return e == null || e.Id == "" ? null : new SessaoLocal(dir, e);
         }
         catch { return null; }
@@ -140,7 +159,7 @@ public sealed class SessaoLocal
             try
             {
                 string f = Path.Combine(Dir, "sessao.json"), tmp = f + "." + Environment.ProcessId + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(E));
+                File.WriteAllText(tmp, CofreLocal.Arquivo(JsonSerializer.Serialize(E)));
                 File.Move(tmp, f, overwrite: true);
                 Gravou();
             }
@@ -169,6 +188,80 @@ public sealed class SessaoLocal
     /// <summary>Arquivos que só aparecem prontos (gravados inteiros de uma vez): sobem como "fechados".</summary>
     public static bool Retrato(string nome) => nome.StartsWith("perfil-") || nome.StartsWith("relatorios/");
 
+    /// <summary>
+    /// As séries por segundo da live (quadros do host e sincronia de quem assiste): ficam 7 dias no PC e só sobem num disparo do <see cref="GravadorLocal"/>.
+    /// Os outros arquivos (log, eventos, perfil, relatórios, rede) seguem o envio normal. Há um arquivo por live (<c>quadros-1.csv</c>, <c>sincronia-2.ndjson</c>...);
+    /// o nome sem número é o formato antigo (uma série por sessão), que o servidor ainda guarda.
+    /// </summary>
+    public static bool Serie(string nome) => EhSerie(nome, "quadros", ".csv") || EhSerie(nome, "sincronia", ".ndjson");
+
+    static bool EhSerie(string nome, string prefixo, string extensao)
+    {
+        if (nome == prefixo + extensao) return true;
+        if (nome.Length < prefixo.Length + 2 + extensao.Length || !nome.StartsWith(prefixo + "-", StringComparison.Ordinal) || !nome.EndsWith(extensao, StringComparison.Ordinal)) return false;
+        var numero = nome.AsSpan(prefixo.Length + 1, nome.Length - prefixo.Length - 1 - extensao.Length);
+        return numero.Length <= 6 && numero.IndexOfAnyExceptInRange('0', '9') < 0;
+    }
+
+    public static string NomeQuadros(int live) => $"quadros-{live}.csv";
+    public static string NomeSincronia(int live) => $"sincronia-{live}.ndjson";
+
+    // ---- uma série por live: o número da live corrente (não vai para o disco: vale dentro da abertura do app) ----
+    int _numeroLive = 1;
+    bool _liveUsada;
+
+    /// <summary>A série da live corrente. Antes de qualquer live é a da primeira: um segundo medido um instante antes do aviso de "live começou" cai no arquivo certo.</summary>
+    public string ArquivoQuadros { get { lock (_gate) return NomeQuadros(_numeroLive); } }
+    public string ArquivoSincronia { get { lock (_gate) return NomeSincronia(_numeroLive); } }
+    /// <summary>Os dois arquivos da série da live corrente.</summary>
+    public string[] ArquivosDaLive() { lock (_gate) return new[] { NomeQuadros(_numeroLive), NomeSincronia(_numeroLive) }; }
+    /// <summary>Já houve uma live nesta abertura do app: a série dela existe (ou existiu) e um disparo tem o que liberar.</summary>
+    public bool TeveLive { get { lock (_gate) return _liveUsada; } }
+
+    /// <summary>Uma live começou com nenhuma outra aberta: a primeira usa o número 1, as seguintes abrem arquivos novos.</summary>
+    public void AbrirLive() { lock (_gate) { if (_liveUsada) _numeroLive++; _liveUsada = true; } }
+
+    /// <summary>Quanto desta série pode subir (0 = nada); para o resto dos arquivos, sem limite.</summary>
+    public long Teto(string nome) { lock (_gate) return E.Tetos.GetValueOrDefault(nome); }
+
+    /// <summary>Até que byte o arquivo pode subir: o fim dele, ou o teto se for uma série.</summary>
+    public long Limite(string nome, long tamanho) => Serie(nome) ? Math.Min(tamanho, Teto(nome)) : tamanho;
+
+    public string? Pacote(string nome) { lock (_gate) return E.Pacotes.GetValueOrDefault(nome); }
+    public string? Motivo(string nome) { lock (_gate) return E.Motivos.GetValueOrDefault(nome); }
+
+    /// <summary>
+    /// Dá aos arquivos o pacote do Apagar e o motivo. Se algum deles já tem pacote, os outros entram nele (os dois arquivos de uma live dividem o pacote, e um
+    /// disparo seguinte na mesma live não abre outro); senão abre um novo. 16 caracteres hexadecimais: cabe na regra do Worker (6 a 64 de letras, números, _ e -) e
+    /// não diz nada de quem nem de quando.
+    /// </summary>
+    public string Pacotear(IEnumerable<string> nomes, string motivo)
+    {
+        var lista = nomes.ToList();
+        lock (_gate)
+        {
+            string pacote = lista.Select(n => E.Pacotes.GetValueOrDefault(n)).FirstOrDefault(p => p != null) ?? Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
+            foreach (var n in lista) { E.Pacotes.TryAdd(n, pacote); E.Motivos.TryAdd(n, motivo); }
+            return pacote;
+        }
+    }
+
+    /// <summary>Fixa o teto de cada série que um disparo liberou (a que tem pacote) no fim dela agora e dá a tarefa por feita. Chamar depois de a fila de gravação chegar ao disco.</summary>
+    public void FixarTetos()
+    {
+        foreach (var (nome, caminho) in Arquivos())
+        {
+            if (!Serie(nome) || Pacote(nome) == null) continue; // a série de uma live sem disparo fica só no PC
+            long tam; try { tam = new FileInfo(caminho).Length; } catch { continue; }
+            lock (_gate) if (tam > E.Tetos.GetValueOrDefault(nome)) E.Tetos[nome] = tam;
+        }
+        lock (_gate) E.TetoPendente = false;
+        Salvar();
+    }
+
+    /// <summary>Quem recebe cada evento gravado (o <see cref="GravadorLocal"/> decide os disparos). Nunca derruba a gravação.</summary>
+    public Action<string, JsonObject>? AoEvento { get; set; }
+
     public long Cursor(string nome) { lock (_gate) return E.Cursores.GetValueOrDefault(nome); }
     public void SetCursor(string nome, long v) { lock (_gate) E.Cursores[nome] = v; }
     /// <summary>Até que hora (UTC, ms) o conteúdo já confirmado deste arquivo vai; antes da primeira confirmação, o início da sessão.</summary>
@@ -188,6 +281,7 @@ public sealed class SessaoLocal
         o["hora_utc"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
         o["sessao"] ??= Id;
         Enfileirar(Eventos, o.ToJsonString(), evento: true, urgente: EventoUrgente(tipo));
+        try { AoEvento?.Invoke(tipo, o); } catch { }
     }
 
     /// <summary>Eventos que não esperam o agrupamento da gravação: o que a pessoa marcou, o que o app viu falhar e o que fecha ou suspende a sessão são justamente os que um travamento logo depois deixaria sem rastro. São raros: o custo do disco sem agrupar é desprezível.</summary>
@@ -214,7 +308,8 @@ public sealed class SessaoLocal
     {
         lock (_gate)
         {
-            try { File.AppendAllText(Path.Combine(Dir, nome), texto, new UTF8Encoding(false)); Gravou(); }
+            // cifrado por linha (spec 018, D21): a posição em bytes continua valendo para o cursor do envio, que decifra linha a linha ao montar o pacote
+            try { File.AppendAllText(Path.Combine(Dir, nome), CofreLocal.CifrarLinhas(texto), new UTF8Encoding(false)); Gravou(); }
             catch (Exception e)
             {
                 NaoGravou(e);
@@ -236,7 +331,7 @@ public sealed class SessaoLocal
             string f = Path.Combine(Dir, nome.Replace('/', '\\'));
             Directory.CreateDirectory(Path.GetDirectoryName(f)!);
             string tmp = f + ".tmp";
-            File.WriteAllText(tmp, conteudo.TrimEnd() + "\n", new UTF8Encoding(false));
+            File.WriteAllText(tmp, CofreLocal.CifrarLinhas(conteudo.TrimEnd()) + "\n", new UTF8Encoding(false)); // uma linha cifrada por linha do JSON: o envio corta o arquivo em quebras de linha
             File.Move(tmp, f, overwrite: true);
             Gravou();
         }
@@ -246,12 +341,12 @@ public sealed class SessaoLocal
     /// <summary>Tudo confirmado pelo servidor (arquivos e índice) e a sessão fechada: pode sair do disco depois de alguns dias.</summary>
     public bool TudoEnviado()
     {
-        if (Aberta) return false;
+        if (Aberta || E.TetoPendente) return false;
         foreach (var (nome, caminho) in Arquivos())
         {
             long tam;
             try { tam = new FileInfo(caminho).Length; } catch { continue; }
-            if (Cursor(nome) < tam) return false;
+            if (Cursor(nome) < Limite(nome, tam)) return false; // a série que nenhum disparo liberou fica só no PC: não é "falta enviar"
         }
         long ev = 0;
         try { ev = new FileInfo(Path.Combine(Dir, Eventos)).Length; } catch { }

@@ -9,6 +9,10 @@
     <!-- Só o leitor das novidades (plano 027, etapa 1) e o log. Sem janela, sem rede, sem estado salvo. -->
     <Compile Include="../../app/Streemu/Util/Novidades.cs" Link="Novidades.cs" />
     <Compile Include="../../app/Streemu/Util/Log.cs" Link="Log.cs" />
+    <Compile Include="../../app/Streemu/Telemetria/CofreLocal.cs" Link="CofreLocal.cs" /><!-- o Log cifra cada linha (spec 018, A8) -->
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" /><!-- o DPAPI do CofreLocal; o app tem pelo net10.0-windows -->
     <!-- o mesmo recurso do exe, para provar que Embutidas() devolve o mesmo que a leitura do arquivo -->
     <EmbeddedResource Include="../../app/Streemu/NOVIDADES.md" LogicalName="Streemu.NOVIDADES.md" />
   </ItemGroup>

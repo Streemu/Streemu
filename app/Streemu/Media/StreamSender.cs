@@ -255,9 +255,9 @@ public sealed class StreamSender : IDisposable
         _appRestoredWindow = false;
         if (s.Source.IsMinimized)
         {
-            Log.Info($"[captura] a janela escolhida está minimizada: restaurando ({s.Source.Label})");
+            Log.Info($"[captura] a janela escolhida está minimizada: restaurando ({s.Source.ParaLog})");
             if (!await Task.Run(s.Source.RestoreIfMinimized))
-                throw new InvalidOperationException($"não consegui restaurar a janela minimizada \"{s.Source.Label}\"; abra o jogo na frente e tente de novo");
+                throw new InvalidOperationException($"não consegui restaurar a janela minimizada ({s.Source.ParaLog}); abra o jogo na frente e tente de novo");
             _appRestoredWindow = true;
         }
         // a janela pode minimizar de novo entre a restauração e a captura (o Discord faz isso): sem ela visível o tamanho da captura sairia errado
@@ -324,14 +324,14 @@ public sealed class StreamSender : IDisposable
     async Task ExigirJanelaVisivelAsync(Settings s)
     {
         if (!WindowHidden(s)) return;
-        Log.Info($"[captura] a janela escolhida sumiu de novo antes da live abrir: restaurando outra vez ({s.Source.Label})");
+        Log.Info($"[captura] a janela escolhida sumiu de novo antes da live abrir: restaurando outra vez ({s.Source.ParaLog})");
         await Task.Run(s.Source.RestoreIfMinimized);
         _appRestoredWindow = true;
         if (WindowHidden(s)) throw JanelaMinimizouAbrindo(s);
     }
 
     static InvalidOperationException JanelaMinimizouAbrindo(Settings s) =>
-        new($"a janela \"{GameName.Of(s.Source)}\" minimizou de novo enquanto a live abria; abra ela na frente e tente de novo, ou transmita o monitor");
+        new($"a {s.Source.ParaLog} minimizou de novo enquanto a live abria; abra ela na frente e tente de novo, ou transmita o monitor");
 
     /// <summary>
     /// A captura do começo da live (e de uma troca de janela/qualidade). Jogo em tela cheia vai pelo monitor (ddagrab), a não ser que o vigia já tenha
@@ -598,14 +598,14 @@ public sealed class StreamSender : IDisposable
                 {
                     reRestored = true;
                     var h = s!.Source.Handle;
-                    Log.Info($"[captura] a janela {GameName.Of(s.Source)} minimizou de novo logo depois de o app restaurar; restaurando mais uma vez, sem tirar o foco.");
+                    Log.Info($"[captura] a {s.Source.ParaLog} minimizou de novo logo depois de o app restaurar; restaurando mais uma vez, sem tirar o foco.");
                     _ = Task.Run(() => Native.ShowWindow(h, Native.SW_SHOWNOACTIVATE));
                 }
                 if (JanelaMinimizada.Avisa(!guard, DateTime.Now - hiddenSince, hiddenWarned))
                 {
                     hiddenWarned = true;
                     string nome = GameName.Of(s!.Source);
-                    Log.Info($"[captura] a janela {nome} está minimizada há {JanelaMinimizada.AvisoDepois.TotalSeconds:0} s; avisando para abrir ela na frente.");
+                    Log.Info($"[captura] a {s.Source.ParaLog} está minimizada há {JanelaMinimizada.AvisoDepois.TotalSeconds:0} s; avisando para abrir ela na frente.");
                     WindowHiddenWarning?.Invoke(JanelaMinimizada.Aviso(nome));
                 }
             }
@@ -931,7 +931,7 @@ public sealed class StreamSender : IDisposable
     void ApplyReconfigure(Settings next)
     {
         var before = Current!;
-        Log.Info($"Trocando a transmissão para {next.Source.Label} em {next.Preset.Name} (quem assiste vê alguns segundos parado).");
+        Log.Info($"Trocando a transmissão para {next.Source.ParaLog} em {next.Preset.Name} (quem assiste vê alguns segundos parado).");
         Status?.Invoke("Trocando a qualidade/janela...");
         _audio?.Attach(null);
         KillCapture();
@@ -1204,11 +1204,11 @@ public sealed class StreamSender : IDisposable
             if (interrompida) return;
             var cap = TrocaPorAcessoPerdido.ProximaCaptura(_preferDda, s.Source.IsWindow, s.Source.IsWindow && s.Source.StillExists(), gfxPorAcesso) switch
             {
-                MetodoDaCaptura.Ddagrab => Capture.Dda(mon, s.Preset.Fps, s.Source.Label) ?? Capture.For(s.Source, s.Preset.Fps),
+                MetodoDaCaptura.Ddagrab => Capture.Dda(mon, s.Preset.Fps, s.Source.ParaLog) ?? Capture.For(s.Source, s.Preset.Fps),
                 MetodoDaCaptura.Janela => Capture.Window(s.Source, s.Preset.Fps),
                 // monitor (o monitor que a espera devolveu, já com o identificador novo se o Windows o recriou): o vigia viu o ddagrab quase sem
                 // quadros e o gfxcapture do mesmo monitor pegando bem mais, ou o Windows tirou o acesso do ddagrab várias vezes (887a0026)
-                MetodoDaCaptura.GfxcaptureMonitor => Capture.Monitor(mon, s.Preset.Fps, s.Source.Label),
+                MetodoDaCaptura.GfxcaptureMonitor => Capture.Monitor(mon, s.Preset.Fps, s.Source.ParaLog),
                 _ => Capture.For(s.Source, s.Preset.Fps)
             };
             bool eraDdagrab = CaptureUsed!.Dda;
@@ -1436,14 +1436,14 @@ public sealed class StreamSender : IDisposable
         if (s.Source.IsWindow && s.Source.StillExists())
         {
             if (cap.CapturesMonitor) alt = Capture.Window(s.Source, fps);
-            else if (s.Source.CoversMonitorNow()) alt = Capture.Dda(Display.MonitorOf(s.Source.Handle), fps, s.Source.Label);
+            else if (s.Source.CoversMonitorNow()) alt = Capture.Dda(Display.MonitorOf(s.Source.Handle), fps, s.Source.ParaLog);
             else note = " A janela não cobre o monitor inteiro: não troco para a captura do monitor (mostraria a área de trabalho).";
         }
         else if (!s.Source.IsWindow)
         {
             // Monitor escolhido na aba Telas: o outro método é a outra captura do MESMO monitor (a imagem é a mesma, então trocar nunca mostra outra coisa).
             // Antes não havia alternativa e o vigia concluía "o jogo manda pouco" com o RoR2 rodando liso (2026-11-12: gfxcapture do monitor a ~1/s).
-            alt = cap.Dda ? Capture.Monitor(s.Source.Handle, fps, s.Source.Label) : Capture.Dda(s.Source.Handle, fps, s.Source.Label);
+            alt = cap.Dda ? Capture.Monitor(s.Source.Handle, fps, s.Source.ParaLog) : Capture.Dda(s.Source.Handle, fps, s.Source.ParaLog);
             if (alt != null && alt.Name == cap.Name) alt = null; // cor avançada: o Dda devolve o próprio gfxcapture
             // o Windows já tirou a tela do ddagrab várias vezes (LIV-151) e a live está no gfxcapture por causa disso: o ddagrab só volta pela regra de
             // PodeVoltar (gfxcapture quase parado e ddagrab bem melhor, uma vez só); senão a live vai e volta e cada troca congela a imagem.

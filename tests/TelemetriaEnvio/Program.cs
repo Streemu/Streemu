@@ -18,6 +18,7 @@ string tmp = Path.Combine(Path.GetTempPath(), "streemu-telemetria-envio-" + Date
 Directory.CreateDirectory(tmp);
 Environment.SetEnvironmentVariable("STREEMU_TEST_DIR", tmp);
 Environment.SetEnvironmentVariable("STREEMU_TELEMETRIA_URL", null);
+Environment.SetEnvironmentVariable(Streemu.Telemetria.CifraEnvio.VarChaveTeste, ServidorFalso.Chave.Spki); // o app cifra para o servidor falso, que abre com o par de teste em memória
 Casos.Tmp = tmp;
 
 string? Arg(string nome) { int i = Array.IndexOf(args, nome); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }

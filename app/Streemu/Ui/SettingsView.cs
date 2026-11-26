@@ -44,6 +44,24 @@ public sealed class SettingsView : UserControl
         get { var cp = base.CreateParams; cp.ExStyle |= 0x02000000; return cp; }
     }
 
+    /// <summary>A pessoa trocou de categoria (o nome da nova). Quem escuta usa para marcar como visto o que a categoria mostra.</summary>
+    public event Action<string>? CategoryChanged;
+
+    /// <summary>
+    /// Põe ou tira o ponto de aviso ao lado do nome da categoria (ex.: envio novo em Diagnóstico). Só o botão da navegação lateral muda de texto:
+    /// o nome da categoria, usado em <see cref="SelectCategory"/>, continua o mesmo.
+    /// </summary>
+    public void SetBadge(string name, bool on)
+    {
+        int index = _pages.FindIndex(p => p.Name == name);
+        if (index < 0) return;
+        var button = _pages[index].Button;
+        string texto = on ? name + "  ●" : name;
+        if (button.Text == texto) return;
+        button.Text = texto;
+        button.AccessibleName = on ? name + ", tem novidade" : name;
+    }
+
     public string SelectedCategory => _selected;
     public bool UsesCategorySelector => _category.Visible;
 
@@ -87,6 +105,7 @@ public sealed class SettingsView : UserControl
         _body.ResumeLayout();
         LayoutPage();
         _body.AutoScrollPosition = new Point(0, _scroll.GetValueOrDefault(name));
+        CategoryChanged?.Invoke(name);
     }
 
     protected override void OnLayout(LayoutEventArgs e)

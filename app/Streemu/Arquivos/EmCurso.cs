@@ -47,6 +47,8 @@ public sealed class PedidoEmCurso
     public bool Visto { get; set; }
     /// <summary>Por que terminou (recusa, erro), já em português para a tela.</summary>
     public string? Motivo { get; set; }
+    /// <summary>Por que terminou, para a telemetria: uma palavra de uma lista fechada (sem texto livre, que traria apelido e caminho). Ver docs/TELEMETRIA.md, evento arquivo_fim.</summary>
+    public string? Causa { get; set; }
     public int ArquivoAtual { get; set; }
     public Progresso? Progresso { get; set; }
     /// <summary>Identidade → caminho: de onde sai (quem manda) ou onde ficou (quem recebe).</summary>

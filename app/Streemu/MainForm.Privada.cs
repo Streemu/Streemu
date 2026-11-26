@@ -20,7 +20,8 @@ public sealed partial class MainForm
     ConvidadosForm? _convidadosForm;
 
     // Criada sob demanda: o inicializador de campo não pode usar _room (ele troca quando o app reconecta à sala).
-    SalaPrivada Privada => _privada ??= new SalaPrivada(id => _room?.IsPresent(id) ?? false);
+    // O `declarar` conta ao servidor da sala (e só a ele) que a privada começou ou acabou: a moderação precisa saber de toda privada (spec 029, emenda A, 17.3.1).
+    SalaPrivada Privada => _privada ??= new SalaPrivada(id => _room?.IsPresent(id) ?? false, declarar: id => _room?.DeclararPrivada(id));
 
     /// <summary>Chamado quando a live começa, antes do primeiro UpdateLive: decide se esta live é privada e manda os primeiros convites.</summary>
     void PrivadaAoComecar()

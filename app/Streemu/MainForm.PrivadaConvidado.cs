@@ -79,7 +79,18 @@ public sealed partial class MainForm
         if (_convitesConectando.ContainsKey(anfitriaoId) || _links.Values.Any(l => !l.IAmSender && l.PeerId == anfitriaoId)) return;
         _convitesConectando[anfitriaoId] = new Conectando();
         AtualizarConvites(); // o card já vira "Conectando" no mesmo lugar, antes de qualquer coisa sair do lugar
+        _ = _room?.SendTo(anfitriaoId, SalaPrivada.MensagemAceite(c.StreamId)); // só para o servidor registrar o aceite; o anfitrião ignora (aceito: true)
         _ = AssistirConvidadoAsync(anfitriaoId, c.Anfitriao, c.StreamId);
+    }
+
+    /// <summary>
+    /// A ligação de uma privada conectou pela primeira vez (<see cref="OnLinkState"/>): conta ao servidor que abri o player, para a moderação saber quem assistiu (spec 029,
+    /// 17.3.1, item 4). Só vale com convite do anfitrião, que o servidor confere de novo; a live pública segue por <see cref="ContarQueComeceiAAssistir"/>.
+    /// </summary>
+    void ContarQueAbriUmaPrivada(PeerLink link)
+    {
+        if (link.IAmSender || _room == null) return;
+        if (_convites.TryGetValue(link.PeerId, out var c)) _room.EnviarAssistindoPrivada(link.PeerId, c.StreamId);
     }
 
     void RecusarConvite(string anfitriaoId)

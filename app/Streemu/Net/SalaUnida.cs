@@ -20,6 +20,7 @@ public sealed class SalaUnida : ISala
     readonly string _meuId;
     string _nick;
     LiveInfo? _live;
+    string? _privada; // id da minha privada declarada (spec 029, emenda A): as salas novas a recebem em Adicionar
     System.Threading.Timer? _timer;
     bool _agendado;
     bool _descartada;
@@ -72,6 +73,7 @@ public sealed class SalaUnida : ISala
         if (antiga != null) { antiga.Desligar(); antiga.Sala.Dispose(); }
         sala.SetNick(_nick);
         if (_live != null) sala.SetLive(_live);
+        if (_privada != null) sala.DeclararPrivada(_privada); // a sala nova também precisa saber da privada que já está no ar
         Mudou();
     }
 
@@ -222,6 +224,21 @@ public sealed class SalaUnida : ISala
     {
         _nick = nick;
         foreach (var e in Copia()) e.Sala.SetNick(nick);
+    }
+
+    /// <summary>Declara a privada a todas as salas (cada grupo do anfitrião a registra). Repetir o mesmo id não reenvia: a janela chama a cada atualização da live.</summary>
+    public void DeclararPrivada(string? id)
+    {
+        if (_privada == id) return;
+        _privada = id;
+        foreach (var e in Copia()) e.Sala.DeclararPrivada(id);
+    }
+
+    /// <summary>Só as salas em que o anfitrião está: nas outras o servidor não tem convite e ignoraria.</summary>
+    public void EnviarAssistindoPrivada(string alvo, string id)
+    {
+        foreach (var e in Copia())
+            if (e.Sala.IsPresent(alvo)) e.Sala.EnviarAssistindoPrivada(alvo, id);
     }
 
     public void SetLive(LiveInfo? live)

@@ -537,7 +537,7 @@ public sealed partial class MainForm
         bool first = _linkEverConnected.Add(link.SessionId);
         if (first) Log.Info($"Ligação com {link.PeerNick} conectada em {link.Tunnel.ConnectMs} ms ({(link.IAmSender ? "você transmite" : "você assiste")}).");
         if (first && link.IAmSender) { TocarSom(Sons.Som.EspectadorEntrou); AnunciarEntradaNaLive(link.PeerId); } // MainForm.SomNaLive.cs
-        if (first && !link.IAmSender) { WarnIfStreamerSendsNoList(link); ContarQueComeceiAAssistir(link); } // MainForm.Atividades.cs: só live pública
+        if (first && !link.IAmSender) { WarnIfStreamerSendsNoList(link); ContarQueComeceiAAssistir(link); ContarQueAbriUmaPrivada(link); } // MainForm.Atividades.cs: só live pública
         if (!link.IAmSender && !_linkViewers.ContainsKey(link.SessionId) && Environment.GetEnvironmentVariable("STREEMU_TEST_NOSTREAM") != "1")
             StartLinkViewer(link);
         RefreshMembers();
@@ -793,6 +793,7 @@ public sealed partial class MainForm
         RefreshSide();
         PlacePreparation();
         _room?.SetLive(publica);
+        _room?.DeclararPrivada(Privada.StreamId); // a sala nova (troca de grupo ou reconexão) precisa da declaração; repetir o mesmo id não reenvia
         AtualizarIconeAtividade(); // MainForm.Icone.cs: minha live entrou ou saiu do ar
         if (_discord == null) return;
         if (info == null || publica == null) { _discord.Set(null); return; }

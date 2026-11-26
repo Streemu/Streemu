@@ -23,6 +23,10 @@ public interface ISala : IDisposable
     event Action? AtividadesMudaram { add { } remove { } }
     /// <summary>Conta ao servidor uma atividade que só o app sabe: <c>assistindo</c> (com o <paramref name="alvo"/>, a conta de quem transmite) ou <c>filme</c>. Não faz nada na sala antiga.</summary>
     void EnviarAtividade(string tipo, string? alvo = null) { }
+    /// <summary>Declara ao servidor a minha transmissão privada (o id da stream) ou, com <c>null</c>, que ela acabou. Só o servidor sabe: não é difundido ao grupo (spec 029, emenda A, 17.3.1). Não faz nada na sala antiga.</summary>
+    void DeclararPrivada(string? id) { }
+    /// <summary>O convidado abriu o player da privada da conta <paramref name="alvo"/>: conta ao servidor, que só aceita com convite entregue. Não faz nada na sala antiga.</summary>
+    void EnviarAssistindoPrivada(string alvo, string id) { }
     bool IsPresent(string id);
     Member? Find(string id);
     Member? FindByStream(string streamId);

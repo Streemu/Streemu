@@ -30,6 +30,8 @@ public sealed class GroupRoom : ISala
     ClientWebSocket? _ws;
     string _nick;
     LiveInfo? _live;
+    /// <summary>Id da minha transmissão privada declarada à sala, ou nulo (spec 029, emenda A, 17.3.1). Reenviada a cada conexão, como a live.</summary>
+    string? _privada;
     /// <summary>Quem a sala diz que está conectado agora.</summary>
     List<Member> _members = new();
     /// <summary>Quem sumiu da sala há pouco (id → como estava e quando sumiu). Ver <see cref="AwayGrace"/>.</summary>
@@ -141,6 +143,23 @@ public sealed class GroupRoom : ISala
         _ = SendAsync(LiveMessage());
     }
 
+    /// <summary>
+    /// Declara (ou, com <c>null</c>, encerra) a minha transmissão privada para o servidor da sala, para a moderação. A sala não difunde isso: os outros
+    /// membros do grupo continuam sem saber que ela existe. Guardada para reenviar ao reconectar (uma queda não pode deixar a privada sem declaração).
+    /// </summary>
+    public void DeclararPrivada(string? id)
+    {
+        _privada = id;
+        _ = SendAsync(SalaPrivada.MensagemDeclaracao(id));
+    }
+
+    /// <summary>O convidado abriu o player da privada de <paramref name="alvo"/>: conta ao servidor (que só aceita com convite entregue). Não faz nada desconectado.</summary>
+    public void EnviarAssistindoPrivada(string alvo, string streamId)
+    {
+        if (!Connected) return;
+        _ = SendAsync(SalaPrivada.MensagemAssistindo(alvo, streamId));
+    }
+
     public Task SendTo(string id, JsonObject msg) => SendAsync(new JsonObject { ["t"] = "para", ["para"] = id, ["msg"] = msg });
 
     // o id vem do token que o servidor conferiu: o `ola` não leva id
@@ -193,6 +212,7 @@ public sealed class GroupRoom : ISala
                 opened = true;
                 await SendAsync(Hello());
                 if (_live != null) await SendAsync(LiveMessage());
+                if (_privada != null) await SendAsync(SalaPrivada.MensagemDeclaracao(_privada));
                 Connected = true;
                 SetStatus("Na sala do grupo.");
                 Log.Info("Sala do grupo: conectado.");

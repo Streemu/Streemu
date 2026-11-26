@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "77b3eaa2f1611b7756b03cd2c14ad2cc84ef33db",
-    "notas":  "- Remove as opcoes de fixar a barra e de abrir com o mouse das Configuracoes",
-    "obrigatoria":  false
+    "privado":  "79a29bb9adb1dd2c0b73886a6b43ae1a32b088df",
+    "notas":  "- [obrigatória] Declara a stream privada à sala e registra aceite e player (spec 029, T11)\n- Prepara a declaração da stream privada no app (spec 029, T11, parte 1)\n- Acrescenta o motivo ao arquivo_fim e documenta filme_fila e o modo filme\n- Tira o nome do arquivo de filme do log e da telemetria\n- Corrige a 1ª linha do log subindo como c1:\u003cbase64\u003e no envio\n- Documenta a cifra do envio e marca o A9 do plano 018\n- Cifra o envio da telemetria com a chave publica embutida (spec 018, A9)\n- Tenta de novo a chave local que não abriu e a troca sozinha depois de 3 aberturas\n- Não troca a chave local que não abriu e guarda a identidade cifrada até ela abrir\n- Cifra o que tem gente dentro no PC e fixa os prazos locais (spec 018, A8)\n- Encurta os itens do gravador e do histórico na tela Novidades (limite de 220 caracteres)\n- Pede confirmação para enviar a marcação no Desligado e grava uma série por live\n- Não sobe a série de lives anteriores sem disparo junto com a live marcada\n- Deixa o disparo 3 do gravador desligado por padrão até a calibragem (plano 018, P8)\n- Adiciona o gravador local das séries por segundo e o aviso visível com \"Ver o que é enviado\" (spec 018, A-III)",
+    "obrigatoria":  true
 }

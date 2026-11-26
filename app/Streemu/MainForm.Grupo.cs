@@ -1002,7 +1002,7 @@ public sealed partial class MainForm
         ["ligacoes"] = new JsonArray(_links.Values.Select(l => (JsonNode)new JsonObject
         {
             ["amigo"] = l.PeerNick,
-            ["ligacao"] = l.SessionId, // o id da ligação (não identifica a pessoa): o SemQuemEstavaComQuem acha a ligação por ele, não pelo apelido
+            ["ligacao"] = l.SessionId, // o id da ligação (não identifica a pessoa): o Worker junta as duas pontas por ele, não pelo apelido
             ["papel"] = l.IAmSender ? "transmito" : "assisto",
             ["estado"] = l.Tunnel.State.ToString(),
             ["caminho"] = CaminhoDaLigacao(l), // MainForm.Sincronia.cs: o mesmo valor do evento ligacao_estado

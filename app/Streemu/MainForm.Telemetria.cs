@@ -176,8 +176,8 @@ public sealed partial class MainForm
     // o Discord não sobe em estado nenhum (spec 018, D27): a conta e o apelido identificam a pessoa no Completo; o nome do Discord era só mais um identificador
     void AtualizarQuem() => _teleQuem = new Identidade(null, null, Nick, _state.InstallId, _conta is { TemConta: true } c ? c.ContaId : null);
 
-    /// <summary>O amigo desta ligação como sobe do PC: <c>amigo-N</c>, ou "convidado" na live privada (D5, D32).</summary>
-    string AmigoParaTelemetria(PeerLink link) => LigacaoPrivada(link) ? "convidado" : (Telemetria.Pseudonimos.Para(link.PeerId, link.PeerNick) ?? "convidado");
+    /// <summary>O amigo desta ligação como sobe do PC: <c>amigo-N</c>, igual na live privada (D32; a exceção "convidado" da D5 acabou em 2026-11-26).</summary>
+    string AmigoParaTelemetria(PeerLink link) => Telemetria.Pseudonimos.Para(link.PeerId, link.PeerNick) ?? "convidado";
 
     /// <summary>
     /// Ensina ao <see cref="Telemetria.Pseudonimos"/> quem são os amigos (sala, ausentes, apelidos locais), para o log e os eventos dizerem <c>amigo-N</c> nos três
@@ -198,7 +198,7 @@ public sealed partial class MainForm
             foreach (var m in _room.Friends.ToList()) Ensinar(m.Id, m.Nick);
             foreach (var a in _room.Ausentes.ToList()) Ensinar(a.Id, a.Nick);
         }
-        foreach (var l in _links.Values.ToList()) if (!LigacaoPrivada(l)) Ensinar(l.PeerId, l.PeerNick);
+        foreach (var l in _links.Values.ToList()) Ensinar(l.PeerId, l.PeerNick);
         // os apelidos locais (plano 019, etapa 7, id do amigo → o nome que a pessoa deu a ele): valem como o nome dele e juntam ao mesmo número pelo id
         foreach (var (id, apelido) in Apelidos.Todos.ToList()) Ensinar(id, apelido);
     }
@@ -441,7 +441,7 @@ public sealed partial class MainForm
         {
             string slug = new string(motivo.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD)
                 .Where(c => char.IsAsciiLetterOrDigit(c) || c == '-').ToArray());
-            _teleSessao.Retrato($"relatorios/{DateTime.Now:yyyyMMdd-HHmmss}-{slug}.json", SemQuemEstavaComQuem(BuildReport(foco)));
+            _teleSessao.Retrato($"relatorios/{DateTime.Now:yyyyMMdd-HHmmss}-{slug}.json", BuildReport(foco));
             _tele.Agora();
         }
         catch (Exception e) { Log.Info("[telemetria] relatório automático falhou: " + e.Message); }
@@ -460,7 +460,9 @@ public sealed partial class MainForm
         if (_teleSessao == null || _streamId == null) return;
         if (comecou)
         {
-            _teleSessao.Evento("live", new JsonObject { ["transmissao"] = _streamId, ["papel"] = "transmite", ["ligacao"] = "propria", ["jogo"] = _liveGame });
+            var evento = new JsonObject { ["transmissao"] = _streamId, ["papel"] = "transmite", ["ligacao"] = "propria", ["jogo"] = _liveGame };
+            if (Privada.Ligada) evento["privada"] = true; // o painel mostra a live como as outras, com a marca "Live privada" (decisão de 2026-11-26)
+            _teleSessao.Evento("live", evento);
             ResumoLive.Host.Iniciar();
             EssencialDaLive("propria", "live_comecou", Privada.Ligada ? "transmite_privada" : "transmite");
             _gravador?.LiveComecou("propria");
@@ -504,7 +506,9 @@ public sealed partial class MainForm
         if (comecou)
         {
             MarcarSePrivada(link);
-            string? live = link.IAmSender ? _streamId : _room?.Find(link.PeerId)?.Live?.StreamId;
+            // a privada não passa pela sala (sem SetLive): quem é convidado sabe a transmissão pelo convite, e é ela que junta as duas pontas no painel
+            string? live = link.IAmSender ? _streamId
+                : _room?.Find(link.PeerId)?.Live?.StreamId ?? (LigacaoPrivada(link) ? _convites.GetValueOrDefault(link.PeerId)?.StreamId : null);
             _teleLiveDaLigacao[link.SessionId] = live;
             if (!link.IAmSender)
             {
@@ -514,14 +518,13 @@ public sealed partial class MainForm
             }
             if (live == null) return;
             var evento = new JsonObject { ["transmissao"] = live, ["ligacao"] = link.SessionId, ["papel"] = link.IAmSender ? "envia" : "assiste" };
-            if (!LigacaoPrivada(link)) // privada: só dados técnicos, sem quem estava com quem (D5)
-            {
-                // o amigo sobe como amigo-N nos três campos (D32): o Worker junta as duas pontas da live pela transmissão e pela ligação (B5), não por quem é quem
-                string amigo = AmigoParaTelemetria(link);
-                evento["outro_install"] = amigo;
-                if (_salaDeConta) evento["outro_conta"] = amigo; // o Worker anula o que não tem a forma de uma conta (RE_CONTA)
-                evento["outro_apelido"] = amigo;
-            }
+            // o amigo sobe como amigo-N nos três campos (D32): o Worker junta as duas pontas da live pela transmissão e pela ligação (B5), não por quem é quem.
+            // Na privada também (decisão de 2026-11-26, para a moderação): a live aparece no painel como as outras, só com a marca "privada".
+            string amigo = AmigoParaTelemetria(link);
+            evento["outro_install"] = amigo;
+            if (_salaDeConta) evento["outro_conta"] = amigo; // o Worker anula o que não tem a forma de uma conta (RE_CONTA)
+            evento["outro_apelido"] = amigo;
+            if (LigacaoPrivada(link)) evento["privada"] = true;
             _teleSessao.Evento("live", evento);
             return;
         }

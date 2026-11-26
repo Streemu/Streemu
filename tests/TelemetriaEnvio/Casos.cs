@@ -62,6 +62,7 @@ static class Casos
         Caso("discord-nao-sobe-em-nenhum-envio-nem-no-cabecalho-nem-no-log", DiscordNaoSobe);
         Caso("amigo-vira-amigo-n-no-log-e-nos-eventos-e-o-desligado-nao-aparece-no-envio-do-ligado", AmigoViraAmigoN);
         Caso("amigo-eventos-das-duas-pontas-continuam-ligados-por-transmissao-e-ligacao", AmigoDuasPontasLigadas);
+        Caso("privada-sobe-igual-a-live-normal-com-os-amigos-como-amigo-n-e-a-marca-privada", PrivadaSobeComoALiveNormal);
         Caso("conta-token-no-envio-normal-e-conta-no-pacote", ContaTokenNormal);
         Caso("conta-bilhete-no-anonimo-e-token-nunca-sai", ContaBilheteAnonimo);
         Caso("conta-sem-conta-so-sobem-os-eventos-do-login", ContaSemConta);
@@ -2329,6 +2330,47 @@ static class Casos
         Pseudonimos.Reiniciar();
         Exigir(vistos[0]["transmissao"]?.ToString() == vistos[1]["transmissao"]?.ToString() && vistos[0]["ligacao"]?.ToString() == vistos[1]["ligacao"]?.ToString(), "as duas pontas não têm a mesma transmissão e ligação: " + vistos[0] + " | " + vistos[1]);
         Exigir(vistos[0]["papel"]?.ToString() == "envia" && vistos[1]["papel"]?.ToString() == "assiste", "os papéis das pontas não bateram");
+    }
+
+    /// <summary>
+    /// Decisão de 2026-11-26: a live privada sobe como a normal (o amigo como amigo-N nos três campos, a mesma transmissão e ligação nas duas pontas) e só
+    /// acrescenta <c>privada: true</c>. Nem o nome nem o id do convidado chegam ao servidor, no Completo e no Anônimo; a live normal não leva a marca.
+    /// No Anônimo os campos <c>outro_*</c> nem sobem (o <see cref="Anonimizador"/> os retira, igual à live normal); no Completo sobem como amigo-N.
+    /// </summary>
+    static void PrivadaSobeComoALiveNormal()
+    {
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
+        const string idB = "id-do-convidado-0123456789", nickB = "BrunoDoFundo";
+        Pseudonimos.Registrar(idB, nickB);
+        string numero = Pseudonimos.Para(idB, nickB)!;
+        foreach (var anonimo in new[] { false, true })
+            foreach (var privada in new[] { true, false })
+            {
+                using var srv = new ServidorFalso();
+                var s = SessaoComLog("12:00:00.000 linha neutra\n", reduzida: anonimo);
+                var evento = new JsonObject { ["transmissao"] = "LIV-77", ["ligacao"] = "L-3", ["papel"] = "envia", ["outro_install"] = numero, ["outro_conta"] = numero, ["outro_apelido"] = numero };
+                if (privada) evento["privada"] = true;
+                s.Evento("live", evento);
+                Gravador.Descarregar(TimeSpan.FromSeconds(5));
+                if (anonimo) Anonimizador.MarcarPronto();
+                using var envio = new Envio($"http://127.0.0.1:{srv.Porta}", s, () => new Identidade(null, null, "Eu", "instalacao-de-teste", "c-abcdefghijkl"), "id-anonimo-de-teste")
+                { Modo = anonimo ? ModoEnvio.Anonimo : ModoEnvio.Completo, Token = _ => ServidorFalso.TokenPadrao, Bilhete = () => ServidorFalso.BilheteAceito };
+                envio.Ativo = true; envio.Iniciar(Array.Empty<SessaoLocal>()); envio.Agora();
+                Exigir(Esperar(() => srv.VeioEvento("live"), 20_000), "o evento da live não chegou");
+                envio.Fechar(TimeSpan.FromSeconds(2));
+                string modo = (anonimo ? "anônimo" : "completo") + (privada ? ", privada" : ", normal");
+                var daLigacao = srv.UltimoEvento("live")!;
+                string ev = daLigacao.ToJsonString();
+                if (anonimo)
+                    // no Anônimo o Anonimizador tira os campos de identidade (spec 018, N22): a privada se comporta como a normal, sem outro_*
+                    Exigir(daLigacao["outro_apelido"] == null && daLigacao["outro_install"] == null && daLigacao["outro_conta"] == null, $"o anônimo não devia mandar o amigo ({modo}): " + ev);
+                else
+                    Exigir(daLigacao["outro_apelido"]?.GetValue<string>() == numero && daLigacao["outro_install"]?.GetValue<string>() == numero && daLigacao["outro_conta"]?.GetValue<string>() == numero, $"o amigo devia subir como {numero} ({modo}): " + ev);
+                Exigir(!ev.Contains(nickB, StringComparison.OrdinalIgnoreCase) && !ev.Contains(idB), $"o convidado apareceu pelo nome ou pelo id ({modo}): " + ev);
+                Exigir(daLigacao["transmissao"]?.GetValue<string>() == "LIV-77", $"a transmissão não pode mudar ({modo}): " + ev);
+                Exigir((daLigacao["privada"]?.GetValue<bool>() ?? false) == privada, $"a marca privada devia ser {privada} ({modo}): " + ev);
+            }
+        Anonimizador.Reiniciar(); Pseudonimos.Reiniciar();
     }
 
     // ---------- "Sobre o diagnóstico" e o aviso (etapa 14) ----------

@@ -104,9 +104,9 @@ public sealed partial class MainForm
     IReadOnlyList<PessoaConvite> ListarPessoasParaConvite() =>
         _room?.Friends.Select(f => new PessoaConvite(f.Id, NomeNaTela(f), Privada.EstaNaLista(f.Id))).ToList() ?? new List<PessoaConvite>();
 
-    // ------------------------------------------------------------------ telemetria (D5: só dados técnicos)
+    // ------------------------------------------------------------------ telemetria (desde 2026-11-26 a privada sobe igual à live normal, só com a marca "privada")
 
-    /// <summary>As ligações (sessões) que fazem parte de uma privada; para esconder quem estava com quem no que sobe.</summary>
+    /// <summary>As ligações (sessões) que fazem parte de uma privada; para o evento da ligação dizer <c>privada: true</c> e a camada essencial contá-la à parte.</summary>
     readonly HashSet<string> _ligacoesPrivadas = new();
 
     bool LigacaoPrivada(PeerLink link) => _ligacoesPrivadas.Contains(link.SessionId);
@@ -116,18 +116,6 @@ public sealed partial class MainForm
         if (link.IAmSender ? Privada.Ligada : _convites.ContainsKey(link.PeerId)) _ligacoesPrivadas.Add(link.SessionId);
     }
 
-    string NomeParaTelemetria(PeerLink link) => LigacaoPrivada(link) ? "convidado" : link.PeerNick;
-
-    /// <summary>
-    /// Relatório que sobe para o servidor: as ligações de uma privada perdem o apelido da outra ponta (achadas pelo id da ligação, não pelo apelido: dois amigos podem ter o mesmo).
-    /// O "Copiar relatório" do próprio usuário não passa por aqui.
-    /// </summary>
-    string SemQuemEstavaComQuem(string relatorioJson)
-    {
-        if (_ligacoesPrivadas.Count == 0 || JsonNode.Parse(relatorioJson) is not JsonObject relatorio) return relatorioJson;
-        if (relatorio["sala"]?["ligacoes"] is not JsonArray ligacoes) return relatorioJson;
-        foreach (var item in ligacoes)
-            if (item is JsonObject l && l["ligacao"]?.GetValue<string>() is { } sid && _ligacoesPrivadas.Contains(sid)) l["amigo"] = "convidado";
-        return relatorio.ToJsonString();
-    }
+    /// <summary>O nome da outra ponta como entra no log e nas séries (o envio troca por <c>amigo-N</c>); igual na privada e na live normal.</summary>
+    string NomeParaTelemetria(PeerLink link) => link.PeerNick;
 }

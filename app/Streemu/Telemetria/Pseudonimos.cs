@@ -19,7 +19,7 @@ namespace Streemu.Telemetria;
 public static class Pseudonimos
 {
     public const string Prefixo = "amigo-";
-    /// <summary>Ligação de privada: o app já grava "convidado" (D5); continua assim, sem número.</summary>
+    /// <summary>Quem já chega como "convidado" (sem id) continua assim, sem número. A privada não usa mais isso: sobe como <c>amigo-N</c>, igual à live normal.</summary>
     const string Convidado = "convidado";
 
     static readonly object _g = new();

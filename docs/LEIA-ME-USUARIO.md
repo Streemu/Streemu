@@ -189,7 +189,8 @@ PROBLEMA?
 - Cifrado: o log, o histórico e o que o diagnóstico guarda no seu PC só a sua conta do Windows abre.
   O que sobe sai do app cifrado, e só a equipe do Streemu abre, com uma chave que não fica no servidor.
 - Prazos: no servidor, logs, métricas e relatórios ficam 120 dias; o perfil do PC e os nomes, 180 dias
-  sem você abrir o app. No seu PC, o log fica 30 dias, a série 7 dias e o histórico do que foi
+  depois do último diagnóstico que o seu PC mandou (no Desligado só sai a camada essencial, que não
+  conta). No seu PC, o log fica 30 dias, a série 7 dias e o histórico do que foi
   enviado 30 dias.
 - A equipe usa ferramentas de IA para ler o diagnóstico técnico, sem o seu nome; elas não treinam com
   os seus dados e não decidem nada sobre você.

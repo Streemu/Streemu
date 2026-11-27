@@ -124,7 +124,7 @@ Só a equipe do Streemu, com uma chave que os outros amigos não têm.
 
 POR QUANTO TEMPO
 - Logs, métricas e relatórios: {DiasDeGuarda} dias; depois o servidor apaga.
-- A lista de quem é cada PC (id, nomes, provedor, perfil do PC): {DiasDePerfil} dias sem você abrir o app; depois o servidor apaga, ou antes, se você pedir.
+- A lista de quem é cada PC (id, nomes, provedor, perfil do PC): {DiasDePerfil} dias depois do último diagnóstico que o seu PC mandou; depois o servidor apaga, ou antes, se você pedir. No Desligado só sai a camada essencial, que não conta como diagnóstico.
 - Contadores de uso: não guardam pessoa, então não têm prazo.
 - No seu PC: o log fica {Manutencao.DiasDeLog} dias; a série segundo a segundo da live, 7 dias; o histórico do que foi enviado, 30 dias; o avatar guardado, {Manutencao.DiasDeAvatar} dias sem aparecer.
 

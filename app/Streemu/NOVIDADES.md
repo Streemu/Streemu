@@ -22,6 +22,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Tela Novidades:** o que mudou em cada versão, na barra lateral. Depois de uma atualização ela ganha o selo "NOVO" até você dar uma olhada.
 
 ### Melhorias
+- **Prazo do diagnóstico mais claro:** o perfil e os nomes vistos saem do servidor 180 dias após o último diagnóstico enviado pelo PC. A contagem essencial com o diagnóstico desligado não renova esse prazo.
 - **Diagnóstico enxuto e mais privado:** o log e o perfil do PC mandam menos coisa: saem caminhos de pastas, o filme ou o jogo aberto, o nome do Discord e dos fones. Os amigos viram "amigo-1", "amigo-2". No anônimo, nada liga os envios a você.
 - **Diagnóstico cifrado no envio:** o log, os relatórios e os dados do seu PC saem do app cifrados, e só a equipe do Streemu consegue abri-los, com uma chave que não fica no servidor.
 - **Barra lateral desliza também nas Configurações:** a barra abre e recolhe com animação em todas as telas sem vídeo, sem piscar. As opções "Manter a barra sempre aberta" e "Abrir a barra ao passar o mouse" saíram de Configurações: o botão de painel basta.

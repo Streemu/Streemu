@@ -14,7 +14,7 @@ namespace Streemu;
 public partial class MainForm
 {
     static readonly string? TesteFilme = Environment.GetEnvironmentVariable("STREEMU_TEST_FILME") is { Length: > 0 } f ? f : null;
-    /// <summary>Aberto para todos como beta (selo na barra lateral); STREEMU_FILME=0 esconde.</summary>
+    /// <summary>Aberto para todos; STREEMU_FILME=0 esconde.</summary>
     static readonly bool FilmeLigado = Environment.GetEnvironmentVariable("STREEMU_FILME") != "0" || TesteFilme != null;
 
     FilmeTela? _filmeForm;
@@ -130,7 +130,7 @@ public partial class MainForm
 
     void AtualizarFilmeLateral()
     {
-        // só "Cinema", como no mockup (o selo BETA já ocupa o fim da linha); quem abriu um filme aparece no aviso e na lista do Cinema
+        // só "Cinema", como no mockup; quem abriu um filme aparece no aviso e na lista do Cinema
         const string texto = "Cinema";
         _side.FilmeTexto = texto;
         if (_flyout != null) _flyout.Panel.FilmeTexto = texto;

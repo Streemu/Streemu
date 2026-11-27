@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "25daf58a88375004ffe894b39101694829d96841",
-    "notas":  "- Ajusta os textos da janela de denúncia",
+    "privado":  "923d6ae7d17071df4b5aec186871f534e416baad",
+    "notas":  "- Tira os selos Beta do Cinema e Novo do Enviar arquivo",
     "obrigatoria":  false
 }

@@ -617,8 +617,6 @@ public sealed class SidePanel : Control
                 var item = Navigation.First(n => n.Action == row.Kind);
                 // o coração é o único ícone colorido da barra: Accent sempre, e AccentSoft quando selecionado (em Accent sumiria dentro da pílula de seleção)
                 DrawNav(g, row.Bounds, item.Icon, row.Text, _view == item.View, hover, row.Kind == Kind.Apoiar ? (_view == item.View ? Theme.AccentSoft : Theme.Accent) : null);
-                if (row.Kind == Kind.Filme) DrawBeta(g, row.Bounds);
-                if (row.Kind == Kind.Arquivos && _arquivosPendentes == 0) DrawSelo(g, row.Bounds, "NOVO", Theme.SuccessSurface);
                 if (row.Kind == Kind.Novidades && _novidadesNovas) DrawSelo(g, row.Bounds, "NOVO", Rail ? Theme.Accent : Theme.SuccessSurface); // no trilho vira o ponto de destaque, como o do sino
                 if (row.Kind == Kind.Mumu && _mumuNovo) DrawSelo(g, row.Bounds, "NOVO", Rail ? Theme.Accent : Theme.SuccessSurface);
                 break;
@@ -741,10 +739,7 @@ public sealed class SidePanel : Control
         return basico + (_collapsed ? "\nA barra também abre ao passar o mouse nos ícones." : "\nFica só com os ícones. Passe o mouse neles para abrir de novo.");
     }
 
-    /// <summary>Selo "beta" pequeno no canto de cima à direita do item Filme (spec 010: o modo filme ainda está em teste).</summary>
-    void DrawBeta(Graphics g, Rectangle r) => DrawSelo(g, r, "BETA", Theme.Accent);
-
-    /// <summary>Selo no fim da linha (BETA do Cinema, NOVO do Enviar arquivo).</summary>
+    /// <summary>Selo no fim da linha (NOVO da tela Novidades e da Mumu).</summary>
     void DrawSelo(Graphics g, Rectangle r, string texto, Color fundo)
     {
         // no trilho (só o ícone) o selo com texto cobria o ícone do Filme: vira uma bolinha no canto (diagnóstico de UX, item 6, #138)

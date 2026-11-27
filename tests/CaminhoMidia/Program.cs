@@ -57,10 +57,10 @@ Caso("preset-fps-beta", () =>
 Caso("codigos-fechados", () =>
 {
     // a lista que está no docs/TELEMETRIA.md ("Caminho de mídia"): mudou aqui, muda lá
-    string etapas = "captura escala encoder envio decodificacao renderizacao";
+    string etapas = "captura escala encoder envio decodificacao renderizacao recepcao";
     string motivos = "encoder_indisponivel driver_incompativel sem_memoria parametro_recusado textura_recusada dispositivo_removido captura_nao_abriu " +
                      "demorou saiu_com_erro nenhum_encoder processo_saiu caiu_repetidas captura_travada poucos_quadros saida_aos_trancos audio_video_afastados " +
-                     "envio_nao_abre vulkan_falhou janela_nao_abriu saiu_cedo d3d11_indisponivel d3d11_nao_abriu d3d11_sem_hardware d3d11_nao_manteve outro";
+                     "envio_nao_abre vulkan_falhou janela_nao_abriu saiu_cedo d3d11_indisponivel d3d11_nao_abriu d3d11_sem_hardware d3d11_nao_manteve srt_estourou conexao_caiu outro";
     string gatilhos = "inicio troca_config reabertura recuperacao reabertura_janela outro";
     Exigir(string.Join(" ", Enum.GetValues<EtapaMidia>().Select(CaminhoMidia.Codigo)) == etapas, "etapas fora da lista documentada");
     Exigir(string.Join(" ", Enum.GetValues<MotivoMidia>().Select(CaminhoMidia.Codigo)) == motivos, "motivos fora da lista documentada");

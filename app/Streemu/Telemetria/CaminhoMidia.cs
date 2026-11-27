@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace Streemu.Telemetria;
 
 /// <summary>Onde a mídia falhou. Lista fechada: o painel filtra por ela, então código novo só entra aqui, com o mesmo nome na doc (TELEMETRIA.md).</summary>
-public enum EtapaMidia { Captura, Escala, Encoder, Envio, Decodificacao, Renderizacao }
+public enum EtapaMidia { Captura, Escala, Encoder, Envio, Decodificacao, Renderizacao, Recepcao }
 
 /// <summary>Por que falhou. Lista fechada: nada de texto do ffmpeg, do jogo ou da janela sai daqui. O que não se reconhece vira <see cref="Outro"/>.</summary>
 public enum MotivoMidia
@@ -18,6 +18,10 @@ public enum MotivoMidia
     CapturaTravada, PoucosQuadros, SaidaAosTrancos, AudioVideoAfastados, EnvioNaoAbre,
     // reprodução
     VulkanFalhou, JanelaNaoAbriu, SaiuCedo, D3d11Indisponivel, D3d11NaoAbriu, D3d11SemHardware, D3d11NaoManteve,
+    // reprodução, etapa recepcao: o player (mpv) terminou sozinho no meio da live, sem a pessoa fechar nem o transmissor encerrar. SrtEstourou: o log do
+    // mpv teve "No room to store" ou "SEQUENCE DISCREPANCY" E o mpv estava com atraso grande ou descartando quadros (o player não deu conta do que
+    // chegava); ConexaoCaiu: qualquer outra queda (internet ou PC de quem transmite, ou de quem assiste), que daqui não dá para separar
+    SrtEstourou, ConexaoCaiu,
     Outro,
 }
 

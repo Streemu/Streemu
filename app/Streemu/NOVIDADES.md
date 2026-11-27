@@ -43,6 +43,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 - **Som da live mais contínuo:** o som da sua live sai num ritmo constante, sem pausas curtas a cada 2 segundos. Quem assiste pelo celular deixa de ouvir estalos.
 
 ### Correções
+- **Aviso quando o player cai sozinho:** se o player parar no meio da live sem você fechar nem o amigo encerrar, o Streemu avisa o que provavelmente houve e o que fazer, em vez de a janela sumir calada.
 - **Menos congelamentos quando a captura engasga:** o Streemu espera a captura voltar sozinha antes de reabri-la e, se ela continua engasgando, não reabre às pressas mais de 4 vezes a cada 10 minutos. Cada reabertura para a imagem por alguns segundos.
 - **Cinema: aviso de "ninguém entrou":** o player não diz mais que ninguém entrou quando um amigo já está assistindo pela transmissão.
 - **A live volta mais rápido se o driver de vídeo reiniciar:** o Streemu já deixa pronto o outro modo do player, e a imagem de quem você assiste volta em poucos segundos, em qualquer placa de vídeo.

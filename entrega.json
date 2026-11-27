@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "03e4eca503f3f03f96fb537a6cc80bb7ccb1ce07",
-    "notas":  "- Esclarece nas novidades o prazo do diagnóstico\n- Corrige o texto do prazo de 180 dias: conta do último diagnóstico (spec 018, D3)",
+    "privado":  "369453b8c2a5113c72ec0e3546bec39e35d6ac77",
+    "notas":  "- Separa o player que não acompanhou da conexão que caiu e tira o framedrop de decodificação\n- Pede ao mpv que descarte quadros em vez de acumular atraso\n- Avisa quem assiste quando o player cai sem motivo",
     "obrigatoria":  false
 }

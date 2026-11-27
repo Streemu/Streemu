@@ -26,19 +26,21 @@ static class Program
         if (Viewer.Direct3DPreparationTimeout != TimeSpan.FromSeconds(5) || Viewer.Direct3DRecoveryPreparationTimeout != TimeSpan.FromSeconds(12)
             || Viewer.VulkanWorkedAfter != TimeSpan.FromSeconds(30) || Viewer.Direct3DPreparingNoticeAfter != TimeSpan.FromMilliseconds(300)
             || Viewer.MemoryFailureKillDelay != TimeSpan.FromMilliseconds(300)
-            || Viewer.Direct3DRetryDelay != TimeSpan.FromMilliseconds(1500) || Viewer.Direct3DRetryWindow != TimeSpan.FromSeconds(12))
-        { Console.WriteLine("FALHA player-prazos: os prazos do Viewer mudaram (5 s, 12 s, 30 s, 300 ms, 300 ms, 1,5 s e 12 s)."); return 1; }
+            || Viewer.Direct3DRetryDelay != TimeSpan.FromMilliseconds(1500) || Viewer.Direct3DRetryWindow != TimeSpan.FromSeconds(12)
+            || Viewer.DropGrace != TimeSpan.FromSeconds(3) || Viewer.StatusLogEvery != TimeSpan.FromSeconds(10))
+        { Console.WriteLine("FALHA player-prazos: os prazos do Viewer mudaram (5 s, 12 s, 30 s, 300 ms, 300 ms, 1,5 s, 12 s, 3 s e 10 s)."); return 1; }
         Viewer.Direct3DPreparationTimeout = TimeSpan.FromMilliseconds(300);
         Viewer.Direct3DRecoveryPreparationTimeout = TimeSpan.FromMilliseconds(1500);
         Viewer.VulkanWorkedAfter = TimeSpan.FromMilliseconds(400);
         Viewer.Direct3DPreparingNoticeAfter = TimeSpan.FromMilliseconds(100);
         Viewer.Direct3DRetryDelay = TimeSpan.FromMilliseconds(200);
+        Viewer.DropGrace = TimeSpan.FromMilliseconds(400);
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "ffplay.exe"), true);
         File.Copy(Environment.ProcessPath!, Path.Combine(AppContext.BaseDirectory, "mpv.exe"), true);
         var results = new List<string>();
         int failed = 0;
         CaminhoMidia.Ligar((tipo, dados) => { lock (Midia) Midia.Add((tipo, dados)); });
-        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-device-lost", "d3d11-device-lost-retry", "d3d11-device-lost-twice", "d3d11-install", "d3d11-install-late", "d3d11-install-timeout", "d3d11-install-stop", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview", "preview-vram", "vram-get-buffer", "vram-slab", "vulkan-worked", "vulkan-no-hwaccel", "vulkan-video-then-vram" })
+        foreach (var name in new[] { "surface-zero", "surface-late", "vram-loop", "d3d11-after-vram", "d3d11-fails", "d3d11-cooldown", "d3d11-not-memory", "d3d11-resize", "d3d11-surface", "d3d11-device-lost", "d3d11-device-lost-retry", "d3d11-device-lost-twice", "d3d11-install", "d3d11-install-late", "d3d11-install-timeout", "d3d11-install-stop", "d3d11-queda-srt", "d3d11-queda-conexao", "d3d11-fim-sem-srt", "d3d11-fecha-janela", "d3d11-live-acabou", "mpv-linhas", "exit-error", "normal-close", "cpu-error", "retry-cpu-error", "network-close", "stop-early", "stop-retry", "resize", "preview", "preview-vram", "vram-get-buffer", "vram-slab", "vulkan-worked", "vulkan-no-hwaccel", "vulkan-video-then-vram" })
         {
             if (Environment.GetEnvironmentVariable("VIEWER_CASE_FILTER") is { } filter && name != filter) continue;
             try { CaminhoMidia.Descarregar(TimeSpan.FromSeconds(15)); lock (Midia) Midia.Clear(); await Check(name); ConferirMidia(name); results.Add($"OK    player-{name}"); }
@@ -130,10 +132,30 @@ static class Program
 
     static async Task<int> FakeDirect3D(string[] args)
     {
-        if (!args.Contains("--hwdec=d3d11va") || !args.Contains("--gpu-context=d3d11"))
+        // o descarte na exibição (LIV-178) fica explícito, depois do perfil de baixa latência, e nunca no decodificador ("decoder" estraga o H.264 até o próximo quadro-chave)
+        if (!args.Contains("--hwdec=d3d11va") || !args.Contains("--gpu-context=d3d11") || !args.Contains("--framedrop=vo")
+            || args.Any(a => a.StartsWith("--framedrop=", StringComparison.Ordinal) && a != "--framedrop=vo")
+            || Array.IndexOf(args, "--framedrop=vo") < Array.IndexOf(args, "--profile=low-latency"))
             return 2;
         File.AppendAllText(Environment.GetEnvironmentVariable("VIEWER_FAKE_TRACE")!, "d3d11\n");
         string name = Environment.GetEnvironmentVariable("VIEWER_FAKE_CASE")!;
+        if (QuedaD3D(name))
+        {
+            // o que o mpv de verdade escreve (conferido com o mpv do app, 2026-11-27): a linha de estado de 5 campos, "nan" no avsync enquanto não há áudio e
+            // "Exiting... (Quit)" ao fechar a janela ou "Exiting... (End of file)" quando a conexão acaba; o SRT do ffmpeg reclama no stderr.
+            // Só o d3d11-queda-srt chega com o player atrasado (áudio menos vídeo de 2,6 s); nos outros o atraso é pequeno
+            Console.WriteLine("STREEMU_D3D11 d3d11va 3440 1370 2.5109");
+            Console.WriteLine("STREEMU_MPV_STATUS nan 0 0 0");
+            Console.WriteLine($"STREEMU_MPV_STATUS {(name == "d3d11-queda-srt" ? "2.600" : "-0.250")} 3 1 120.000000");
+            if (name is "d3d11-queda-srt" or "d3d11-queda-conexao")
+            {
+                Console.Error.WriteLine("[ffmpeg] srt: No room to store incoming packet: offset=1234 avail=0");
+                Console.Error.WriteLine("[ffmpeg] srt: SEQUENCE DISCREPANCY. BREAKING CONNECTION");
+            }
+            await Task.Delay(300);
+            Console.WriteLine(name == "d3d11-fecha-janela" ? "Exiting... (Quit)" : "Exiting... (End of file)");
+            return 0;
+        }
         // d3d11-device-lost-retry: o driver ainda voltando na 1ª abertura do mpv, já de volta na 2ª; d3d11-device-lost-twice: não volta
         int abertura = File.ReadAllLines(Environment.GetEnvironmentVariable("VIEWER_FAKE_TRACE")!).Count(l => l == "d3d11");
         bool semHardware = name is "d3d11-fails" or "d3d11-device-lost-twice" || name == "d3d11-device-lost-retry" && abertura == 1;
@@ -143,8 +165,12 @@ static class Program
         return 0;
     }
 
+    /// <summary>Os casos em que o mpv simulado mostra vídeo de 3440x1370 a 120 FPS e depois sai, de jeitos diferentes.</summary>
+    static bool QuedaD3D(string name) => name is "d3d11-queda-srt" or "d3d11-queda-conexao" or "d3d11-fim-sem-srt" or "d3d11-fecha-janela" or "d3d11-live-acabou";
+
     static async Task Check(string name)
     {
+        if (name == "mpv-linhas") { ConferirLinhasMpv(); return; }
         string trace = Path.GetTempFileName();
         Environment.SetEnvironmentVariable("VIEWER_FAKE_CASE", name);
         Environment.SetEnvironmentVariable("VIEWER_FAKE_TRACE", trace);
@@ -156,7 +182,7 @@ static class Program
         var viewer = new Viewer
         {
             UseHardware = name != "cpu-error",
-            AvoidVulkan = name == "d3d11-cooldown",
+            AvoidVulkan = name == "d3d11-cooldown" || QuedaD3D(name),
             PrepareDirect3D = direct3D ? () =>
             {
                 Interlocked.Increment(ref preparations);
@@ -190,6 +216,37 @@ static class Program
                     await Until(() => Volatile.Read(ref exits) == 1);
                     Require(vulkanFailures == 0 && preparations == 0 && restarts == 0 && ReadTrace(trace) == "gpu",
                         "Erro genérico disparou a recuperação do Vulkan.");
+                    return;
+                }
+                if (QuedaD3D(name))
+                {
+                    await Until(() => viewer.VideoSize != null);
+                    if (name == "d3d11-live-acabou")
+                    {
+                        // o transmissor encerra a live: o SRT fecha e o mpv sai antes da mensagem "parou de transmitir"; o Stop() dela, dentro do prazo, não é queda
+                        await Until(() => !viewer.Running);
+                        viewer.Stop();
+                    }
+                    await Until(() => Volatile.Read(ref exits) == 1);
+                    Require(restarts == 0 && vulkanFailures == 0 && ReadTrace(trace) == "d3d11", "A saída do mpv disparou recuperação ou reabertura.");
+                    if (name is "d3d11-fecha-janela" or "d3d11-live-acabou")
+                    {
+                        Require(viewer.Drop == null, $"{name}: contou como queda uma saída que ninguém precisa avisar.");
+                        return;
+                    }
+                    // só o SRT estourado COM o player atrasado acusa o player; o resto (SRT sem atraso, ou fim sem sinal do SRT) é a conexão que caiu
+                    bool atrasado = name == "d3d11-queda-srt";
+                    var queda = viewer.Drop;
+                    Require(queda is { Fps: 120 } && queda.PlayerBehind == atrasado && queda.WatchedSeconds >= 0, $"{name}: a queda não chegou classificada (player atrasado: {atrasado}).");
+                    var aviso = queda!.Notice();
+                    Require(aviso.Contains("Entre de novo"), "O aviso não diz a próxima ação.");
+                    Require(atrasado ? aviso.Contains("60 FPS") && aviso.Contains("player")
+                        : aviso.Contains("A conexão caiu") && aviso.Contains("internet de quem transmite") && !aviso.Contains("player") && !aviso.Contains("FPS"),
+                        $"{name}: o aviso culpa quem não devia ou não dá a dica certa: {aviso}");
+                    // o log passa a ter a sincronia do mpv (antes a linha só ia para a amostra da telemetria), uma vez, com o primeiro avsync medido e os FPS
+                    var statusNoLog = Log.Lines.Where(l => l.StartsWith("Player (mpv): áudio menos vídeo")).ToList();
+                    string avEsperado = atrasado ? "2600 ms" : "-250 ms";
+                    Require(statusNoLog.Count == 1 && statusNoLog[0].Contains(avEsperado) && statusNoLog[0].Contains("120 FPS"), $"Status do mpv no log: {string.Join(" | ", statusNoLog)}");
                     return;
                 }
                 if (name.StartsWith("d3d11-install"))
@@ -381,6 +438,18 @@ static class Program
         var volta = ev.FirstOrDefault(e => e.Tipo == CaminhoMidia.TipoRecuperada);
         if (falha.Dados != null)
             Require(falha.Dados["tentativa"]?.GetValue<string>() == ev[0].Dados["tentativa"]?.GetValue<string>(), "A falha não aponta para a tentativa que falhou.");
+        if (name is "d3d11-queda-srt" or "d3d11-queda-conexao" or "d3d11-fim-sem-srt")
+        {
+            // o que o painel lê da queda: só números e códigos (a regra do laço acima proíbe texto livre), e a ligação com a sincronia do mpv e a live
+            var q = falha.Dados!;
+            bool comSrt = name != "d3d11-fim-sem-srt";
+            Require(q["fatal"]?.GetValue<bool>() == true && q["teste"]?.GetValue<bool>() == false, "A queda do player é fatal para esta live e não é teste.");
+            Require(q["srt_sem_espaco"]?.GetValue<bool>() == comSrt && q["srt_sequencia"]?.GetValue<bool>() == comSrt, "O SRT estourado não chegou como visto (ou chegou sem ter sido).");
+            Require(q["assistiu_s"]?.GetValue<int>() is >= 0 and < 10 && q["av_ms"]?.GetValue<int>() == (name == "d3d11-queda-srt" ? 2600 : -250) && q["fps"]?.GetValue<int>() == 120,
+                "Faltou o tempo assistido, o avsync ou os FPS.");
+            Require(q["descartes_exibicao"]?.GetValue<int>() == 3 && q["descartes_decodificador"]?.GetValue<int>() == 1 && q["descartes_recentes"]?.GetValue<int>() == 4, "Faltaram os descartes (a primeira amostra com 0 serve de base, a seguinte soma 3 + 1).");
+            Require(q["resolucao"]?.GetValue<string>() == "3440x1370", "Faltou a resolução da live.");
+        }
         if (volta.Dados != null)
         {
             Require(volta.Dados["tentativa_falha"]?.GetValue<string>() == falha.Dados?["tentativa"]?.GetValue<string>(), "A recuperação não aponta para a falha.");
@@ -403,6 +472,9 @@ static class Program
         "d3d11-device-lost-twice" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/dispositivo_removido tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:cpu/sdl/recuperacao video recuperada",
         "d3d11-fails" => "tentativa:vulkan/vulkan/inicio falha:renderizacao/sem_memoria tentativa:d3d11va/d3d11/recuperacao falha:decodificacao/d3d11_sem_hardware tentativa:cpu/sdl/recuperacao video recuperada",
         "d3d11-cooldown" => "tentativa:d3d11va/d3d11/inicio video",
+        "d3d11-queda-srt" => "tentativa:d3d11va/d3d11/inicio video falha:recepcao/srt_estourou",
+        "d3d11-queda-conexao" or "d3d11-fim-sem-srt" => "tentativa:d3d11va/d3d11/inicio video falha:recepcao/conexao_caiu",
+        "d3d11-fecha-janela" or "d3d11-live-acabou" => "tentativa:d3d11va/d3d11/inicio video",
         "normal-close" => "tentativa:vulkan/vulkan/inicio",
         "network-close" => "tentativa:vulkan/vulkan/inicio",
         _ => null,
@@ -419,6 +491,40 @@ static class Program
             lock (Midia) if (Midia.Count >= n && CaminhoMidia.Pendentes == 0) return;
             await Task.Delay(20);
         }
+    }
+
+    /// <summary>As linhas do mpv (stdout e stderr) e o aviso, sem abrir processo.</summary>
+    static void ConferirLinhasMpv()
+    {
+        Require(Viewer.ParseMpvExitReason("Exiting... (End of file)") == "End of file" && Viewer.ParseMpvExitReason("Exiting... (Quit)\r") == "Quit"
+            && Viewer.ParseMpvExitReason("Exiting... ()") == null && Viewer.ParseMpvExitReason("Playing: x") == null, "Motivo da saída do mpv mal lido.");
+        // a linha de 5 campos de agora, a de 4 de antes (sem os FPS) e a que ainda não tem áudio
+        var cheia = Viewer.ParseMpvStatus("STREEMU_MPV_STATUS -0.250 3 1 119.880000");
+        Require(cheia is { AudioVideoMs: -250, RenderDrops: 3, DecoderDrops: 1, Fps: 120 }, "Linha de estado de 5 campos mal lida.");
+        Require(Viewer.ParseMpvStatus("STREEMU_MPV_STATUS -0.012 9 2") is { AudioVideoMs: -12, RenderDrops: 9, DecoderDrops: 2, Fps: null }, "Linha de estado de 4 campos mal lida.");
+        Require(Viewer.ParseMpvStatus("STREEMU_MPV_STATUS nan 0 0 0") is { AudioVideoMs: null, Fps: null }, "O avsync ainda sem medida não pode virar zero.");
+        Require(Viewer.ParseMpvStatus("STREEMU_MPV_STATUS  0 0") == null && Viewer.ParseMpvStatus("VO: [gpu-next] 1280x720") == null
+            && Viewer.ParseMpvStatus("STREEMU_MPV_STATUS 0.1 a b 60") == null, "Aceitou uma linha que não é de estado.");
+        Require(Viewer.StatusLogText(cheia!).Contains("-250 ms") && Viewer.StatusLogText(cheia!).Contains("120 FPS"), "Texto do log sem o avsync ou os FPS.");
+        // a sincronia vai para o log uma vez a cada 10 s, não a cada linha
+        long ultimo = 0;
+        var cada = TimeSpan.FromSeconds(10);
+        Require(Viewer.StatusLogDue(ref ultimo, 5_000, cada) && !Viewer.StatusLogDue(ref ultimo, 6_000, cada) && !Viewer.StatusLogDue(ref ultimo, 14_999, cada)
+            && Viewer.StatusLogDue(ref ultimo, 15_000, cada) && !Viewer.StatusLogDue(ref ultimo, 15_001, cada), "A sincronia do mpv não sai a cada 10 s.");
+        // o aviso: o motivo provável e a próxima ação; a dica dos 60 FPS só quando a live passa disso
+        var srt120 = new Viewer.PlayerDrop(true, 120, 112).Notice();
+        Require(srt120.Contains("Entre de novo") && srt120.Contains("60 FPS"), "Aviso do player que não acompanhou sem a próxima ação.");
+        Require(!new Viewer.PlayerDrop(true, 60, 5).Notice().Contains("60 FPS") && new Viewer.PlayerDrop(true, null, 5).Notice().Contains("baixar a qualidade"), "Dica de 60 FPS numa live que já é de 60.");
+        var conexao = new Viewer.PlayerDrop(false, 120, 5).Notice();
+        Require(conexao.Contains("A conexão caiu") && conexao.Contains("Entre de novo") && conexao.Contains("internet de quem transmite") && !conexao.Contains("player") && !conexao.Contains("FPS"),
+            "Aviso da conexão que caiu culpa o player ou dá dica de FPS.");
+        // quem é "player que não acompanhou": o SRT estourado E (atraso de áudio menos vídeo > 2 s, para qualquer lado, ou descartes subindo); o SRT sozinho é a conexão
+        Viewer.Direct3DSample Amostra(int? av, int render = 0, int decoder = 0) => new(av, render, decoder);
+        Require(Viewer.PlayerFellBehind(true, Amostra(2600), 0) && Viewer.PlayerFellBehind(true, Amostra(-2600), 0), "SRT estourado com atraso grande não acusou o player.");
+        Require(Viewer.PlayerFellBehind(true, Amostra(50, 40), 10) && Viewer.PlayerFellBehind(true, null, 25), "SRT estourado com descartes subindo não acusou o player.");
+        Require(!Viewer.PlayerFellBehind(true, Amostra(2000), 9) && !Viewer.PlayerFellBehind(true, Amostra(-250), 0) && !Viewer.PlayerFellBehind(true, null, 0)
+            && !Viewer.PlayerFellBehind(true, Amostra(null), 0), "SRT estourado sem atraso nem descartes subindo acusou o player.");
+        Require(!Viewer.PlayerFellBehind(false, Amostra(9000), 500), "Atraso sem sinal do SRT acusou o player (é a conexão).");
     }
 
     static string ReadTrace(string path)

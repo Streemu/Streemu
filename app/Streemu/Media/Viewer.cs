@@ -34,6 +34,14 @@ public sealed class Viewer
     internal static TimeSpan Direct3DRetryDelay = TimeSpan.FromMilliseconds(1500);
     /// <summary>Até quanto depois do reset do driver a primeira falha do Direct3D 11 ainda vale uma segunda tentativa (passado isso, não foi o driver voltando).</summary>
     internal static TimeSpan Direct3DRetryWindow = TimeSpan.FromSeconds(12);
+    /// <summary>
+    /// Depois que o mpv sai sozinho de uma live que ele já estava mostrando, quanto esperar antes de chamar isso de queda (<see cref="Drop"/>). Quando
+    /// quem transmite encerra a live, o SRT fecha e o mpv sai alguns instantes antes de a mensagem "parou de transmitir" chegar pela sala; o Stop()
+    /// dessa mensagem, dentro deste prazo, tira o aviso e o evento de telemetria (não é queda). O teste troca por um valor curto.
+    /// </summary>
+    internal static TimeSpan DropGrace = TimeSpan.FromSeconds(3);
+    /// <summary>De quanto em quanto tempo a sincronia do mpv vai para o log (a linha chega ~20 vezes por segundo).</summary>
+    internal static readonly TimeSpan StatusLogEvery = TimeSpan.FromSeconds(10);
     static readonly TimeSpan Direct3DPlaybackTimeout = TimeSpan.FromSeconds(8);
     Process? _player;
     volatile bool _stopRequested, _reopening;
@@ -42,8 +50,118 @@ public sealed class Viewer
     long _deviceLostAtMs;
     bool _direct3DActive;
     sealed record PlayerFailure(string Reason, Telemetria.MotivoMidia Motivo);
-    sealed record Direct3DSample(int? AudioVideoMs, int RenderDrops, int DecoderDrops);
+    /// <summary>A última linha de estado do mpv (<c>--term-status-msg</c>): áudio menos vídeo, descartes e os FPS que o mpv lê do fluxo (nulo se não disse).</summary>
+    internal sealed record Direct3DSample(int? AudioVideoMs, int RenderDrops, int DecoderDrops, int? Fps = null);
     volatile Direct3DSample? _direct3DSample;
+
+    /// <summary>
+    /// O mpv terminou ("End of file") numa live que já estava mostrando, sem a pessoa fechar a janela, sem o app pedir e sem o transmissor encerrar a live.
+    /// <paramref name="PlayerBehind"/>: o player é que não acompanhou (o SRT estourou e o mpv estava com atraso grande ou descartando quadros); senão
+    /// a conexão caiu por outro motivo (internet de quem transmite ou de quem assiste, PC do transmissor), que daqui não dá para separar.
+    /// LIV-178 (2026-11-25): numa live de 3440x1370 a 120 FPS o buffer do SRT enchia em 1m52s, o mpv saía e a janela sumia sem aviso, 7 vezes.
+    /// </summary>
+    public sealed record PlayerDrop(bool PlayerBehind, int? Fps, int WatchedSeconds)
+    {
+        /// <summary>O aviso para quem assiste: o motivo provável e o que fazer. Os FPS só entram na dica quando passam de 60.</summary>
+        public string Notice() => PlayerBehind
+            ? "O player não conseguiu acompanhar a live e a conexão caiu. Entre de novo; se repetir, "
+                + (Fps is > 60 ? "peça ao amigo para transmitir a 60 FPS." : "peça ao amigo para baixar a qualidade da transmissão.")
+            : "A conexão caiu e a live fechou por aqui. Entre de novo; se repetir, veja se a internet de quem transmite está estável.";
+    }
+
+    /// <summary>Áudio menos vídeo (em módulo) a partir do qual o mpv conta como atrasado, para separar "o player não acompanhou" de "a conexão caiu".</summary>
+    internal const int PlayerBehindAvMs = 2000;
+    /// <summary>Quadros descartados (exibição + decodificador) nos últimos 10 a 20 s a partir dos quais o mpv conta como não acompanhando.</summary>
+    internal const int PlayerBehindDrops = 10;
+
+    /// <summary>
+    /// O player não acompanhou a live: o SRT do ffmpeg estourou (<paramref name="srtSignal"/>) <b>e</b> a última amostra do mpv mostrava atraso grande
+    /// (<see cref="PlayerBehindAvMs"/>, para qualquer lado) ou os descartes vinham subindo (<see cref="PlayerBehindDrops"/>). O SRT estourando sozinho também
+    /// acontece quando a rede do transmissor cai, então ele sozinho não acusa o player.
+    /// </summary>
+    internal static bool PlayerFellBehind(bool srtSignal, Direct3DSample? last, int dropsGrowth) =>
+        srtSignal && (last?.AudioVideoMs is { } av && Math.Abs((long)av) > PlayerBehindAvMs || dropsGrowth >= PlayerBehindDrops);
+
+    /// <summary>
+    /// Preenchido antes de <see cref="Exited"/> quando o player saiu sozinho (ver <see cref="PlayerDrop"/>); nulo quando alguém pediu para parar, a pessoa
+    /// fechou a janela ou o player já saiu de outro jeito. Quem trata o <see cref="Exited"/> mostra o aviso só se isto não for nulo.
+    /// </summary>
+    public volatile PlayerDrop? Drop;
+
+    /// <summary>
+    /// O que se aprende das linhas do mpv (stdout e stderr) numa abertura: o SRT do ffmpeg que estoura e o motivo que o mpv dá ao sair
+    /// ("Exiting... (Quit)" quando a janela é fechada, "(End of file)" quando o vídeo acaba ou a conexão cai).
+    /// </summary>
+    sealed class Direct3DRun
+    {
+        public readonly Stopwatch Playing = new();
+        public volatile bool SrtFull, SrtSequence;
+        public volatile string? ExitReason;
+        public long LastStatusLogMs;
+        // descartes (exibição + decodificador) vistos há 10 a 20 s e agora, para saber se vinham subindo quando o mpv saiu
+        long _checkpointMs;
+        int _checkpointDrops, _previousCheckpointDrops, _lastDrops;
+
+        public void Track(Direct3DSample sample, long nowMs)
+        {
+            _lastDrops = sample.RenderDrops + sample.DecoderDrops;
+            if (_checkpointMs == 0) { _checkpointMs = nowMs; _checkpointDrops = _previousCheckpointDrops = _lastDrops; }
+            else if (nowMs - _checkpointMs >= (long)StatusLogEvery.TotalMilliseconds)
+            {
+                _previousCheckpointDrops = _checkpointDrops;
+                _checkpointDrops = _lastDrops;
+                _checkpointMs = nowMs;
+            }
+        }
+
+        /// <summary>Quadros descartados desde a medida de 10 a 20 s atrás.</summary>
+        public int DropsGrowth => _lastDrops - _previousCheckpointDrops;
+
+        public void Observe(string line)
+        {
+            if (line.Contains("No room to store", StringComparison.OrdinalIgnoreCase)) SrtFull = true;
+            if (line.Contains("SEQUENCE DISCREPANCY", StringComparison.OrdinalIgnoreCase)) SrtSequence = true;
+            if (ParseMpvExitReason(line) is { } reason) ExitReason = reason;
+        }
+    }
+
+    /// <summary>"Exiting... (End of file)" → "End of file"; "Exiting... (Quit)" → "Quit". Nulo se a linha não é essa.</summary>
+    internal static string? ParseMpvExitReason(string line)
+    {
+        const string prefix = "Exiting... (";
+        var l = line.Trim();
+        return l.StartsWith(prefix, StringComparison.Ordinal) && l.EndsWith(')') && l.Length > prefix.Length + 1 ? l[prefix.Length..^1] : null;
+    }
+
+    /// <summary>
+    /// A linha <c>STREEMU_MPV_STATUS av descartes_exibicao descartes_decodificador [fps]</c> (ver <see cref="Direct3DArgs"/>); "nan" no áudio-vídeo
+    /// (ainda sem áudio) vira sem medida. Aceita a linha de 4 campos de antes (sem os FPS). Nulo se não é essa linha.
+    /// </summary>
+    internal static Direct3DSample? ParseMpvStatus(string line)
+    {
+        var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length is not (4 or 5) || fields[0] != "STREEMU_MPV_STATUS"
+            || !int.TryParse(fields[2], out int renderDrops) || !int.TryParse(fields[3], out int decoderDrops))
+            return null;
+        int? avMs = double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double av) && double.IsFinite(av)
+            ? (int)Math.Clamp(Math.Round(av * 1000), int.MinValue, int.MaxValue) : null;
+        int? fps = fields.Length == 5 && double.TryParse(fields[4], NumberStyles.Float, CultureInfo.InvariantCulture, out double f) && f is > 0 and < 1000
+            ? (int)Math.Round(f) : null;
+        return new Direct3DSample(avMs, renderDrops, decoderDrops, fps);
+    }
+
+    /// <summary>A linha que vai para o log, de tempos em tempos, com a última sincronia do mpv (a live de 120 FPS do LIV-178 chegou com 0 descartes e o vídeo na metade da velocidade).</summary>
+    internal static string StatusLogText(Direct3DSample s) =>
+        $"Player (mpv): áudio menos vídeo {(s.AudioVideoMs is { } av ? $"{av} ms" : "sem medida")}, quadros descartados {s.RenderDrops} na exibição e {s.DecoderDrops} no decodificador"
+        + (s.Fps is { } fps ? $", {fps} FPS no fluxo." : ".");
+
+    /// <summary>Verdadeiro uma vez a cada <paramref name="every"/>; <paramref name="lastMs"/> começa em 0 (a primeira amostra sempre vai para o log).</summary>
+    internal static bool StatusLogDue(ref long lastMs, long nowMs, TimeSpan every)
+    {
+        if (lastMs != 0 && nowMs - lastMs < (long)every.TotalMilliseconds) return false;
+        lastMs = nowMs;
+        return true;
+    }
     Process? _lastCpuProcess;
     TimeSpan _lastPlayerCpu;
     long _lastPlayerCpuAt;
@@ -180,6 +298,7 @@ public sealed class Viewer
         _relayPort = relayPort; _passphrase = passphrase; _latencyMs = latencyMs; _title = title;
         _stopRequested = false;
         FellBackToCpu = null;
+        Drop = null;
         VideoSize = null; VideoAspect = null;
         lock (_errors) _errors.Clear();
         _direct3DExecutable = null;
@@ -485,17 +604,27 @@ public sealed class Viewer
         int result = 0; // 0: aguardando vídeo; 1: D3D11 confirmado; 2: sem decodificação por hardware.
         var tentativa = _midia.Comecar(Telemetria.GatilhoMidia.Outro, Telemetria.CaminhoMidia.CaminhoDoPlayer("d3d11va", "d3d11", IsPreview, OpenAt));
         Process? opening = null;
+        var run = new Direct3DRun();
         try
         {
             player = Tools.Start(_direct3DExecutable!, Direct3DArgs(), "mpv-live", redirectStdin: false,
+                onStderr: run.Observe,
                 onStdout: line =>
                 {
                     const string prefix = "STREEMU_D3D11 ";
                     if (line.StartsWith("STREEMU_MPV_STATUS ", StringComparison.Ordinal))
                     {
-                        ObserveDirect3DStatus(line);
+                        // o mpv escreve esta linha ~20 vezes por segundo e ela nunca ia para o log (só para a amostra da telemetria): 1 a cada 10 s
+                        if (ParseMpvStatus(line) is { } sample)
+                        {
+                            _direct3DSample = sample;
+                            run.Track(sample, Environment.TickCount64);
+                            // sem o áudio ainda (avsync "nan") a linha não diz nada: a primeira amostra com medida abre a conta dos 10 s
+                            if (sample.AudioVideoMs != null && StatusLogDue(ref run.LastStatusLogMs, Environment.TickCount64, StatusLogEvery)) Log.Info(StatusLogText(sample));
+                        }
                         return;
                     }
+                    run.Observe(line);
                     if (!line.StartsWith(prefix, StringComparison.Ordinal)) return;
                     var fields = line[prefix.Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     if (fields.Length == 4 && fields[0] == "d3d11va")
@@ -509,6 +638,7 @@ public sealed class Viewer
                         }
                         UsingHardware = true;
                         Volatile.Write(ref result, 1);
+                        run.Playing.Restart(); // o "tempo assistido" do evento de queda conta daqui
                         Log.Info("Player: decodificação por hardware confirmada pelo Direct3D 11.");
                         var tamanho = VideoSize;
                         tentativa.VideoOk(() => tamanho is { } t ? new JsonObject { ["resolucao"] = Telemetria.CaminhoMidia.Resolucao(t.Width, t.Height) } : null);
@@ -560,8 +690,53 @@ public sealed class Viewer
                 RecoverOnCpu("o player Direct3D 11 não conseguiu manter a reprodução");
             }
             else
+            {
+                // saiu com código 0 depois de mostrar vídeo, sem ninguém pedir e sem a pessoa fechar a janela ("Quit"): "End of file" é a conexão que acabou
+                if (!_stopRequested && outcome == 1 && !string.Equals(run.ExitReason, "Quit", StringComparison.Ordinal))
+                    await DeclareDropAsync(run, tentativa).ConfigureAwait(false);
                 Exited?.Invoke();
+            }
         }
+    }
+
+    /// <summary>
+    /// O mpv saiu sozinho de uma live que ele mostrava. Espera <see cref="DropGrace"/> (se o transmissor encerrou a live, o Stop() da mensagem dele chega
+    /// antes e isto não é queda) e então guarda o <see cref="Drop"/> e registra <c>midia_falha</c> fatal (a live fecha para quem assiste e nada tenta de
+    /// novo): tempo assistido, se o SRT estourou, a última sincronia do mpv, os FPS e a resolução. Só códigos e números; sem IP nem nome.
+    /// O motivo é <c>srt_estourou</c> só quando o player não acompanhou (<see cref="PlayerFellBehind"/>); nos outros casos é <c>conexao_caiu</c>, porque o
+    /// mpv terminar com "End of file" também é a internet ou o PC de quem transmite caindo.
+    /// </summary>
+    async Task DeclareDropAsync(Direct3DRun run, Telemetria.CaminhoMidia.Tentativa tentativa)
+    {
+        await Task.Delay(DropGrace).ConfigureAwait(false);
+        if (_stopRequested) return;
+        var amostra = _direct3DSample;
+        var tamanho = VideoSize;
+        int assistiu = (int)run.Playing.Elapsed.TotalSeconds;
+        bool srtFull = run.SrtFull, srtSequence = run.SrtSequence;
+        int descartesRecentes = run.DropsGrowth;
+        bool atrasado = PlayerFellBehind(srtFull || srtSequence, amostra, descartesRecentes);
+        Drop = new PlayerDrop(atrasado, amostra?.Fps, assistiu);
+        Log.Info($"[aviso] Player: o mpv terminou sozinho depois de {assistiu} s ({run.ExitReason ?? "sem motivo"}"
+            + $"{(srtFull ? "; o buffer do SRT encheu" : "")}{(srtSequence ? "; o SRT perdeu a sequência" : "")}"
+            + $"; {(atrasado ? "o player não acompanhou" : "tratado como conexão caída")}); a live fecha por aqui.");
+        tentativa.Falhou(Telemetria.EtapaMidia.Recepcao, atrasado ? Telemetria.MotivoMidia.SrtEstourou : Telemetria.MotivoMidia.ConexaoCaiu, fatal: true,
+            medidas: () =>
+            {
+                var o = new JsonObject
+                {
+                    ["assistiu_s"] = assistiu, ["srt_sem_espaco"] = srtFull, ["srt_sequencia"] = srtSequence, ["descartes_recentes"] = descartesRecentes,
+                };
+                if (amostra != null)
+                {
+                    o["av_ms"] = amostra.AudioVideoMs;
+                    o["descartes_exibicao"] = amostra.RenderDrops;
+                    o["descartes_decodificador"] = amostra.DecoderDrops;
+                    o["fps"] = amostra.Fps;
+                }
+                if (tamanho is { } t) o["resolucao"] = Telemetria.CaminhoMidia.Resolucao(t.Width, t.Height);
+                return o;
+            });
     }
 
     /// <summary>
@@ -585,16 +760,6 @@ public sealed class Viewer
         return true;
     }
 
-    void ObserveDirect3DStatus(string line)
-    {
-        var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (fields.Length != 4 || !int.TryParse(fields[2], out int renderDrops) || !int.TryParse(fields[3], out int decoderDrops))
-            return;
-        int? avMs = double.TryParse(fields[1], CultureInfo.InvariantCulture, out double av) && double.IsFinite(av)
-            ? (int)Math.Clamp(Math.Round(av * 1000), int.MinValue, int.MaxValue) : null;
-        _direct3DSample = new Direct3DSample(avMs, renderDrops, decoderDrops);
-    }
-
     string[] Direct3DArgs()
     {
         var size = OpenAt?.Size ?? new Size(1280, 720);
@@ -602,7 +767,15 @@ public sealed class Viewer
         {
             "--no-config", "--load-scripts=no", "--load-auto-profiles=no", "--ytdl=no",
             "--access-references=no", "--autoload-files=no", "--sid=no", "--no-osc", "--drag-and-drop=no",
-            "--profile=low-latency", "--video-sync=audio", "--vo=gpu-next", "--gpu-api=d3d11",
+            "--profile=low-latency", "--video-sync=audio",
+            // LIV-178 (campo, 2026-11-25): live de 3440x1370 a 120 FPS: o mpv mostrava o vídeo a cerca de metade da velocidade (áudio menos vídeo
+            // crescendo ~0,5 s por segundo) com os dois contadores de descarte em 0, até o buffer do SRT encher e o mpv sair. O modo "vo" já era o padrão
+            // do perfil e não descartou nada, então este argumento só deixa a escolha explícita; NÃO é a correção e não se sabe a causa. Não use "decoder":
+            // o manual do mpv não o recomenda, e descartar na decodificação do H.264 pode estragar a imagem até o próximo quadro-chave, com uma oscilação
+            // de rede já disparando isso por causa do video-sync=audio com latência baixa. A causa fica para confirmar em campo pela linha
+            // "Player (mpv): ..." do log (descartes e áudio menos vídeo ao longo da live); mexer na sincronia (ex.: video-latency-hacks) só depois desse dado.
+            "--framedrop=vo",
+            "--vo=gpu-next", "--gpu-api=d3d11",
             "--gpu-context=d3d11", "--hwdec=d3d11va", "--hwdec-software-fallback=no",
             // A entrada continua restrita ao SRT local e aos formatos que o transmissor usa.
             "--demuxer=lavf", "--demuxer-lavf-format=mpegts", "--vd=h264", "--ad=opus,libopus",
@@ -612,7 +785,8 @@ public sealed class Viewer
             $"--title={_title}", $"--geometry={size.Width}x{size.Height}", Borderless ? "--no-border" : "--border",
             "--msg-color=no", "--term-osd=force",
             "--term-playing-msg=STREEMU_D3D11 ${hwdec-current} ${width} ${height} ${video-params/aspect}",
-            "--term-status-msg=STREEMU_MPV_STATUS ${=avsync} ${=frame-drop-count} ${=decoder-frame-drop-count}",
+            // os ":" são o valor de quando a propriedade ainda não existe (sem áudio o avsync fica vazio): sem eles a linha perde um campo e os outros deslizam
+            "--term-status-msg=STREEMU_MPV_STATUS ${=avsync:nan} ${=frame-drop-count:0} ${=decoder-frame-drop-count:0} ${=container-fps:0}",
             "--", LiveUrl(),
         };
     }

@@ -624,7 +624,8 @@ public sealed partial class MainForm
         if (!Automated)
             v.Audio.Changed += () => { _state.PlayerVolumePercent = v.Audio.Percent; _state.PlayerMuted = v.Audio.Muted; _state.Save(); };
         string sid = link.SessionId;
-        v.Exited += () => Ui(() => EndLink(sid, tellPeer: true, why: null));
+        // Drop só existe se o mpv saiu sozinho no meio da live (LIV-178: a janela sumia sem aviso); fechar a janela, o Stop() e o fim avisado pelo transmissor seguem sem aviso
+        v.Exited += () => Ui(() => EndLink(sid, tellPeer: true, why: v.Drop?.Notice()));
         v.VulkanFailed += VulkanFalhou;
         v.VulkanWorked += VulkanFuncionou;
         v.Direct3DRejected += () => Interlocked.Exchange(ref _direct3DRetryAt, Environment.TickCount64 + 2 * 60_000);

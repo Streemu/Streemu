@@ -1,6 +1,6 @@
 {
     "versao":  "0.6.0",
-    "privado":  "574dd34b0f4f5a01793cf11fac7b8eaed3512021",
-    "notas":  "- Encurta o resumo da 0.6.0 nas Novidades para caber em 120 caracteres\n- Lança a versão 0.6.0",
+    "privado":  "d5a2d732786b6cee0476e5b2ee61c60616a67b46",
+    "notas":  "- ﻿Tira a lista de antivirus do diag-entrada.ps1",
     "obrigatoria":  false
 }

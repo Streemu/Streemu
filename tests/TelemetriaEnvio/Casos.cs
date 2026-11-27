@@ -389,7 +389,7 @@ static class Casos
             string cru = File.ReadAllText(arq);
             foreach (var seg in new[] { "APELIDO-DO-AMIGO", "arquivo-secreto", "Downloads", "pedido-" }) Exigir(!cru.Contains(seg), "o arquivos.json tem texto legível: " + seg);
             var h2 = Abrir();
-            Exigir(h2.Itens.Count == 2 && h2.Itens[0].Apelido == "APELIDO-DO-AMIGO" && h2.Itens[0].Caminho!.Contains("fulano"), "o histórico cifrado não voltou depois de reiniciar");
+            Exigir(h2.Itens.Count == 2 && h2.Itens[0].Apelido == "APELIDO-DO-AMIGO" && h2.Itens[0].Caminho == @"C:\Users\ana\Downloads\Streemu\arquivo-secreto.zip", "o histórico cifrado não voltou depois de reiniciar");
 
             // historico-envios.json
             HistoricoEnvios.Apagar();

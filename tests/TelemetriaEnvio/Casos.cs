@@ -2439,10 +2439,10 @@ static class Casos
         var m = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(js!), @"SESSAO_GUARDA_MS\s*=\s*(\d+)\s*\*\s*86400e3");
         Exigir(m.Success && int.Parse(m.Groups[1].Value) == TextoDiagnostico.DiasDeGuarda, $"o Worker guarda {m.Groups[1].Value} dias e o texto diz {TextoDiagnostico.DiasDeGuarda}");
         string todo = TextoDiagnostico.Completo;
-        // spec 018, N15: os prazos do texto são os do Worker. O de 180 dias (perfil do PC) é a limpeza B4: se o Worker já tem a constante, tem que bater
-        var perfil = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(js!), @"PERFIL_(?:GUARDA|SEM_CONTATO)\w*\s*=\s*(\d+)\s*\*\s*86400e3");
-        if (perfil.Success) Exigir(int.Parse(perfil.Groups[1].Value) == TextoDiagnostico.DiasDePerfil, $"o Worker apaga o perfil em {perfil.Groups[1].Value} dias e o texto diz {TextoDiagnostico.DiasDePerfil}");
-        else Console.WriteLine("      (o Worker ainda não tem a constante dos 180 dias do perfil, B4: o texto cita o número, mas não há com o que comparar)");
+        // spec 018, N15: os prazos do texto são os do Worker. O de 180 dias é o do PC sem contato (PC_GUARDA_MS, limpeza B4); sem a constante o teste falha, não pula
+        var perfil = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(js!), @"PC_GUARDA_MS\s*=\s*(\d+)\s*\*\s*86400e3");
+        Exigir(perfil.Success, "não achei PC_GUARDA_MS em relay/telemetria.js: o prazo de 180 dias do texto não tem com o que ser comparado");
+        Exigir(int.Parse(perfil.Groups[1].Value) == TextoDiagnostico.DiasDePerfil, $"o Worker apaga o PC sem contato em {perfil.Groups[1].Value} dias e o texto diz {TextoDiagnostico.DiasDePerfil}");
         // A2: o texto completo cita base legal, IP visto pelo amigo, Discord, anônimo, apagar, IA e os prazos (120 e 180)
         foreach (var trecho in new[] { "120 dias", "180 dias", "5 dias úteis", "LGPD", "legítimo interesse", "execução do contrato", "endereço de rede (IP)", "Discord", "anônimo", "Anônimo não é anonimato completo",
                      "APAGAR", "equipe do Streemu", "Ver o que é enviado", "pessoa-1", "o MAC", "USA IA", "não treinar", "CAMADA ESSENCIAL" })

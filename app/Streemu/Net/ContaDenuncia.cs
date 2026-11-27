@@ -16,11 +16,12 @@ public static class Denuncia
 {
     public const int TextoMax = 500;
 
-    /// <summary>Texto da janela e código que o servidor entende, nesta ordem.</summary>
+    /// <summary>Texto da janela e código que o servidor entende, nesta ordem. Os rótulos seguem o padrão das grandes plataformas, sem palavras que choquem
+    /// quem só quer denunciar. O código é o que o relay e a moderação conferem.</summary>
     public static readonly IReadOnlyList<(CategoriaDenuncia Categoria, string Rotulo, string Codigo)> Categorias =
     [
-        (CategoriaDenuncia.AbusoInfantil, "Abuso infantil", "abuso_infantil"),
-        (CategoriaDenuncia.Odio, "Ódio ou nazismo", "odio"),
+        (CategoriaDenuncia.AbusoInfantil, "Segurança de menores", "abuso_infantil"),
+        (CategoriaDenuncia.Odio, "Ódio ou discriminação", "odio"),
         (CategoriaDenuncia.Golpe, "Golpe ou fraude", "golpe"),
         (CategoriaDenuncia.Assedio, "Assédio ou ameaça", "assedio"),
         (CategoriaDenuncia.Outro, "Outro", "outro"),

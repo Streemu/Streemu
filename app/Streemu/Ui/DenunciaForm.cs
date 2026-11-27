@@ -6,7 +6,7 @@ namespace Streemu.Ui;
 /// <summary>
 /// A janela da denúncia (spec 029, 6.1), no padrão dos diálogos do app (<c>PedirApelido</c>): uma categoria, um texto opcional de até 500 caracteres e "Anexar imagem da tela".
 /// <b>Nenhuma imagem existe enquanto a janela está aberta</b>: ela recebe só uma função de captura e a chama em <see cref="CapturarAoEnviar"/>, depois do Enviar, com a janela
-/// escondida, a caixa marcada e categoria que aceite imagem. Com "Abuso infantil" a caixa some e nada é capturado. O JPEG fica só na memória. Não escreve em log.
+/// escondida, a caixa marcada e categoria que aceite imagem. Com "Segurança de menores" (código `abuso_infantil`) a caixa some e nada é capturado. O JPEG fica só na memória. Não escreve em log.
 /// Uso: <c>using var f = new DenunciaForm("Bruno", capturar); if (f.ShowDialog(this) == DialogResult.OK) ... f.Categoria, f.Texto, f.CapturarAoEnviar()</c>.
 /// </summary>
 public sealed class DenunciaForm : Form

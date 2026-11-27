@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "5e933cddec5ae8e9314af3d07e0d4214efcc9c81",
-    "notas":  "- Junta a Mumu e o Apoiar na troca de vistas depois do rebase\n- Tira o cabecalho da tela Apoiar e passa ao formato de carta\n- Documenta a tela Apoiar e marca o plano 035 como implementado\n- Adiciona a tela Apoiar e o botao em pilula\n- Adiciona a conta da disposicao da tela Apoiar\n- Adiciona o item Apoiar à barra lateral e a vista dele\n- Adiciona o ícone de coração cheio\n- Adiciona a arte da Mumu e do Streemu para a tela Apoiar",
+    "privado":  "25daf58a88375004ffe894b39101694829d96841",
+    "notas":  "- Ajusta os textos da janela de denúncia",
     "obrigatoria":  false
 }

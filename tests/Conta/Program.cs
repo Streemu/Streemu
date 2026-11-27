@@ -770,7 +770,7 @@ Caso("denuncia-categorias-viram-os-codigos-do-servidor", () =>
 {
     var quer = new[] { "abuso_infantil", "odio", "golpe", "assedio", "outro" };
     Exige(Denuncia.Categorias.Select(c => c.Codigo).SequenceEqual(quer), "códigos e ordem das categorias");
-    Exige(Denuncia.Categorias.Select(c => c.Rotulo).SequenceEqual(new[] { "Abuso infantil", "Ódio ou nazismo", "Golpe ou fraude", "Assédio ou ameaça", "Outro" }), "rótulos da janela");
+    Exige(Denuncia.Categorias.Select(c => c.Rotulo).SequenceEqual(new[] { "Segurança de menores", "Ódio ou discriminação", "Golpe ou fraude", "Assédio ou ameaça", "Outro" }), "rótulos da janela");
     Exige(Denuncia.Codigo(CategoriaDenuncia.Assedio) == "assedio" && Denuncia.Codigo(CategoriaDenuncia.Odio) == "odio", "Codigo()");
     return Task.CompletedTask;
 });

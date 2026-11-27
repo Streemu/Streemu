@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "label": "antivírus",
-  "message": "0.6.0 · VirusTotal 1/56 · MetaDefender 0/21",
-  "color": "yellow"
+  "message": "0.6.0 · VirusTotal 0/66 · MetaDefender 0/21",
+  "color": "brightgreen"
 }

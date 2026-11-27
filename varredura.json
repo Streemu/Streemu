@@ -1,17 +1,17 @@
 {
-  "atualizado_em": "2026-11-27T20:06:47Z",
+  "atualizado_em": "2026-11-27T20:36:18Z",
   "ultima": "atualizacao",
   "atualizacao": {
     "versao": "0.6.0",
     "tag": "main-atual",
     "arquivo": "streemu-main.zip",
-    "sha256": "ff8d1df811c73117904f9dffb968c75a70c9a5aeacc38f788b9adfa625c6b9a2",
-    "commit": "aadc6f63a195b0b2d464d0368b4d17027fd57f69",
-    "publicado_em": "2026-11-27T19:44:54Z",
+    "sha256": "15bc65a49bef8661f5c7ca85df7e7d1d9e0fd7063105d98e7c448ed2f9fe00d8",
+    "commit": "0324ccc44cb949754359bc30af700c9049c92048",
+    "publicado_em": "2026-11-27T20:34:41Z",
     "defender": {
       "status": "limpo",
       "versao_assinaturas": "1.463.499.0",
-      "analisado_em": "2026-11-27T19:44:40Z",
+      "analisado_em": "2026-11-27T20:34:20Z",
       "arquivos": [
         {
           "arquivo": "streemu-main.zip",
@@ -25,24 +25,19 @@
     },
     "virustotal": {
       "status": "ok",
-      "deteccoes": 1,
-      "total": 56,
-      "motores_que_acusaram": [
-        {
-          "motor": "Microsoft",
-          "resultado": "Trojan:Script/Wacatac.C!ml"
-        }
-      ],
-      "link": "https://www.virustotal.com/gui/file/ff8d1df811c73117904f9dffb968c75a70c9a5aeacc38f788b9adfa625c6b9a2",
-      "analisado_em": "2026-11-27T19:45:10Z"
+      "deteccoes": 0,
+      "total": 66,
+      "motores_que_acusaram": [],
+      "link": "https://www.virustotal.com/gui/file/15bc65a49bef8661f5c7ca85df7e7d1d9e0fd7063105d98e7c448ed2f9fe00d8",
+      "analisado_em": "2026-11-27T20:35:06Z"
     },
     "metadefender": {
       "status": "ok",
       "deteccoes": 0,
       "total": 21,
       "motores_que_acusaram": [],
-      "link": "https://metadefender.com/results/hash/ff8d1df811c73117904f9dffb968c75a70c9a5aeacc38f788b9adfa625c6b9a2",
-      "analisado_em": "2026-11-27T19:49:18Z"
+      "link": "https://metadefender.com/results/hash/15bc65a49bef8661f5c7ca85df7e7d1d9e0fd7063105d98e7c448ed2f9fe00d8",
+      "analisado_em": "2026-11-27T20:36:09Z"
     }
   },
   "instalador": {

@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Streemu</AssemblyName>
     <RootNamespace>Streemu</RootNamespace>
-    <Version>0.5.1</Version>
+    <Version>0.6.0</Version>
     <!-- nome que o Windows mostra (Gerenciador de Tarefas, notificações da bandeja): o nome do produto, Streemu -->
     <Product>Streemu</Product>
     <AssemblyTitle>Streemu</AssemblyTitle>

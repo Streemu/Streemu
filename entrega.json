@@ -1,6 +1,6 @@
 {
-    "versao":  "0.5.1",
-    "privado":  "923d6ae7d17071df4b5aec186871f534e416baad",
-    "notas":  "- Tira os selos Beta do Cinema e Novo do Enviar arquivo",
+    "versao":  "0.6.0",
+    "privado":  "574dd34b0f4f5a01793cf11fac7b8eaed3512021",
+    "notas":  "- Encurta o resumo da 0.6.0 nas Novidades para caber em 120 caracteres\n- Lança a versão 0.6.0",
     "obrigatoria":  false
 }

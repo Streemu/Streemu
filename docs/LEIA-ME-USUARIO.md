@@ -12,6 +12,9 @@ Configurações > Sistema, ou no botão direito do ícone da bandeja). Para desi
 > Aplicativos instalados > Streemu. Seus ajustes ficam guardados.
 "O Windows protegeu o computador" também aparece no instalador: "Mais informações" > "Executar
 assim mesmo".
+Se o PC não servir (Windows 10 anterior à versão 2004, Windows de 32 bits ou processador ARM com
+Windows 10) ou a instalação parar no meio, o instalador mostra o motivo, o que fazer e um relatório
+para copiar e mandar no grupo.
 
 Pelo zip (sem instalar):
 1. Extraia o .zip INTEIRO numa pasta (ex.: C:\Streemu). A pasta "ffmpeg" precisa ficar
@@ -113,6 +116,14 @@ TRANSMITIR
 - Só o jogo aparece: se você der Alt+Tab ou abrir outra janela, os amigos veem a tela
   "Transmissão pausada" (o som do jogo continua) até você voltar para o jogo. Para mostrar a
   tela inteira, escolha um monitor na aba "Telas".
+- Janela minimizada: se a janela que você transmite minimizar ou for para a bandeja, a live entra em
+  "Transmissão pausada" e volta sozinha quando a janela reaparece. Para não pausar, deixe a janela
+  aberta ou transmita o monitor.
+- **Oferta de 30 FPS:** transmitindo em 60 FPS, se o PC não der conta (chegam bem menos quadros que 60),
+  aparece um aviso discreto. Com o jogo na frente ele fica num canto e some em 15 s: Ctrl+Alt+F3 troca
+  a live para 30 FPS. Vale só para essa live; a próxima volta ao que você escolheu. Para não ver mais o
+  aviso sobre o jogo: "Não mostrar no jogo" no próprio aviso, ou em Configurações > Aparência > Avançados
+  (o card dentro da janela do Streemu continua).
 - No seu perfil do Discord aparece "Transmitindo <jogo>", a qualidade, quantos assistem e o
   botão "Assistir" (só os outros veem o botão). Precisa do Discord aberto no PC e de
   "Compartilhar minha atividade" ligado.
@@ -134,7 +145,10 @@ ASSISTIR
   já usa o M, o app usa Ctrl+Alt+J ou Ctrl+Alt+K e avisa; a dica do botão mostra qual). Ela fica no
   canto, por cima de tudo; arraste pela barra. O mesmo botão (ou atalho) volta ao normal.
 - Duplo clique ou F = tela cheia; Esc ou Q = fechar.
-- Imagem preta? Em Configurações > Assistir, desmarque "Decodificar na placa de vídeo".
+- Imagem preta? Em Configurações > Assistir, desmarque "Decodificar na placa de vídeo". Se a placa de
+  vídeo falhar ao abrir a live, o Streemu já tenta de novo por outro caminho e, se preciso, pela CPU.
+- **Denunciar uma live:** a bandeira vermelha na barra do player abre a denúncia daquela live (categoria,
+  texto opcional e, se quiser, uma imagem da tela do player). Quem transmite não fica sabendo quem denunciou.
 - Experimental: em Configurações > Perfil, "Discord: botão Participar sem navegador". Quem transmite marca; no Discord
   o botão vira "Participar" e a stream abre direto, sem navegador e sem pedido. Se aparecer
   "Pedir para participar", o Streemu de quem transmite aceita sozinho. Os dois precisam
@@ -155,8 +169,21 @@ ATUALIZAR
 - Transmitindo ou assistindo, ele não atualiza sozinho (a atualização fecha o app); se você clicar
   em "Atualizar agora" nessa hora, ele pergunta antes.
 - A pasta ffmpeg e as suas escolhas continuam como estavam.
+- Algumas atualizações são obrigatórias: com os avisos silenciados, o sino mostra um ponto para lembrar.
 - Se a versão nova não abrir, abra o "Streemu.old.exe" que fica na pasta (é a anterior)
   e mande o relatório no grupo.
+
+ENVIAR ARQUIVO
+- "Enviar arquivo", na barra lateral (ou no menu da foto de um amigo): escolha o amigo e os arquivos e
+  clique em "Enviar arquivos". O amigo aceita ou recusa; se a conexão cair, o envio retoma de onde parou.
+  A aba "Histórico" mostra o que você mandou e recebeu.
+
+NOVIDADES E TEMA
+- "Novidades", na barra lateral, mostra o que mudou em cada versão. Depois de uma atualização ele ganha o
+  selo "NOVO" até você abrir. Também em Configurações > Sistema > "Ver novidades".
+- O botão de tema, na barra lateral, troca entre o tema escuro e o claro.
+- Quando você transmite, assiste ou está no Cinema, um selo no botão do Streemu na barra de tarefas do
+  Windows mostra isso.
 
 FILME
 - "Filme", na barra lateral: assistir um arquivo de vídeo junto com os amigos, sincronizado.

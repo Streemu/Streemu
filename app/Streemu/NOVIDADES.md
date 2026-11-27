@@ -9,6 +9,10 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 
 ## Não lançado
 
+## 0.6.0 — 2026-11-25
+!obrigatoria
+Cantinho da Mumu, tela Apoiar, 90 e 120 FPS, denúncia de live, tela Novidades e lives que congelam menos.
+
 ### Novo
 - **Cantinho da Mumu:** uma aba nova na barra lateral onde a Mumu conversa com você. Tem os recados da equipe (o selo NOVO avisa quando sai um), uma caixa para mandar sua opinião, com ou sem o seu nome, e o Instagram do Streemu.
 - **Tela Apoiar:** um coração na barra lateral abre um recado da Mumu e do Streemu. O app é feito por dois amigos, sem anúncio; se ele deixou suas jogatinas melhores, dá para apoiar pelo site.

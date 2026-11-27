@@ -192,6 +192,13 @@ PROBLEMA?
   depois do último diagnóstico que o seu PC mandou (no Desligado só sai a camada essencial, que não
   conta). No seu PC, o log fica 30 dias, a série 7 dias e o histórico do que foi
   enviado 30 dias.
+- Códigos do aparelho: o diagnóstico reconhece o PC por um resumo (hash) do identificador do Windows,
+  e não pelo nome. O login da conta manda resumos do PC e da placa-mãe misturados com uma chave do
+  servidor, só para a moderação poder bloquear um aparelho banido; eles ficam enquanto o bloqueio valer.
+  No Anônimo vai outro código, que não liga ao PC, e o da placa-mãe não vai.
+- Recado para a Mumu: leva o texto, a versão do app e, só se você marcar a caixa, a sua conta. Nunca
+  IP, nome do PC nem hardware. Fica 365 dias, só a equipe lê, e não depende do diagnóstico. Apagar a
+  conta apaga os recados assinados.
 - A equipe usa ferramentas de IA para ler o diagnóstico técnico, sem o seu nome; elas não treinam com
   os seus dados e não decidem nada sobre você.
 - "Ver o que é enviado" mostra o que sobe e o que fica no PC; o histórico de 30 dias abre ou apaga

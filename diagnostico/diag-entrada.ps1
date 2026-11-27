@@ -70,12 +70,9 @@ $adaptadores = @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Sta
 })
 $rota = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1
 $saltos = @(tracert -d -h 4 -w 800 1.1.1.1 2>$null | ForEach-Object { if ($_ -match '^\s*(\d+)\s+.*?(\d+\.\d+\.\d+\.\d+)\s*$') { "$($Matches[1]): $(Mascarar $Matches[2])" } })
-$antivirus = @(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue | ForEach-Object {
-    [ordered]@{ nome = $_.displayName; estado = ('0x{0:X6}' -f [int]$_.productState) }
-})
-$firewallTerceiros = @(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName FirewallProduct -ErrorAction SilentlyContinue | ForEach-Object { $_.displayName })
-$servicosSeg = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(AVP|kavfs|klif|klnagent|KSDE|ekrn|avast|AvastSvc|aswbIDSAgent|McAfee|mfefire|NortonSecurity|BDAgent|bdredline|WRSA|Sophos)' -or $_.DisplayName -match 'Kaspersky|ESET|Avast|AVG|McAfee|Norton|Bitdefender|Sophos' } |
-    ForEach-Object { "$($_.DisplayName) ($($_.Status))" })
+# Sem lista de antivirus/firewall de terceiros (SecurityCenter2 nem servicos por nome): em 2026-11-27 o Defender
+# acusou o pacote de atualizacao que leva este script (Trojan:Script/Wacatac.C!ml), e enumerar antivirus e o que
+# malware faz primeiro. Os descartes do pktmon ja mostram se algo no PC bloqueia; o nome do antivirus se pergunta a pessoa.
 $fwPerfis = @(Get-NetFirewallProfile -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name)=$($_.Enabled)" })
 $fwRegras = @(Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue | Where-Object { $_.Program -match 'Streemu' } | ForEach-Object {
     $r = $_ | Get-NetFirewallRule
@@ -170,9 +167,6 @@ $resultado = [ordered]@{
     adaptadores      = $adaptadores
     gateway          = $(if ($rota) { $rota.NextHop } else { $null })
     primeiros_saltos = $saltos
-    antivirus        = $antivirus
-    firewall_terceiros = $firewallTerceiros
-    servicos_seguranca = $servicosSeg
     firewall_windows = $fwPerfis
     regras_streemustream = $fwRegras
 }

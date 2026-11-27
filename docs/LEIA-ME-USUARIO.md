@@ -168,18 +168,37 @@ PROBLEMA?
 - Viu um bug (travou, áudio estourou, imagem ruim)? Clique em "Marcar problema" (a bandeira no pé
   da barra lateral, acima de Configurações), aperte Ctrl+Alt+B (funciona com o jogo na frente) ou use a
   bandeja. Isso marca a hora exata e manda o diagnóstico na hora; não precisa copiar nada.
-- O diagnóstico vai sozinho para a equipe do Streemu: specs do PC (processador, placa de vídeo e
-  driver, Windows, rede) e os logs, sem IP, sem senhas e sem o nome do seu usuário do Windows.
-  Para ver o que vai: Configurações > Diagnóstico > "Ver o que é enviado". Para desligar: desmarque
-  "Enviar diagnóstico" na mesma seção: desligado, nenhum log nem dado do PC sai; segue só a contagem
-  de uso (o app abriu, uma live aconteceu, algo grave falhou), sem guardar quem foi. Se quiser
-  ajudar sem dizer quem você é, ligue "Enviar diagnóstico anônimo" (só aparece com o de cima
-  desligado): sobe sem o seu nome, o seu Discord nem o nome dos amigos (trocados por "pessoa-1",
-  "pessoa-2"...) e sem a nota do Marcar problema; anônimo não é anonimato completo. O botão "Sobre o
-  diagnóstico" explica tudo: o que vai, por que podemos, quem vê, por quanto tempo, onde fica, o que
-  a IA lê e como pedir para apagar (à equipe do Streemu, em até 5 dias úteis). Ele também lembra que,
-  na conexão direta, o amigo recebe o IP do seu PC, e que o Discord mostra que você está ao vivo e o
-  jogo. A mesma página aparece no instalador.
+- Diagnóstico (Configurações > Diagnóstico). Ele tem três estados:
+  - **Ligado** (padrão, interruptor "Enviar diagnóstico"): vai para a equipe do Streemu o log do app,
+    os relatórios, os dados do PC (processador, placa de vídeo e driver, memória, Windows, tela, áudio
+    e rede) e as métricas das lives, com o seu nome no app e no Discord. Sem IP, sem senhas, sem o
+    nome do seu usuário do Windows.
+  - **Anônimo** (interruptor "Enviar diagnóstico anônimo", que só aparece com o de cima desligado):
+    sobe o mesmo, mas sem o seu nome, o seu Discord nem o nome dos amigos (trocados por "pessoa-1",
+    "pessoa-2"...) e sem a nota do Marcar problema. Anônimo não é anonimato completo: o jogo, o
+    horário e o hardware ainda podem te reconhecer.
+  - **Desligado** (os dois interruptores desligados): nenhum log, dado do PC nem série sai do PC. Só
+    sobe algo se você marcar um problema e apertar "Enviar só isto" depois de ver o que vai. Quem
+    tinha desligado numa versão antiga continua desligado.
+- O que nunca desliga (camada essencial): a sua conta, os grupos, a moderação e a contagem de uso (o
+  app abriu, uma live aconteceu, algo grave falhou). A contagem não guarda quem foi: o servidor soma
+  1 no dia e descarta o pedido.
+- A série segundo a segundo da live fica 7 dias só no seu PC. Ela sobe só se você marcar um problema,
+  se o app tiver uma falha grave ou se um amigo da mesma live marcar um problema; o app avisa quando
+  envia.
+- Cifrado: o log, o histórico e o que o diagnóstico guarda no seu PC só a sua conta do Windows abre.
+  O que sobe sai do app cifrado, e só a equipe do Streemu abre, com uma chave que não fica no servidor.
+- Prazos: no servidor, logs, métricas e relatórios ficam 120 dias; o perfil do PC e os nomes, 180 dias
+  sem você abrir o app. No seu PC, o log fica 30 dias, a série 7 dias e o histórico do que foi
+  enviado 30 dias.
+- A equipe usa ferramentas de IA para ler o diagnóstico técnico, sem o seu nome; elas não treinam com
+  os seus dados e não decidem nada sobre você.
+- "Ver o que é enviado" mostra o que sobe e o que fica no PC; o histórico de 30 dias abre ou apaga
+  cada envio. Para apagar tudo do servidor, peça à equipe do Streemu no grupo: em até 5 dias úteis.
+- O botão "Sobre o diagnóstico" explica tudo (o que vai, por que podemos, quem vê, por quanto tempo,
+  onde fica, o que a IA lê e como apagar). Ele também lembra que, na conexão direta, o amigo recebe o
+  IP do seu PC, e que o Discord mostra que você está ao vivo e o jogo. A mesma página aparece no
+  instalador, e a política completa está em https://www.streemu.com.br/privacidade.
 - Logo acima da bandeira fica o sinal do diagnóstico: ✓ verde = tudo o que o app gravou já chegou
   ao servidor; ✕ vermelho = não está chegando (passe o mouse para ver o motivo; nada se perde, ele
   tenta de novo sozinho); ○ cinza = desligado ou começando.

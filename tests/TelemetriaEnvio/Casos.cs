@@ -2459,6 +2459,11 @@ static class Casos
         Exigir(!desligado.Contains("ANÔNIMO") && !faixaDesligado.Contains("ainda manda um diagnóstico anônimo"), "o texto do Desligado ainda promete o anônimo que não existe mais");
         foreach (var t in new[] { desligado, faixaDesligado }) Exigir(t.Contains("não desliga") || t.Contains("Isso não desliga"), "o texto do Desligado não diz que a camada essencial não desliga: " + t);
         Exigir(desligado.Contains("não guarda quem foi"), "o Desligado devia dizer que a contagem não guarda a pessoa (D38)");
+        // spec 018, seção 6, disparo 1: no Desligado a marcação confirmada na prévia sobe; o texto não pode prometer "nada sai" sem a exceção
+        Exigir(desligado.Contains("marque um problema"), "o aviso do Desligado não cita a marcação confirmada");
+        string completo = TextoDiagnostico.Completo;
+        string seDesligar = completo[completo.IndexOf("SE VOCÊ DESLIGAR")..completo.IndexOf("DIAGNÓSTICO ANÔNIMO")];
+        Exigir(seDesligar.Contains("Enviar só isto"), "\"SE VOCÊ DESLIGAR\" não cita a marcação confirmada (\"Enviar só isto\")");
         Exigir(!desligado.Contains("Cid" + "ão") && !desligado.Contains("Ra" + "pha"), "nome de pessoa no aviso");
         Exigir(TextoDiagnostico.Aviso(ModoEnvio.Anonimo).Contains("não é anonimato completo"), "o aviso do anônimo devia dizer que não é anonimato completo (D16)");
         Exigir(TextoDiagnostico.Faixa(ModoEnvio.Anonimo).Contains("não é anonimato completo"), "a faixa do anônimo devia dizer que não é anonimato completo");

@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "64147fa16210adc8987ccc3395e65d844dc90338",
-    "notas":  "- Corrige comentário que citava função removida\n- Manda a live privada à telemetria como a normal, com a marca privada",
+    "privado":  "de6bc21a05b850fadf5c82aae9007313441d5847",
+    "notas":  "- Cita a marcacao confirmada no texto do diagnostico desligado (spec 018)",
     "obrigatoria":  false
 }

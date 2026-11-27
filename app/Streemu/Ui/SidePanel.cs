@@ -5,7 +5,7 @@ using Streemu.Util;
 namespace Streemu.Ui;
 
 /// <summary>Qual vista da janela está aberta (a barra marca o item dela).</summary>
-public enum SideView { Home, Stage, Settings, Filme, Transmit, Arquivos, Grupos, Novidades, Mumu }
+public enum SideView { Home, Stage, Settings, Filme, Transmit, Arquivos, Grupos, Novidades, Mumu, Apoiar }
 
 /// <summary>Estado do indicador do diagnóstico na barra lateral. Hidden = não desenha (antes de o app decidir).</summary>
 public enum DiagState { Hidden, Neutral, Ok, Fail }
@@ -29,7 +29,7 @@ public sealed class SidePanel : Control
 {
     public const int OpenAt96 = UiMetrics.SidebarWidth;
     const int RailAt96 = UiMetrics.RailWidth, AvatarAt96 = UiMetrics.Avatar;
-    enum Kind { Toggle, Home, Filme, Stage, Transmit, Profile, Self, StopLive, Settings, Friend, Section, Problem, Diag, Update, Bell, Arquivos, Grupos, Novidades, Mumu, Theme, GroupFilter, Atividade }
+    enum Kind { Toggle, Home, Filme, Stage, Transmit, Profile, Self, StopLive, Settings, Friend, Section, Problem, Diag, Update, Bell, Arquivos, Grupos, Novidades, Mumu, Apoiar, Theme, GroupFilter, Atividade }
     readonly record struct NavigationItem(Kind Action, SideView View, string Caption, UiIcon Icon);
     static readonly NavigationItem[] Navigation =
     [
@@ -42,6 +42,7 @@ public sealed class SidePanel : Control
         new(Kind.Diag, SideView.Settings, "Diagnóstico", UiIcon.Shield), // item de navegação no desenho; abre os Ajustes, onde está o detalhe
         new(Kind.Settings, SideView.Settings, "Configurações", UiIcon.Settings),
         new(Kind.Novidades, SideView.Novidades, "Novidades", UiIcon.Sparkle), // plano 027; só com NovidadesVisivel
+        new(Kind.Apoiar, SideView.Apoiar, "Apoiar", UiIcon.Heart), // plano 035; sempre presente, abre a tela que leva ao site
         new(Kind.Stage, SideView.Stage, "Em tela", UiIcon.Stage),
     ];
     readonly record struct Row(Rectangle Bounds, Kind Kind, string Text = "", SideFriend? Friend = null);
@@ -102,6 +103,8 @@ public sealed class SidePanel : Control
     bool _novidadesVisivel, _novidadesNovas;
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool NovidadesVisivel { get => _novidadesVisivel; set { if (_novidadesVisivel == value) return; _novidadesVisivel = value; PerformLayout(); Invalidate(); } }
+    /// <summary>"Apoiar" (plano 035), logo abaixo de "Novidades": abre a tela que leva ao site. Sem flag de visibilidade: está sempre na barra (MainForm.Apoiar.cs).</summary>
+    public event Action? ApoiarClicked;
     /// <summary>Tem novidade que a pessoa ainda não viu: selo "NOVO" na barra aberta, bolinha no trilho.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool NovidadesNovas { get => _novidadesNovas; set { if (_novidadesNovas == value) return; _novidadesNovas = value; Invalidate(); } }
@@ -512,6 +515,7 @@ public sealed class SidePanel : Control
             case Kind.Grupos: GruposClicked?.Invoke(); break;
             case Kind.Novidades: NovidadesClicked?.Invoke(); break;
             case Kind.Mumu: MumuClicked?.Invoke(); break;
+            case Kind.Apoiar: ApoiarClicked?.Invoke(); break;
             case Kind.Stage: StageClicked?.Invoke(); break;
             case Kind.Settings: SettingsClicked?.Invoke(); break;
             case Kind.Transmit: TransmitClicked?.Invoke(); break;
@@ -548,6 +552,7 @@ public sealed class SidePanel : Control
     {
         Kind.Mumu => _mumuNovo ? UiBrand.NomeDaAbaMumu + ": tem recado novo" : UiBrand.NomeDaAbaMumu,
         Kind.Novidades => _novidadesNovas ? "Novidades: tem coisa nova desde a última vez" : "Novidades",
+        Kind.Apoiar => "Apoiar o Streemu",
         Kind.Transmit => _self == null ? "Transmitir" : "Sua transmissão · AO VIVO",
         Kind.Profile => _profileName + " · Perfil", Kind.Friend => row.Friend!.Nick + (row.Friend.OnScreen ? " · Assistindo" : row.Friend.Live ? " · Ao vivo" : row.Friend.Offline ? " · Offline" : " · Online"),
         Kind.Diag => _diagTitle.Length > 0 ? _diagTitle : "Diagnóstico",
@@ -608,9 +613,10 @@ public sealed class SidePanel : Control
         switch (row.Kind)
         {
             case Kind.Toggle: DrawToggle(g, row.Bounds, hover); break;
-            case Kind.Home or Kind.Filme or Kind.Stage or Kind.Settings or Kind.Arquivos or Kind.Grupos or Kind.Novidades or Kind.Mumu:
+            case Kind.Home or Kind.Filme or Kind.Stage or Kind.Settings or Kind.Arquivos or Kind.Grupos or Kind.Novidades or Kind.Mumu or Kind.Apoiar:
                 var item = Navigation.First(n => n.Action == row.Kind);
-                DrawNav(g, row.Bounds, item.Icon, row.Text, _view == item.View, hover);
+                // o coração é o único ícone colorido da barra: Accent sempre, e AccentSoft quando selecionado (em Accent sumiria dentro da pílula de seleção)
+                DrawNav(g, row.Bounds, item.Icon, row.Text, _view == item.View, hover, row.Kind == Kind.Apoiar ? (_view == item.View ? Theme.AccentSoft : Theme.Accent) : null);
                 if (row.Kind == Kind.Filme) DrawBeta(g, row.Bounds);
                 if (row.Kind == Kind.Arquivos && _arquivosPendentes == 0) DrawSelo(g, row.Bounds, "NOVO", Theme.SuccessSurface);
                 if (row.Kind == Kind.Novidades && _novidadesNovas) DrawSelo(g, row.Bounds, "NOVO", Rail ? Theme.Accent : Theme.SuccessSurface); // no trilho vira o ponto de destaque, como o do sino
@@ -757,11 +763,11 @@ public sealed class SidePanel : Control
         TextRenderer.DrawText(g, texto, f, box, Theme.AccentText, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
     }
 
-    void DrawNav(Graphics g, Rectangle r, UiIcon glyph, string text, bool selected, bool hover)
+    void DrawNav(Graphics g, Rectangle r, UiIcon glyph, string text, bool selected, bool hover, Color? iconColor = null)
     {
         FillItem(g, r, selected, hover);
         var icon = new Rectangle(r.X, r.Y, Math.Min(r.Width, Dp(40)), r.Height);
-        UiIcons.Draw(g, glyph, Rectangle.Inflate(icon, -Dp(9), -Dp(9)), selected || glyph == UiIcon.Broadcast && _self != null ? Theme.Accent : Theme.TextMuted);
+        UiIcons.Draw(g, glyph, Rectangle.Inflate(icon, -Dp(9), -Dp(9)), iconColor ?? (selected || glyph == UiIcon.Broadcast && _self != null ? Theme.Accent : Theme.TextMuted));
         if (Rail || r.Width < Dp(100)) return;
         TextRenderer.DrawText(g, text, Font, new Rectangle(icon.Right, r.Y, r.Width - icon.Width, r.Height), Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
     }

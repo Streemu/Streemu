@@ -39,6 +39,15 @@ public static class UiTypography
     public static Font Create(float size, FontStyle style = FontStyle.Regular) => new(Family, size, style);
     public static Font Create(float size, FontStyle style, GraphicsUnit unit) => new(Family, size, style, unit);
     public static Font CreateSemibold(float size) => new(FamilySemibold, size);
+    public static Font CreateSemibold(float size, GraphicsUnit unit) => new(FamilySemibold, size, FontStyle.Regular, unit);
+    /// <summary>A letra de mão da assinatura da Mumu (tela Apoiar, plano 035); vem no Windows 10 e 11. Sem ela, cai para a fonte da interface em itálico.</summary>
+    public const string Handwriting = "Segoe Print";
+    static bool? _hasHandwriting;
+    public static Font CreateHandwriting(float size, GraphicsUnit unit)
+    {
+        _hasHandwriting ??= FontFamily.Families.Any(f => f.Name == Handwriting);
+        return _hasHandwriting.Value ? new Font(Handwriting, size, FontStyle.Regular, unit) : new Font(Family, size, FontStyle.Italic, unit);
+    }
     public static Font CreateMono(float size) => new(Mono, size);
     public static Font CreateSymbols(float size) => new(Symbols, size);
 }
@@ -78,7 +87,7 @@ public sealed class UiFonts : IDisposable
     public void Dispose() { _owner.FontChanged -= Changed; Release(); }
 }
 
-public enum UiIcon { Home, Cinema, Settings, Broadcast, Stage, Back, Cat, Window, Monitor, ChevronDown, ChevronRight, ChevronLeft, Problem, Update, Bell, MutedBell, Check, Failure, Pending, Lock, Gamepad, SpeakerOff, Eye, Speaker, Warning, Shield, Plus, Clock, Upload, Activity, Folder, People, Sparkle }
+public enum UiIcon { Home, Cinema, Settings, Broadcast, Stage, Back, Cat, Window, Monitor, ChevronDown, ChevronRight, ChevronLeft, Problem, Update, Bell, MutedBell, Check, Failure, Pending, Lock, Gamepad, SpeakerOff, Eye, Speaker, Warning, Shield, Plus, Clock, Upload, Activity, Folder, People, Sparkle, Heart, ExternalLink }
 
 /// <summary>Ícones vetoriais substituíveis por função, sem emojis ou dependência de uma fonte de símbolos.</summary>
 public static class UiIcons
@@ -130,6 +139,19 @@ public static class UiIcons
             case UiIcon.Sparkle: // Novidades: um brilho de quatro pontas e um pequeno, no mesmo traço dos outros ícones
                 g.DrawPolygon(pen, [new PointF(10, 5), new PointF(12, 11), new PointF(18, 13), new PointF(12, 15), new PointF(10, 21), new PointF(8, 15), new PointF(2, 13), new PointF(8, 11)]);
                 g.DrawLine(pen, 19, 2.5f, 19, 7.5f); g.DrawLine(pen, 16.5f, 5, 21.5f, 5); break;
+            case UiIcon.Heart: // Apoiar (plano 035): o único ícone cheio da barra, para o roxo da marca chamar sem gritar
+                using (var heart = new GraphicsPath())
+                {
+                    heart.AddBezier(12, 20.5f, 12, 20.5f, 3, 14.5f, 3, 8.5f); heart.AddBezier(3, 8.5f, 3, 5.5f, 5.4f, 3.5f, 8, 3.5f);
+                    heart.AddBezier(8, 3.5f, 9.7f, 3.5f, 11.2f, 4.4f, 12, 5.8f); heart.AddBezier(12, 5.8f, 12.8f, 4.4f, 14.3f, 3.5f, 16, 3.5f);
+                    heart.AddBezier(16, 3.5f, 18.6f, 3.5f, 21, 5.5f, 21, 8.5f); heart.AddBezier(21, 8.5f, 21, 14.5f, 12, 20.5f, 12, 20.5f);
+                    heart.CloseFigure();
+                    g.FillPath(brush, heart);
+                }
+                break;
+            case UiIcon.ExternalLink: // abre fora do app (botão "Apoiar no site"): quadro aberto e seta para o canto
+                g.DrawLines(pen, [new(14, 4), new(20, 4), new(20, 10)]); g.DrawLine(pen, 20, 4, 11, 13);
+                g.DrawLines(pen, [new(10, 6), new(5, 6), new(4, 7), new(4, 19), new(5, 20), new(17, 20), new(18, 19), new(18, 14)]); break;
             case UiIcon.Failure: g.DrawLine(pen, 6, 6, 18, 18); g.DrawLine(pen, 18, 6, 6, 18); break;
             case UiIcon.Pending: g.DrawEllipse(pen, 5, 5, 14, 14); break;
             case UiIcon.Bell:
@@ -192,6 +214,8 @@ public static class UiBrand
     public const string NomeDaAbaMumu = "Mumu";
     /// <summary>O título da tela da Mumu (spec 031, D1): o item da barra é "Mumu", a tela se chama "Cantinho da Mumu".</summary>
     public const string TituloDaTelaMumu = "Cantinho da Mumu";
+    /// <summary>A página de apoio voluntário no site (plano 035): o app só leva até ela, sem valor nem forma de pagamento.</summary>
+    public const string UrlApoio = "https://www.streemu.com.br/apoie";
     public const string Mark = "gato.png", SleepingMumu = "mumu-dormindo.png", PopcornMumu = "mumu-pipoca.png";
     /// <summary>O logo inteiro (o gato dormindo com o "Streemu"), de 2026-11-19; <c>gato.png</c> é o mesmo gato recortado, para onde só cabe um quadrado.</summary>
     public const string Wordmark = "logo.png";

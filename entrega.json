@@ -1,6 +1,6 @@
 {
     "versao":  "0.5.1",
-    "privado":  "25facd5aefa2c1afecf6710808df0e1091f054cd",
-    "notas":  "- Adiciona o selo NOVO da Mumu na barra e a leitura de recados em segundo plano (spec 031, T3)\n- Centraliza o conjunto da aba da Mumu nos dois eixos (spec 031)\n- Destaca a Mumu na aba e sorteia a pose de cada recado (spec 031)\n- Refaz a aba da Mumu: Mumu à esquerda, histórico de recados e Instagram (spec 031)\n- Encurta o item da aba da Mumu nas Novidades para caber no limite de 220 caracteres\n- Documenta o feedback da aba da Mumu e as decisoes D1 a D7 (spec 031)\n- Adiciona o envio de feedback na aba da Mumu e tira o e-mail (spec 031, D5)\n- Adiciona o recado dos responsáveis na aba da Mumu (spec 031, T2)\n- Adiciona a aba Cantinho da Mumu sem rede (spec 031, T1)",
+    "privado":  "5e933cddec5ae8e9314af3d07e0d4214efcc9c81",
+    "notas":  "- Junta a Mumu e o Apoiar na troca de vistas depois do rebase\n- Tira o cabecalho da tela Apoiar e passa ao formato de carta\n- Documenta a tela Apoiar e marca o plano 035 como implementado\n- Adiciona a tela Apoiar e o botao em pilula\n- Adiciona a conta da disposicao da tela Apoiar\n- Adiciona o item Apoiar à barra lateral e a vista dele\n- Adiciona o ícone de coração cheio\n- Adiciona a arte da Mumu e do Streemu para a tela Apoiar",
     "obrigatoria":  false
 }

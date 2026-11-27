@@ -35,6 +35,7 @@ static class Program
         if (args.FirstOrDefault() == "--entrada-check") { EntradaBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--grupos-check") { GruposBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--novidades-check") { NovidadesBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
+        if (args.FirstOrDefault() == "--apoiar-check") { ApoiarBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--novidades-leitura-check") { NovidadesLeituraBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--cinema-check") { CinemaBehavior.Run(args.Skip(1).FirstOrDefault()); return; }
         if (args.FirstOrDefault() == "--cinema-cost") { CinemaBehavior.Cost(args.Skip(1).FirstOrDefault()); return; }

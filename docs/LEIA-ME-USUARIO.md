@@ -68,6 +68,11 @@ SEUS GRUPOS (Grupos, na barra lateral)
 - Cada grupo é um cartão com "Copiar convite" à vista. Quem criou o grupo também acha, no menu "Mais", "Renomear" e "Trocar convite" (o antigo deixa de valer na hora), e "Remover" uma pessoa no próprio cartão.
   Quem é removido é avisado e só volta com um convite novo.
 
+APOIAR (coração, na barra lateral)
+- O Streemu é feito por dois amigos, nas horas livres, e não tem anúncio. O item **Apoiar** abre um recado da Mumu e do Streemu e o botão
+  **Apoiar no site**, que abre a página streemu.com.br/apoie no navegador. O pagamento é todo no site: o app não pede valor, cartão nem Pix e você não precisa de conta.
+  Se o Windows não abrir o navegador, a tela mostra o endereço e o botão **Copiar link**.
+
 O GRUPO
 - Na barra lateral aparece quem está com o Streemu aberto. Quem está transmitindo aparece
   no Início como AO VIVO, com o jogo e o botão "Assistir".

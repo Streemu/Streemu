@@ -67,7 +67,7 @@ public sealed partial class MainForm
         HideFlyout();
         if (_preparationBusy) return;
         if (ContaBloqueia()) return;
-        _preparationView = _stageView = _settingsView = _filmeView = _arquivosView = _gruposView = _novidadesView = false;
+        _preparationView = _stageView = _settingsView = _filmeView = _arquivosView = _gruposView = _novidadesView = _apoiarView = false;
         _mumuView = true;
         ApplyView();
         MostrarRecadosDaMumu(RecadosSalvos(), marcarVisto: true);

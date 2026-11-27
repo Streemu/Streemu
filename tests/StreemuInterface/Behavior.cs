@@ -53,6 +53,7 @@ static class Behavior
                 presentation.Close();
                 Call(form, "ShowView", false);
                 NovidadesNaJanela(form, home, side);
+                ApoiarNaJanela(form, home);
             }
             catch (Exception ex) { failure = ex; }
             finally { form.Close(); }
@@ -87,6 +88,34 @@ static class Behavior
         Call(form, "ShowSettings");
         Call(form, "MostrarNovidades");
         Check(host.Visible && !Field<Panel>(form, "_settingsHost").Visible, "Novidades não saiu de cima das Configurações");
+        Call(form, "ShowView", false);
+    }
+
+    /// <summary>
+    /// Plano 035: o item "Apoiar" abre a tela no lugar do Início e não pede conta; o Cinema, as Configurações e o Início não deixam a tela por baixo, e o botão abre só
+    /// a página combinada (o navegador é falso: nada abre de verdade).
+    /// </summary>
+    static void ApoiarNaJanela(MainForm form, Panel home)
+    {
+        var host = Field<Panel>(form, "_apoiarHost");
+        var tela = Field<Streemu.Ui.ApoiarTela>(form, "_apoiarTela");
+        var abertos = new List<string>();
+        tela.AbrirEndereco = url => abertos.Add(url);
+        Check(!host.Visible, "A tela Apoiar apareceu sem ninguém pedir");
+        Call(form, "MostrarApoiar");
+        Check(host.Visible && !home.Visible && tela.Visible && Field<bool>(form, "_apoiarView"), "Apoiar não substituiu o Início");
+        tela.Botao.PerformClick();
+        Check(abertos.SequenceEqual([Streemu.Util.UiBrand.UrlApoio]), "O botão da tela Apoiar não abriu a página de apoio");
+        Call(form, "ShowView", false);
+        Check(home.Visible && !host.Visible && !Field<bool>(form, "_apoiarView"), "Voltar ao Início não escondeu Apoiar");
+        Call(form, "MostrarApoiar");
+        Call(form, "AbrirFilme");
+        Check(!host.Visible && !Field<bool>(form, "_apoiarView"), "Apoiar ficou por baixo do Cinema");
+        Call(form, "ShowSettings");
+        Call(form, "MostrarApoiar");
+        Check(host.Visible && !Field<Panel>(form, "_settingsHost").Visible, "Apoiar não saiu de cima das Configurações");
+        Call(form, "MostrarNovidades");
+        Check(!host.Visible && !Field<bool>(form, "_apoiarView"), "Novidades não tirou o Apoiar da frente");
         Call(form, "ShowView", false);
     }
 
@@ -315,7 +344,7 @@ static class Behavior
         SideFriend? FriendOf(object row) => (SideFriend?)row.GetType().GetProperty("Friend")!.GetValue(row);
         foreach (bool trilho in new[] { false, true })
         {
-            using var painel = new SidePanel { Size = new Size(trilho ? 80 : 290, 900) };
+            using var painel = new SidePanel { Size = new Size(trilho ? 80 : 290, 1100) }; // 900 cabia com 5 amigos antes do item Apoiar (plano 035); com ele a lista perdia o último a 125 %
             painel.CreateControl();
             painel.SetData(lista, 0, SideView.Home, "Sala");
             var linhas = ((System.Collections.IEnumerable)Call(painel, "BuildRows")!).Cast<object>().ToList();

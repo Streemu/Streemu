@@ -292,6 +292,10 @@ static class SidebarOverlapBehavior
                             if (novidades && rows.Count(r => r.Kind == "Novidades") != 1) problems.Add($"{scale:P0} {(rail ? "trilho" : "aberta")} {(live ? "com live" : "sem live")} {width}x{height}: o item Novidades não está na barra");
                             if (novidades && rows.FirstOrDefault(r => r.Kind == "Novidades") is { Kind: not null } nov && (nov.Bounds.Bottom > height || nov.Bounds.Right > width))
                                 problems.Add($"{scale:P0} {(rail ? "trilho" : "aberta")} {(live ? "com live" : "sem live")} {width}x{height}: o item Novidades {nov.Bounds} não cabe na barra");
+                            // plano 035: o item Apoiar (coração) está sempre na barra, logo depois de Novidades (ou de Grupos, sem Novidades), e cabe
+                            if (rows.Count(r => r.Kind == "Apoiar") != 1) problems.Add($"{scale:P0} {(rail ? "trilho" : "aberta")} {(live ? "com live" : "sem live")} {width}x{height}: o item Apoiar não está na barra (ou está duas vezes)");
+                            else if (rows.First(r => r.Kind == "Apoiar") is var apoiar && (apoiar.Bounds.Bottom > height || apoiar.Bounds.Right > width))
+                                problems.Add($"{scale:P0} {(rail ? "trilho" : "aberta")} {(live ? "com live" : "sem live")} {width}x{height}: o item Apoiar {apoiar.Bounds} não cabe na barra");
                             for (int i = 0; i < rows.Count; i++)
                                 for (int j = i + 1; j < rows.Count; j++)
                                     if (rows[i].Bounds.IntersectsWith(rows[j].Bounds))

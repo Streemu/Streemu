@@ -11,6 +11,7 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 
 ### Novo
 - **Cantinho da Mumu:** uma aba nova na barra lateral onde a Mumu conversa com você. Tem os recados da equipe (o selo NOVO avisa quando sai um), uma caixa para mandar sua opinião, com ou sem o seu nome, e o Instagram do Streemu.
+- **Tela Apoiar:** um coração na barra lateral abre um recado da Mumu e do Streemu. O app é feito por dois amigos, sem anúncio; se ele deixou suas jogatinas melhores, dá para apoiar pelo site.
 - **Seus dados no PC ficam cifrados:** o log do app, o histórico e o que o diagnóstico guarda no seu PC agora ficam cifrados, e só a sua conta do Windows abre. O avatar guardado some depois de 90 dias sem aparecer e os logs, depois de 30.
 - **Ver o que foi enviado, e apagar:** em Configurações > Diagnóstico, "Ver o que é enviado" mostra o que sobe e o que fica no PC; o histórico de 30 dias abre ou apaga cada envio. Depois de um envio automático, um ponto discreto avisa, sem janela nem som.
 - **Gráficos por segundo ficam no seu PC:** os dados por segundo da live ficam 7 dias no PC e só sobem quando você marca um problema, algo grave acontece ou um amigo da live pede. Desligado, nada sobe sem você confirmar.

@@ -66,6 +66,7 @@ public sealed partial class MainForm : IStageHost
         InitArquivosTela(); // enviar arquivo (MainForm.ArquivosTela.cs)
         AdicionarNovidades(); // tela Novidades (MainForm.Novidades.cs)
         IniciarDicasDeUso(); // MainForm.DicasDeUso.cs
+        AdicionarMumu(); // aba da Mumu (MainForm.Mumu.cs)
         _hoverTimer.Tick += (_, _) => TickFlyout();
         _hoverTimer.Start();
         LocationChanged += (_, _) => _playerStage?.Relayout(); // os vídeos acompanham a janela
@@ -240,7 +241,7 @@ public sealed partial class MainForm : IStageHost
         _preparationView = false;
         _stageView = stage;
         _settingsView = false;
-        _filmeView = _arquivosView = _gruposView = _novidadesView = false;
+        _filmeView = _arquivosView = _gruposView = _novidadesView = _mumuView = false;
         ApplyView();
     }
 
@@ -250,7 +251,7 @@ public sealed partial class MainForm : IStageHost
         if (_preparationBusy) return;
         _preparationView = false;
         _settingsView = true;
-        _filmeView = _arquivosView = _gruposView = _novidadesView = false;
+        _filmeView = _arquivosView = _gruposView = _novidadesView = _mumuView = false;
         _stageView = false; // os vídeos estacionam fora da tela e continuam tocando
         ApplyView();
     }
@@ -272,15 +273,16 @@ public sealed partial class MainForm : IStageHost
             _settingsRailActive = false;
             _side.SnapCollapsed(_lastStreamCount > 0 || _wasNarrow || _sideBeforeSettings);
         }
-        if (_filmeView) _gruposView = _novidadesView = false; // o Cinema (MainForm.Filme.cs) não zera estas vistas: as telas de Grupos e Novidades não podem sobrar por baixo dele
+        if (_filmeView) _gruposView = _novidadesView = _mumuView = false; // o Cinema (MainForm.Filme.cs) não zera estas vistas: as telas de Grupos e Novidades não podem sobrar por baixo dele
         SincronizarNovidades(); // MainForm.Novidades.cs: saiu da tela Novidades = o que ela mostrou vira visto
-        _homeHost.Visible = !_stageView && !_settingsView && !_filmeView && !_preparationView && !_arquivosView && !_gruposView && !_novidadesView;
+        _homeHost.Visible = !_stageView && !_settingsView && !_filmeView && !_preparationView && !_arquivosView && !_gruposView && !_novidadesView && !_mumuView;
         _preparationHost.Visible = _preparationView;
         _filmeHost.Visible = _filmeView && !_stageView && !_settingsView; // o filme continua tocando escondido
         // a preparação da live passa por cima e, ao voltar, a tela de arquivos reaparece (o _arquivosView não muda enquanto isso)
         _arquivosHost.Visible = _arquivosView && !_stageView && !_settingsView && !_filmeView && !_preparationView;
         _gruposHost.Visible = _gruposView && !_stageView && !_settingsView && !_filmeView && !_preparationView;
         _novidadesHost.Visible = _novidadesView && !_stageView && !_settingsView && !_filmeView && !_preparationView;
+        _mumuHost.Visible = _mumuView && !_stageView && !_settingsView && !_filmeView && !_preparationView;
         _settingsHost.Visible = _settingsView;
         _stageCanvas.Visible = _stageView;
         PlacePreparation();
@@ -300,7 +302,7 @@ public sealed partial class MainForm : IStageHost
         friends.AddRange(AusentesParaBarra()); // por último, em ordem alfabética (MainForm.Apelidos.cs); a sala antiga não tem ausentes
         GuardarNomesReais();
         var view = _preparationView ? SideView.Transmit : _settingsView ? SideView.Settings : _stageView ? SideView.Stage : _filmeView ? SideView.Filme
-            : _arquivosView ? SideView.Arquivos : _gruposView ? SideView.Grupos : _novidadesView ? SideView.Novidades : SideView.Home;
+            : _arquivosView ? SideView.Arquivos : _gruposView ? SideView.Grupos : _novidadesView ? SideView.Novidades : _mumuView ? SideView.Mumu : SideView.Home;
         var self = SelfForSide();
         _side.SetProfile(Nick, MyAvatarImage());
         _side.SetData(friends, _playerStage?.Count ?? 0, view, _groupStatus.Text, self);
@@ -487,6 +489,9 @@ public sealed partial class MainForm : IStageHost
         panel.NovidadesVisivel = _side.NovidadesVisivel;
         panel.NovidadesNovas = _side.NovidadesNovas;
         panel.NovidadesClicked += MostrarNovidades; // MainForm.Novidades.cs
+        panel.MumuVisivel = _side.MumuVisivel;
+        panel.MumuNovo = _side.MumuNovo;
+        panel.MumuClicked += MostrarMumu; // MainForm.Mumu.cs
         panel.StageClicked += () => { HideFlyout(); ShowView(stage: true); };
         panel.SettingsClicked += () => { HideFlyout(); ShowSettings(); };
         panel.ToggleClicked += () => { HideFlyout(); ToggleSidebar(); }; // o « » da barra flutuante a fixa aberta

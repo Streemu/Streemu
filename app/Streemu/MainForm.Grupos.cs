@@ -56,7 +56,7 @@ public sealed partial class MainForm
         HideFlyout();
         if (_preparationBusy) return;
         if (ContaBloqueia()) return;
-        _preparationView = _stageView = _settingsView = _filmeView = _arquivosView = _novidadesView = false;
+        _preparationView = _stageView = _settingsView = _filmeView = _arquivosView = _novidadesView = _mumuView = false;
         _gruposView = true;
         AtualizarGruposUi();
         ApplyView();

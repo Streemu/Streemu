@@ -906,6 +906,125 @@ Caso("denuncia-nada-no-log", async () =>
     Exige(linhas.Count == 0, "o envio da denúncia escreveu no log: " + string.Join(" | ", linhas));
 });
 
+// ------------------------------------------------------------------ recados da aba da Mumu (spec 031, T3): a regra do selo "NOVO" da barra
+
+Caso("mumu-selo-aparece-com-recado-nao-visto-e-some-depois-de-visto", async () =>
+{
+    await Task.CompletedTask;
+    var lista = RecadoDaMumu.LerLista("""{"recados":[{"id":"20261127-1000","texto":"Oi","data":"2026-11-27"},{"id":"20261120-0900","texto":"Antigo","data":"2026-11-20"}]}""");
+    Exige(lista.Count == 2 && lista[0].Id == "20261127-1000", "o mais novo vem primeiro");
+    Exige(RecadoDaMumu.TemNovo(lista, null), "quem nunca viu nenhum recado vê o selo");
+    Exige(RecadoDaMumu.TemNovo(lista, "20261120-0900"), "viu só o antigo: o mais novo acende o selo");
+    Exige(!RecadoDaMumu.TemNovo(lista, "20261127-1000"), "viu o mais novo: o selo some");
+    Exige(!RecadoDaMumu.TemNovo([], null) && !RecadoDaMumu.TemNovo([], "20261127-1000"), "sem recado (ou retirado), nunca há selo");
+    // o que o app guarda no estado volta igual: o selo sobrevive a fechar e abrir o app sem rede
+    var guardado = RecadoDaMumu.LerLista(RecadoDaMumu.Guardar(lista));
+    Exige(RecadoDaMumu.TemNovo(guardado, null) && !RecadoDaMumu.TemNovo(guardado, "20261127-1000"), "a lista guardada dá a mesma resposta");
+    // recado novo depois de visto o anterior: o selo volta
+    var maisNovo = RecadoDaMumu.LerLista("""{"recados":[{"id":"20261128-0800","texto":"Novo"},{"id":"20261127-1000","texto":"Oi"}]}""");
+    Exige(RecadoDaMumu.TemNovo(maisNovo, "20261127-1000"), "recado publicado depois do último visto acende o selo de novo");
+});
+
+Caso("mumu-recado-de-teste-usa-o-formato-do-servidor", async () =>
+{
+    await Task.CompletedTask;
+    Exige(RecadoDaMumu.VariavelDeTeste == "STREEMU_MUMU_RECADO_TESTE", "nome da variável documentada");
+    // o formato antigo (um recado só) também vale na variável, como na rota
+    var so = RecadoDaMumu.LerLista("""{"recado":{"id":"20261127-1000","texto":"Oi"}}""");
+    Exige(so.Count == 1 && RecadoDaMumu.TemNovo(so, null), "um recado só, como o Worker antigo");
+    Exige(RecadoDaMumu.LerLista("""{"recados":[],"recado":null}""").Count == 0, "lista vazia");
+});
+
+// ------------------------------------------------------------------ feedback da aba da Mumu (spec 031, D5): corpo, privacidade e envio
+
+Caso("feedback-corpo-anonimo-so-tem-texto-versao-e-comNome-falso", async () =>
+{
+    await Task.CompletedTask;
+    var c = FeedbackDaMumu.MontarCorpo("  O som estourou ontem.  ", false, "0.6.0")!;
+    Exige(c.Select(kv => kv.Key).OrderBy(x => x).SequenceEqual(new[] { "comNome", "texto", "versao" }), "só texto, versao e comNome: " + c.ToJsonString());
+    Exige(c["texto"]!.GetValue<string>() == "O som estourou ontem." && c["versao"]!.GetValue<string>() == "0.6.0" && c["comNome"]!.GetValue<bool>() == false, "valores do corpo anônimo");
+    var com = FeedbackDaMumu.MontarCorpo("Adorei", true, "0.6.0")!;
+    Exige(com["comNome"]!.GetValue<bool>() && com.Count == 3, "com nome: só a marca, o app não manda id nem nome (o servidor tira do token)");
+    Exige(FeedbackDaMumu.MontarCorpo("   ", true, "0.6.0") == null && FeedbackDaMumu.MontarCorpo(null, false, "0.6.0") == null, "texto vazio não gera corpo");
+});
+
+Caso("feedback-texto-nunca-leva-ip-pc-usuario-nem-caminho", async () =>
+{
+    await Task.CompletedTask;
+    var pc = Environment.MachineName;
+    var perfil = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    var texto = $"Meu IP é 203.0.113.45, o PC {pc} cai em {perfil}\\Videos\\x e em D:\\Filmes\\Serie\\ep1.mkv; token sa1.abc.def";
+    var limpo = FeedbackDaMumu.MontarCorpo(texto, true, "0.6.0")!["texto"]!.GetValue<string>();
+    Exige(!limpo.Contains("203.0.113.45") && limpo.Contains("203.0.x.x"), "IP inteiro não sai: " + limpo);
+    if (pc.Length >= 3) Exige(!limpo.Contains(pc, StringComparison.OrdinalIgnoreCase), "nome do PC não sai: " + limpo);
+    Exige(!limpo.Contains(perfil, StringComparison.OrdinalIgnoreCase) && !limpo.Contains("Filmes") && !limpo.Contains("sa1.abc"), "perfil, caminho e token não saem: " + limpo);
+});
+
+Caso("feedback-limite-de-1000-sem-cortar-par-substituto", async () =>
+{
+    await Task.CompletedTask;
+    var longo = new string('a', 1500);
+    Exige(FeedbackDaMumu.LimparTexto(longo)!.Length == FeedbackDaMumu.TextoMax, "corta em 1000");
+    var emoji = FeedbackDaMumu.LimparTexto(new string('a', 999) + "😀")!;
+    Exige(emoji.Length == 999 && !char.IsHighSurrogate(emoji[^1]), "não deixa meio emoji no fim");
+});
+
+Caso("feedback-envio-vai-com-o-token-e-o-corpo-combinado", async () =>
+{
+    var (c, _, f, _, _, _) = await Entrar();
+    f.Pedidos.Clear();
+    f.Rota = (m, p, corpo) => p == "/feedback" ? (200, new JsonObject { ["ok"] = true }) : (404, new JsonObject());
+    var r = await c.EnviarFeedbackAsync("Muito bom", true, "0.6.0");
+    Exige(r.Ok && r.Texto == FeedbackDaMumu.Enviado, "200 é sucesso com a frase de agradecimento");
+    var p = f.Pedidos.Single();
+    Exige(p.Metodo == "POST" && p.Path == "/feedback" && p.Cabecalhos["authorization"] == "Bearer sa1.carga.assinatura", "método, caminho e token");
+    Exige(p.Corpo!.ToJsonString() == FeedbackDaMumu.MontarCorpo("Muito bom", true, "0.6.0")!.ToJsonString(), "corpo igual ao montado");
+    f.Pedidos.Clear();
+    r = await c.EnviarFeedbackAsync("   ", false, "0.6.0");
+    Exige(!r.Ok && r.Erro == "texto_vazio" && f.Pedidos.Count == 0, "vazio nem vai ao servidor");
+});
+
+Caso("feedback-falhas-tem-motivo-e-proxima-acao-sem-janela", async () =>
+{
+    var (c, _, f, _, _, _) = await Entrar();
+    f.Rota = (m, p, b) => p == "/feedback" ? (429, new JsonObject { ["erro"] = "ritmo", ["texto"] = "Você já mandou 5 recados hoje. Tente de novo amanhã." }) : (404, new JsonObject());
+    var r = await c.EnviarFeedbackAsync("x", false, "0.6.0");
+    Exige(!r.Ok && r.Erro == "ritmo" && r.Texto == "Você já mandou 5 recados hoje. Tente de novo amanhã.", "429 traz o motivo do servidor");
+    f.Rota = (m, p, b) => p == "/feedback" ? (500, new JsonObject()) : (404, new JsonObject());
+    r = await c.EnviarFeedbackAsync("x", false, "0.6.0");
+    Exige(!r.Ok && r.Texto!.Contains("tente de novo", StringComparison.OrdinalIgnoreCase), "500: frase com a próxima ação");
+    f.Rota = (m, p, b) => p == "/feedback" ? (-1, null!) : (404, new JsonObject());
+    r = await c.EnviarFeedbackAsync("x", false, "0.6.0");
+    Exige(!r.Ok && r.Erro == "sem_rede" && !string.IsNullOrEmpty(r.Texto), "sem rede: frase pronta");
+});
+
+Caso("feedback-401-renova-o-token-e-nada-do-texto-vai-ao-log", async () =>
+{
+    var (c, _, f, _, _, _) = await Entrar();
+    int n = 0;
+    f.Pedidos.Clear();
+    f.Rota = (m, p, b) =>
+    {
+        if (p == "/conta/renovar") return (200, Sessao("sa1.novo.token", Agora() + 3600));
+        if (p == "/feedback") return (++n == 1 ? 401 : 200, new JsonObject { ["ok"] = true });
+        return (404, new JsonObject());
+    };
+    var linhas = new List<string>();
+    void Ouvir(string l) { lock (linhas) linhas.Add(l); }
+    Log.Line += Ouvir;
+    try
+    {
+        var r = await c.EnviarFeedbackAsync("segredo-do-texto-12345", false, "0.6.0");
+        Exige(r.Ok, "depois do 401 o segundo envio passa");
+        f.Rota = (m, p, b) => (-1, null!);
+        await c.EnviarFeedbackAsync("segredo-do-texto-12345", false, "0.6.0");
+    }
+    finally { Log.Line -= Ouvir; }
+    var envios = f.Pedidos.Where(p => p.Path == "/feedback").ToList();
+    Exige(envios[0].Cabecalhos["authorization"] == "Bearer sa1.carga.assinatura" && envios[1].Cabecalhos["authorization"] == "Bearer sa1.novo.token", "token renovado no segundo envio");
+    Exige(!linhas.Any(l => l.Contains("segredo-do-texto")), "o texto da pessoa não pode ir para o log");
+});
+
 Console.WriteLine($"casos: {falhas} falha(s) em {total}");
 return falhas == 0 ? 0 : 1;
 

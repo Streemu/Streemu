@@ -54,7 +54,7 @@ public sealed partial class MainForm
         HideFlyout();
         if (_preparationBusy) return;
         if (ContaBloqueia()) return;
-        _preparationView = _stageView = _settingsView = _filmeView = _arquivosView = _gruposView = false;
+        _preparationView = _stageView = _settingsView = _filmeView = _arquivosView = _gruposView = _mumuView = false;
         _novidadesView = true;
         // com o que a pessoa viu ATÉ AGORA: as bolinhas de "novo" aparecem enquanto ela lê; o que ela viu só entra na saída (SincronizarNovidades)
         _novidadesTela.Mostrar(_novidadesVersoes, Program.Version, _state.NovidadesVistas);

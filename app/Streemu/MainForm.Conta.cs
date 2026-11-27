@@ -72,7 +72,7 @@ public sealed partial class MainForm
     bool ContaBloqueia()
     {
         if (!EntradaObrigatoria) return false;
-        _stageView = _settingsView = _filmeView = _gruposView = _novidadesView = _preparationView = false;
+        _stageView = _settingsView = _filmeView = _gruposView = _novidadesView = _mumuView = _preparationView = false;
         ApplyView();
         Notify("Entre na sua conta para usar.");
         return true;

@@ -5,7 +5,7 @@ using Streemu.Util;
 namespace Streemu.Ui;
 
 /// <summary>Qual vista da janela está aberta (a barra marca o item dela).</summary>
-public enum SideView { Home, Stage, Settings, Filme, Transmit, Arquivos, Grupos, Novidades }
+public enum SideView { Home, Stage, Settings, Filme, Transmit, Arquivos, Grupos, Novidades, Mumu }
 
 /// <summary>Estado do indicador do diagnóstico na barra lateral. Hidden = não desenha (antes de o app decidir).</summary>
 public enum DiagState { Hidden, Neutral, Ok, Fail }
@@ -29,7 +29,7 @@ public sealed class SidePanel : Control
 {
     public const int OpenAt96 = UiMetrics.SidebarWidth;
     const int RailAt96 = UiMetrics.RailWidth, AvatarAt96 = UiMetrics.Avatar;
-    enum Kind { Toggle, Home, Filme, Stage, Transmit, Profile, Self, StopLive, Settings, Friend, Section, Problem, Diag, Update, Bell, Arquivos, Grupos, Novidades, Theme, GroupFilter, Atividade }
+    enum Kind { Toggle, Home, Filme, Stage, Transmit, Profile, Self, StopLive, Settings, Friend, Section, Problem, Diag, Update, Bell, Arquivos, Grupos, Novidades, Mumu, Theme, GroupFilter, Atividade }
     readonly record struct NavigationItem(Kind Action, SideView View, string Caption, UiIcon Icon);
     static readonly NavigationItem[] Navigation =
     [
@@ -38,6 +38,7 @@ public sealed class SidePanel : Control
         new(Kind.Filme, SideView.Filme, "Cinema", UiIcon.Cinema),
         new(Kind.Arquivos, SideView.Arquivos, "Enviar arquivo", UiIcon.Upload), // spec 020; só com ArquivosVisivel
         new(Kind.Grupos, SideView.Grupos, "Grupos", UiIcon.People), // só com GruposVisivel (servidor com contas)
+        new(Kind.Mumu, SideView.Mumu, UiBrand.NomeDaAbaMumu, UiIcon.Cat), // spec 031, logo abaixo de Grupos (pedido de 2026-11-27); só com MumuVisivel
         new(Kind.Diag, SideView.Settings, "Diagnóstico", UiIcon.Shield), // item de navegação no desenho; abre os Ajustes, onde está o detalhe
         new(Kind.Settings, SideView.Settings, "Configurações", UiIcon.Settings),
         new(Kind.Novidades, SideView.Novidades, "Novidades", UiIcon.Sparkle), // plano 027; só com NovidadesVisivel
@@ -104,6 +105,13 @@ public sealed class SidePanel : Control
     /// <summary>Tem novidade que a pessoa ainda não viu: selo "NOVO" na barra aberta, bolinha no trilho.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool NovidadesNovas { get => _novidadesNovas; set { if (_novidadesNovas == value) return; _novidadesNovas = value; Invalidate(); } }
+    /// <summary>A aba da Mumu (spec 031): recados dos responsáveis; ligada pela janela principal (MainForm.Mumu.cs). O selo avisa recado novo.</summary>
+    public event Action? MumuClicked;
+    bool _mumuVisivel, _mumuNovo;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool MumuVisivel { get => _mumuVisivel; set { if (_mumuVisivel == value) return; _mumuVisivel = value; PerformLayout(); Invalidate(); } }
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool MumuNovo { get => _mumuNovo; set { if (_mumuNovo == value) return; _mumuNovo = value; Invalidate(); } }
     int _arquivosPendentes;
     /// <summary>Pedidos esperando uma resposta minha (aceitar, mandar de novo, cota do relay): aparece como "Enviar arquivo · N".</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -382,7 +390,7 @@ public sealed class SidePanel : Control
         y += V(BrandHeightNow + (low ? 4 : 12));
         foreach (var item in Navigation)
         {
-            if (item.Action == Kind.Filme && !FilmeVisivel || item.Action == Kind.Arquivos && !ArquivosVisivel || item.Action == Kind.Grupos && !GruposVisivel || item.Action == Kind.Novidades && !NovidadesVisivel || item.Action == Kind.Stage && _streams == 0) continue;
+            if (item.Action == Kind.Filme && !FilmeVisivel || item.Action == Kind.Arquivos && !ArquivosVisivel || item.Action == Kind.Grupos && !GruposVisivel || item.Action == Kind.Novidades && !NovidadesVisivel || item.Action == Kind.Mumu && !MumuVisivel || item.Action == Kind.Stage && _streams == 0) continue;
             // Transmitir é um grupo à parte (mockups 1–24): o espaço antes dele não depende de live, palco ou largura, então a linha não anda
             // o espaço que separa o grupo não encolhe abaixo de 10 dp (com o espaço da linha de cima), senão Transmitir parece colado no item de cima (Início, desde o #273)
             if (item.Action == Kind.Transmit) y += Math.Max(V(low ? TransmitGapLowAt96 : TransmitGapAt96), Dp(10) - V(4));
@@ -503,6 +511,7 @@ public sealed class SidePanel : Control
             case Kind.Arquivos: ArquivosClicked?.Invoke(); break;
             case Kind.Grupos: GruposClicked?.Invoke(); break;
             case Kind.Novidades: NovidadesClicked?.Invoke(); break;
+            case Kind.Mumu: MumuClicked?.Invoke(); break;
             case Kind.Stage: StageClicked?.Invoke(); break;
             case Kind.Settings: SettingsClicked?.Invoke(); break;
             case Kind.Transmit: TransmitClicked?.Invoke(); break;
@@ -537,6 +546,7 @@ public sealed class SidePanel : Control
 
     string LabelFor(Row row) => row.Kind switch
     {
+        Kind.Mumu => _mumuNovo ? UiBrand.NomeDaAbaMumu + ": tem recado novo" : UiBrand.NomeDaAbaMumu,
         Kind.Novidades => _novidadesNovas ? "Novidades: tem coisa nova desde a última vez" : "Novidades",
         Kind.Transmit => _self == null ? "Transmitir" : "Sua transmissão · AO VIVO",
         Kind.Profile => _profileName + " · Perfil", Kind.Friend => row.Friend!.Nick + (row.Friend.OnScreen ? " · Assistindo" : row.Friend.Live ? " · Ao vivo" : row.Friend.Offline ? " · Offline" : " · Online"),
@@ -598,12 +608,13 @@ public sealed class SidePanel : Control
         switch (row.Kind)
         {
             case Kind.Toggle: DrawToggle(g, row.Bounds, hover); break;
-            case Kind.Home or Kind.Filme or Kind.Stage or Kind.Settings or Kind.Arquivos or Kind.Grupos or Kind.Novidades:
+            case Kind.Home or Kind.Filme or Kind.Stage or Kind.Settings or Kind.Arquivos or Kind.Grupos or Kind.Novidades or Kind.Mumu:
                 var item = Navigation.First(n => n.Action == row.Kind);
                 DrawNav(g, row.Bounds, item.Icon, row.Text, _view == item.View, hover);
                 if (row.Kind == Kind.Filme) DrawBeta(g, row.Bounds);
                 if (row.Kind == Kind.Arquivos && _arquivosPendentes == 0) DrawSelo(g, row.Bounds, "NOVO", Theme.SuccessSurface);
                 if (row.Kind == Kind.Novidades && _novidadesNovas) DrawSelo(g, row.Bounds, "NOVO", Rail ? Theme.Accent : Theme.SuccessSurface); // no trilho vira o ponto de destaque, como o do sino
+                if (row.Kind == Kind.Mumu && _mumuNovo) DrawSelo(g, row.Bounds, "NOVO", Rail ? Theme.Accent : Theme.SuccessSurface);
                 break;
             case Kind.Transmit:
                 if (_self == null) DrawNav(g, row.Bounds, UiIcon.Broadcast, row.Text, _view == SideView.Transmit, hover);

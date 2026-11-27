@@ -188,6 +188,10 @@ public static class UiIcons
 public static class UiBrand
 {
     public const string Name = "Streemu";
+    /// <summary>O nome do item da barra lateral onde a Mumu fala com a pessoa (spec 031, D1): curto, para caber ao lado dos outros.</summary>
+    public const string NomeDaAbaMumu = "Mumu";
+    /// <summary>O título da tela da Mumu (spec 031, D1): o item da barra é "Mumu", a tela se chama "Cantinho da Mumu".</summary>
+    public const string TituloDaTelaMumu = "Cantinho da Mumu";
     public const string Mark = "gato.png", SleepingMumu = "mumu-dormindo.png", PopcornMumu = "mumu-pipoca.png";
     /// <summary>O logo inteiro (o gato dormindo com o "Streemu"), de 2026-11-19; <c>gato.png</c> é o mesmo gato recortado, para onde só cabe um quadrado.</summary>
     public const string Wordmark = "logo.png";

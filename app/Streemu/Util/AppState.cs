@@ -132,6 +132,18 @@ public sealed class AppState
     public List<GrupoSalvo> Grupos { get; set; } = new();
     /// <summary>Chaves (<see cref="Novidades.Chave"/>) das novidades que a pessoa já viu, até 400. Nulo = nunca abriu um app com a tela Novidades: na primeira vez marca tudo como visto, sem selo.</summary>
     public List<string>? NovidadesVistas { get; set; }
+    /// <summary>Último recado da Mumu que o servidor deu (spec 031): aparece na aba mesmo sem internet. Vazio = só o recado padrão.</summary>
+    public string? MumuRecadoId { get; set; }
+    public string? MumuRecadoTexto { get; set; }
+    /// <summary>A última resposta inteira de <c>/recado</c> (a lista do histórico), lida de novo com <see cref="Streemu.Net.RecadoDaMumu.LerLista"/> quando não há internet.</summary>
+    public string? MumuRecadosJson { get; set; }
+    /// <summary>O id do recado mais novo que a pessoa já viu na aba: diferente do mais novo do servidor = recado novo (a Mumu acorda e o recado ganha destaque).</summary>
+    public string? MumuRecadoVisto { get; set; }
+    /// <summary>A pose sorteada para o recado <see cref="MumuPoseRecado"/> (o mesmo recado mantém a mesma pose enquanto for o mais novo).</summary>
+    public string? MumuPose { get; set; }
+    public string? MumuPoseRecado { get; set; }
+    /// <summary>As poses que já saíram no sorteio; a próxima sai das que faltam e, usadas todas, a roda recomeça (spec 031, 5).</summary>
+    public List<string>? MumuPosesUsadas { get; set; }
     public string? TelemetriaPerfilHash { get; set; }
     public DateTime TelemetriaPerfilEm { get; set; }
     public DateTime SavedAt { get; set; }

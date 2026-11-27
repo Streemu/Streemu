@@ -57,7 +57,7 @@ public partial class MainForm
         if (_preparationBusy) return;
         _preparationView = _stageView = _settingsView = _filmeView = false;
         _arquivosView = true;
-        _gruposView = _novidadesView = false;
+        _gruposView = _novidadesView = _mumuView = false;
         if (amigoId != null) { tela.AbrirAba(0); tela.EscolherAmigo(amigoId); }
         _arquivosSujo = true;
         AtualizarTelaArquivos();

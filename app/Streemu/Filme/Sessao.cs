@@ -99,6 +99,27 @@ public sealed class Sessao : IDisposable
     {
         Anfitriao = anfitriao; Filme = filme; Nome = nome; NomeAnfitriao = nomeAnfitriao; _meuNome = meuNome; _meuId = meuId;
         _mpv = mpv; _relogio = relogio; _idaVolta = idaVolta; _enviar = enviar;
+        if (anfitriao)
+        {
+            // timer da thread da janela (o _enviar mexe nas ligações do MainForm, que só a thread da tela toca); a Sessão nasce sempre nela
+            _reenvio = new System.Windows.Forms.Timer { Interval = EstadoDoFilme.ReenvioMs };
+            _reenvio.Tick += (_, _) => ReenviarEstado();
+            _reenvio.Start();
+        }
+    }
+
+    readonly System.Windows.Forms.Timer? _reenvio;
+    bool _soltada;
+
+    /// <summary>
+    /// Anfitrião: repete o estado atual com o MESMO seq (7.5). Não passa por Publicar/Definir: não muda nada aqui, não toca o mpv, não acorda a transmissão.
+    /// Quem está em dia o ignora no Receber; quem perdeu um comando (caso de 2026-11-28: o play depois de uma pausa longa) vê o seq maior e aplica.
+    /// </summary>
+    public bool ReenviarEstado()
+    {
+        if (!EstadoDoFilme.DeveReenviar(Anfitriao, _seq, _soltada)) return false;
+        _enviar(Estado());
+        return true;
     }
 
     /// <summary>Onde o filme deveria estar agora, pela linha do tempo comum.</summary>
@@ -158,6 +179,7 @@ public sealed class Sessao : IDisposable
     {
         if (!Anfitriao)
         {
+            if (AnfitriaoCaiu) return; // sem ligação: o pedido não iria a lugar nenhum
             if (!TodosControlam) { Aviso?.Invoke($"Só {NomeAnfitriao} controla o filme."); return; }
             _enviar(new JsonObject { ["type"] = "filme_pedido", ["filme"] = Filme, ["acao"] = acao, ["pos"] = pos, ["nome"] = _meuNome, ["id"] = _meuId.Length > 0 ? _meuId : null });
             return;
@@ -213,7 +235,7 @@ public sealed class Sessao : IDisposable
     /// A fila passou para o episódio seguinte: esta sessão acabou, mas o mpv, a ligação e quem assiste continuam. Só para o que ela faz (a correção contínua e o que estiver
     /// sendo aplicado) sem fechar o player, que a sessão nova vai usar.
     /// </summary>
-    public void Soltar() { _gen++; _seq++; Tocando = false; }
+    public void Soltar() { _gen++; _seq++; Tocando = false; _soltada = true; _reenvio?.Stop(); _reenvio?.Dispose(); }
 
     /// <summary>
     /// A sessão do episódio novo herda as escolhas e as pessoas da anterior (todos controlam, quem entrou e o estado de cada um), para ninguém precisar entrar de novo e
@@ -228,6 +250,7 @@ public sealed class Sessao : IDisposable
         foreach (var kv in velha._nomes) _nomes[kv.Key] = kv.Value;
         foreach (var kv in velha.Amigos) Amigos[kv.Key] = kv.Value;
         foreach (var n in velha._comArquivo) _comArquivo.Add(n);
+        foreach (var n in velha._semSinal) _semSinal.Add(n);
     }
 
     void Publicar(bool tocando, double pos, long t, bool pulo = false)
@@ -243,7 +266,39 @@ public sealed class Sessao : IDisposable
         ["type"] = "filme_estado", ["filme"] = Filme, ["seq"] = _seq, ["tocando"] = Tocando, ["pos"] = _pos, ["t"] = _t, ["todos"] = TodosControlam, ["pulo"] = _pulo,
     };
 
-    public void AmigoSaiu(string id) { _comArquivo.Remove(id); if (Amigos.Remove(id)) { Mudou?.Invoke(); TalvezComecar(); } }
+    public void AmigoSaiu(string id) { _comArquivo.Remove(id); _semSinal.Remove(id); if (Amigos.Remove(id)) { Mudou?.Invoke(); TalvezComecar(); } }
+
+    // ------------------------------------------------------------------ sinal (MainForm.FilmeSinal.cs)
+
+    /// <summary>
+    /// Anfitrião: quem está sem sinal (túnel dele perdido), pelo id. Só aparece na lista de pessoas ("Sem sinal"): não muda o estado de ninguém, não pausa os outros
+    /// e não atrapalha o "todos prontos" (o <see cref="Amigos"/> segue como está; a pessoa volta sozinha quando o sinal voltar).
+    /// </summary>
+    readonly HashSet<string> _semSinal = new();
+    public bool SemSinalDe(string id) => _semSinal.Contains(id);
+    /// <summary>O texto do estado da pessoa na lista, com o "sem sinal" por cima do que ela mandou.</summary>
+    public string EstadoVisto(string id, string valor) => _semSinal.Contains(id) ? "sem sinal" : valor;
+    public void MarcarSemSinal(string id, bool sem)
+    {
+        if (sem ? _semSinal.Add(id) : _semSinal.Remove(id)) Mudou?.Invoke();
+    }
+
+    /// <summary>Espectador: o anfitrião ficou sem sinal por tempo demais (<see cref="SinalDoAnfitriao.Limite"/>) e a ligação foi encerrada.</summary>
+    public bool AnfitriaoCaiu { get; private set; }
+
+    /// <summary>
+    /// Espectador: o anfitrião deu por caído. Pausa o mpv aqui, no ponto em que a linha do tempo estava, e para a correção contínua. Não manda nada a ninguém (a ligação
+    /// acabou); a janela fica aberta para a pessoa ler o aviso e sair.
+    /// </summary>
+    public void PararPorQueda()
+    {
+        if (Anfitriao || AnfitriaoCaiu) return;
+        AnfitriaoCaiu = true;
+        _pos = Posicao; // congela onde o filme estava: o Posicao com Tocando falso devolve este
+        _gen++; Tocando = false; TodosControlam = false; // _gen++ cancela o que estiver sendo aplicado e a correção
+        Mudou?.Invoke();
+        _ = Task.Run(async () => { await _mpv.Set("pause", true); await _mpv.Set("speed", 1.0); _vel = 1; });
+    }
 
     public void MudarPermissao(bool todos)
     {
@@ -259,13 +314,22 @@ public sealed class Sessao : IDisposable
         if (m["filme"]?.GetValue<string>() != Filme) return;
         switch (m["type"]?.GetValue<string>())
         {
-            case "filme_estado" when !Anfitriao:
+            case "filme_estado" when !Anfitriao && !AnfitriaoCaiu:
+            {
                 int seq = m["seq"]?.GetValue<int>() ?? 0;
+                bool todosAntes = TodosControlam;
                 TodosControlam = m["todos"]?.GetValue<bool>() ?? false;
-                if (seq <= _seq) { Mudou?.Invoke(); return; }
+                // o mesmo seq é a repetição periódica do anfitrião (7.5): quem está em dia não faz nada (nem procura nem muda a velocidade)
+                if (!EstadoDoFilme.EhNovo(_seq, seq)) { if (todosAntes != TodosControlam) Mudou?.Invoke(); return; }
+                bool tocando = m["tocando"]?.GetValue<bool>() ?? false;
+                double posicao = m["pos"]?.GetValue<double>() ?? 0;
+                // seq que pulou números: um comando se perdeu pelo caminho e a repetição periódica trouxe o estado de agora (o caso de 2026-11-28)
+                string pulou = _seq > 0 && seq > _seq + 1 ? $" (pulou do {_seq}: {seq - _seq - 1} comando(s) não chegaram)" : "";
+                Log.Info($"[filme] estado {seq} do anfitrião: {(tocando ? "tocando" : "pausado")} em {posicao:0.#} s{pulou}.");
                 _seq = seq;
-                Definir(m["tocando"]?.GetValue<bool>() ?? false, m["pos"]?.GetValue<double>() ?? 0, m["t"]?.GetValue<long>() ?? 0, m["pulo"]?.GetValue<bool>() ?? false);
+                Definir(tocando, posicao, m["t"]?.GetValue<long>() ?? 0, m["pulo"]?.GetValue<bool>() ?? false);
                 break;
+            }
             case "filme_carregado" when Anfitriao:
                 if ((m["seq"]?.GetValue<int>() ?? -1) == _seq) _carregados.Add(Quem(m, ""));
                 break;
@@ -341,6 +405,7 @@ public sealed class Sessao : IDisposable
                 if (gen != _gen) return;
                 await _mpv.Set("pause", true);
                 await _mpv.Seek(pos);
+                _falhasAplicar = 0;
                 if (pulo >= 0)
                 {
                     await _mpv.WaitSeekAsync();
@@ -358,6 +423,7 @@ public sealed class Sessao : IDisposable
                 if (double.IsNaN(atual) || Math.Abs(atual - pos) > 0.25) { await _mpv.Seek(pos); await _mpv.WaitSeekAsync(); }
                 if (gen != _gen) return;
                 await _mpv.Set("pause", false);
+                _falhasAplicar = 0;
                 // a linha do tempo começa quando o mpv de fato despausou: senão a correção (7.4) acelera à toa para tirar esses ms
                 if (gen == _gen && _relogio() is long agora) { _pos = pos; _t = agora; }
                 _alinhado = false;
@@ -373,11 +439,22 @@ public sealed class Sessao : IDisposable
             await EsperarAte(inicio);
             if (gen != _gen) return;
             await _mpv.Set("pause", false);
+            _falhasAplicar = 0;
             _alinhado = false;
             await CorrigirAsync(gen);
         }
-        catch (Exception e) { Log.Info($"[filme] falha ao aplicar o estado: {e.Message}"); }
+        catch (OperationCanceledException) { } // um estado mais novo passou na frente (EsperarRelogioAsync): não é falha
+        catch (Exception e)
+        {
+            // espectador: quem não consegue aplicar o estado do anfitrião fica fora do ponto sem saber; uma falha avulsa só vai para o log, a que se repete vai para a tela
+            Log.Info($"[filme] falha ao aplicar o estado: {e.Message}");
+            if (!Anfitriao && ++_falhasAplicar >= 2 && gen == _gen)
+                Aviso?.Invoke("Não estou conseguindo seguir o filme do anfitrião (o player não responde). Se continuar assim, saia e entre de novo.");
+        }
     }
+
+    /// <summary>Falhas seguidas ao aplicar o estado do anfitrião no mpv (zera quando uma aplicação chega ao fim do passo principal).</summary>
+    int _falhasAplicar;
 
     async Task<long> EsperarRelogioAsync(int gen)
     {
@@ -439,7 +516,7 @@ public sealed class Sessao : IDisposable
         return new JsonObject
         {
             ["papel"] = Anfitriao ? "anfitriao" : "espectador", ["seq"] = _seq, ["tocando"] = Tocando, ["amostras"] = e.Length,
-            ["erro_mediana_ms"] = Q(0.5), ["erro_p95_ms"] = Q(0.95), ["erro_max_ms"] = e.Length == 0 ? -1 : Math.Round(e[^1], 1), ["pulos"] = _pulos, ["espera_pulo_ms"] = UltimaEsperaPuloMs, ["comecou_com"] = ComecouCom,
+            ["erro_mediana_ms"] = Q(0.5), ["erro_p95_ms"] = Q(0.95), ["erro_max_ms"] = e.Length == 0 ? -1 : Math.Round(e[^1], 1), ["pulos"] = _pulos, ["espera_pulo_ms"] = UltimaEsperaPuloMs, ["comecou_com"] = ComecouCom, ["anfitriao_caiu"] = AnfitriaoCaiu,
         };
     }
 
@@ -452,6 +529,8 @@ public sealed class Sessao : IDisposable
     public void Dispose()
     {
         _gen++;
+        _soltada = true;
+        _reenvio?.Stop(); _reenvio?.Dispose();
         _mpv.Dispose();
     }
 }

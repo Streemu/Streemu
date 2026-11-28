@@ -297,7 +297,8 @@ public sealed class StreamTela : Form
     public void Estado(JsonObject m)
     {
         int seq = m["seq"]?.GetValue<int>() ?? 0;
-        if (seq <= _seq) return;
+        // o mesmo seq é a repetição periódica do anfitrião (Sessao.ReenviarEstado): não reaplica nada. Um seq maior depois de uma pausa longa é o comando que se perdeu.
+        if (_anfitriaoCaiu || !EstadoDoFilme.EhNovo(_seq, seq)) return;
         _seq = seq;
         Permissoes(m);
         _filme = m["filme"]?.GetValue<string>() ?? _filme;
@@ -336,6 +337,7 @@ public sealed class StreamTela : Form
                     if (lugar == Lugar.Antes && sw.ElapsedMilliseconds > 2000) PedirRecarregar("o ponto da pausa ficou antes do que chegou");
                     await Task.Delay(150);
                 }
+                if (gen == _gen && lugar == Lugar.Pronto) _falhasAplicar = 0;
                 if (gen == _gen && _tlPulo && lugar == Lugar.Pronto) Carregado?.Invoke(seq, _filme);
                 return;
             }
@@ -358,11 +360,24 @@ public sealed class StreamTela : Form
             await EsperarAte(inicio);
             if (gen != _gen) return;
             await mpv.Set("pause", false);
+            _falhasAplicar = 0;
             _alinhado = false;
             await CorrigirAsync(gen, mpv);
         }
-        catch (Exception e) { Log.Info($"[filme] falha ao seguir a linha do tempo do anfitrião: {e.Message}"); }
+        catch (Exception e)
+        {
+            Log.Info($"[filme] falha ao seguir a linha do tempo do anfitrião: {e.Message}");
+            if (++_falhasAplicar >= 2 && gen == _gen)
+            {
+                // roda numa thread de fundo: o texto da janela só se muda na da janela
+                try { BeginInvoke(new Action(() => Aviso("Não estou conseguindo seguir o filme do anfitrião (o player não responde). Se continuar assim, feche e entre de novo."))); }
+                catch (InvalidOperationException) { }
+            }
+        }
     }
+
+    /// <summary>Falhas seguidas ao seguir a linha do tempo do anfitrião (zera quando o mpv chega a tocar na hora marcada ou a parar no ponto da pausa).</summary>
+    int _falhasAplicar;
 
     enum Lugar { Pronto, Esperar, Antes }
 
@@ -561,6 +576,31 @@ public sealed class StreamTela : Form
 
     public void Aviso(string texto) { _aviso = texto; _avisoAte = DateTime.Now.AddSeconds(6); _info.Text = texto; }
 
+    /// <summary>Aviso que fica na tela até alguém tirá-lo (o <see cref="Aviso"/> some em 6 s): o sinal do anfitrião (MainForm.FilmeSinal.cs). Nulo tira.</summary>
+    public void AvisoFixo(string? texto)
+    {
+        _avisoFixo = texto;
+        if (texto != null) _info.Text = texto;
+    }
+    string? _avisoFixo;
+    bool _anfitriaoCaiu;
+
+    /// <summary>
+    /// O anfitrião ficou 30 s sem sinal e a ligação foi encerrada: o vídeo para aqui, o aviso fica e a janela continua aberta para a pessoa ler e sair
+    /// (o mpv segue aberto por causa do --keep-open, então o fim do fluxo não a fecha).
+    /// </summary>
+    public void AnfitriaoCaiu(string texto)
+    {
+        if (_encerrada) return;
+        _anfitriaoCaiu = true;
+        MotivoFechou ??= "o anfitrião caiu";
+        Interlocked.Increment(ref _gen); // para a correção e qualquer aplicação em curso
+        _tlTocando = _tocando = false; _podeControlar = false;
+        AtualizarPermissoes(); AtualizarBotao();
+        AvisoFixo(texto);
+        if (_mpv is { } mpv) _ = Task.Run(async () => { await mpv.Set("pause", true); await mpv.Set("speed", 1.0); });
+    }
+
     public void Permissoes(JsonObject m)
     {
         _podeControlar = m["todos"]?.GetValue<bool>() == true;
@@ -635,13 +675,13 @@ public sealed class StreamTela : Form
         if (!_arrastando) _linha.Value = Math.Clamp((int)p, 0, _linha.Maximum);
         _tempo.Text = $"{Sessao.Tempo(p)} / {Sessao.Tempo(_duracao)}";
         if (!MpvUi.Ligada)
-            _info.Text = _aviso != null && DateTime.Now < _avisoAte ? _aviso : $"Com {_anfitriao} · {(_podeControlar ? "Todos podem controlar" : "Só o anfitrião controla")}";
+            _info.Text = _avisoFixo ?? (_aviso != null && DateTime.Now < _avisoAte ? _aviso : $"Com {_anfitriao} · {(_podeControlar ? "Todos podem controlar" : "Só o anfitrião controla")}");
         // a duração vai do app: o fluxo do anfitrião não diz quanto o filme tem; "buffer" desenha na linha do tempo o que já chegou
         if (MpvUi.Ligada)
         {
             var buffer = new JsonArray(_faixas.Select(f => (JsonNode?)new JsonArray(Math.Round(f.A, 1), Math.Round(f.B, 1))).ToArray());
             var (eu, meuTom) = _mpvTempo == null ? ("Recebendo o filme", "espera") : ParadoCache ? ("Esperando dados", "espera") : _tocando ? ("Assistindo", "ok") : ("Pausado", "");
-            var (estado, tom) = _aviso != null && DateTime.Now < _avisoAte ? (_aviso, "aviso") : (_podeControlar ? "Todos podem controlar" : $"Só {_anfitriao} controla", "");
+            var (estado, tom) = _avisoFixo != null ? (_avisoFixo, "aviso") : _aviso != null && DateTime.Now < _avisoAte ? (_aviso, "aviso") : (_podeControlar ? "Todos podem controlar" : $"Só {_anfitriao} controla", "");
             // com a lista do anfitrião (filme_pessoas) todo mundo vê quem está na sessão; eu me marco como "Você" com o meu estado daqui. Sem ela (anfitrião em versão antiga), só ele e eu
             var pessoas = new List<MpvUi.Pessoa>();
             if (_pessoasHost is { Count: > 0 })

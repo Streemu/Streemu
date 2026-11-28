@@ -466,6 +466,7 @@ public partial class MainForm
     void AdicionarLinkFilme(PeerLink link)
     {
         _filmeLinks[link.SessionId] = link; // quem assiste e quem serve: o anfitrião troca de episódio sem fechar nenhuma (FilmeTela.Fila.cs)
+        VigiarSinalFilme(link); // MainForm.FilmeSinal.cs: sem sinal do outro lado (anfitrião que travou, espectador que caiu)
         link.Control += m =>
         {
             if (!Tipo(m).StartsWith("filme_")) return;
@@ -483,6 +484,8 @@ public partial class MainForm
     void FimLigacaoFilme(string sid)
     {
         if (!_filmeLinks.Remove(sid, out var link)) return;
+        SoltarSinalFilme(sid); // solta a assinatura do túnel antes de ele ser descartado
+        if (link.IAmSender) AtualizarSemSinalDoAmigo(link.PeerId); // a lista "Na sessão" não guarda "sem sinal" de quem já saiu
         if (_filmeEnvios.Remove(link.Tunnel, out var envio)) Task.Run(envio.Dispose);
         FimStreamDaLigacao(sid);
         Log.Info($"[filme] ligação com {link.PeerNick} encerrada.");

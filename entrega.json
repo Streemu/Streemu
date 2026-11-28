@@ -1,6 +1,6 @@
 {
     "versao":  "0.6.0",
-    "privado":  "d5a2d732786b6cee0476e5b2ee61c60616a67b46",
-    "notas":  "- ﻿Tira a lista de antivirus do diag-entrada.ps1",
+    "privado":  "3a184e61432186ef67c5a23b2cff84fffea2d193",
+    "notas":  "- Reenvia o estado do filme a cada 3 s e avisa quando o anfitrião cai",
     "obrigatoria":  false
 }

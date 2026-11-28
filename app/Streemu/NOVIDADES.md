@@ -9,6 +9,10 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 
 ## Não lançado
 
+### Melhorias
+- **Filme: o play perdido volta sozinho:** se o play ou a pausa do anfitrião não chegar até você, o filme se acerta sozinho em poucos segundos, sem sair e entrar de novo.
+- **Filme: aviso quando o anfitrião some:** se o anfitrião ficar sem sinal, aparece um aviso e o filme continua. Passando de 30 segundos, o filme pausa e avisa que ele caiu.
+
 ## 0.6.0 — 2026-11-25
 !obrigatoria
 Cantinho da Mumu, tela Apoiar, 90 e 120 FPS, denúncia de live, tela Novidades e lives que congelam menos.

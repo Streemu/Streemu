@@ -486,6 +486,7 @@ public sealed partial class FilmeTela : UserControl
         Telemetria?.Invoke("filme_fim", rel);
         Player = null;
         Sessao = null;
+        _avisoFixo = null;
         ArquivoAnfitriao = null;
         LimparFila();
         if (s.Anfitriao) { _lig.Enviar(new JsonObject { ["type"] = "filme_fim", ["filme"] = s.Filme }); _lig.Anunciar(null); }
@@ -499,6 +500,25 @@ public sealed partial class FilmeTela : UserControl
     {
         if (InvokeRequired) { Ui(() => Avisar(texto)); return; }
         _aviso = texto; _avisoAte = DateTime.Now.AddSeconds(6); Atualizar();
+    }
+
+    /// <summary>
+    /// Aviso que fica na tela até alguém tirá-lo (o "Avisar" some em 6 s): o sinal do anfitrião (MainForm.FilmeSinal.cs). Nulo tira.
+    /// Vem da thread da janela principal, que é a mesma desta tela.
+    /// </summary>
+    public void AvisoFixo(string? texto)
+    {
+        if (InvokeRequired) { Ui(() => AvisoFixo(texto)); return; }
+        _avisoFixo = texto; Atualizar();
+    }
+    string? _avisoFixo;
+
+    /// <summary>O anfitrião ficou 30 s sem sinal: o filme pausa aqui e o aviso fica na tela até a pessoa sair (a janela não fecha sozinha, para dar tempo de ler).</summary>
+    public void AnfitriaoCaiu(string texto)
+    {
+        if (InvokeRequired) { Ui(() => AnfitriaoCaiu(texto)); return; }
+        if (Sessao is { Anfitriao: false } s) s.PararPorQueda();
+        AvisoFixo(texto);
     }
 
     void Ui(Action a) { if (IsDisposed || !IsHandleCreated) return; try { BeginInvoke(a); } catch { } }
@@ -521,7 +541,8 @@ public sealed partial class FilmeTela : UserControl
         _tempo.Text = s == null ? "" : Sessao.Tempo(s.Posicao) + (double.IsNaN(s.UltimoErroMs) || !s.Tocando ? "" : $"   ·   {s.UltimoErroMs:+0;-0} ms");
         if (s is { PodeControlar: false }) _dica.SetToolTip(_tocar, $"Só {s.NomeAnfitriao} controla"); else _dica.SetToolTip(_tocar, null);
         string linha;
-        if (_aviso != null && DateTime.Now < _avisoAte) linha = _aviso;
+        if (_avisoFixo != null && s != null) linha = _avisoFixo;
+        else if (_aviso != null && DateTime.Now < _avisoAte) linha = _aviso;
         else if (_baixando != null && UltimoDownload?.Atual is { } p)
             linha = p.Fase switch
             {
@@ -539,7 +560,7 @@ public sealed partial class FilmeTela : UserControl
                 : "Escolha um filme para ser o anfitrião. Quem quiser assistir junto precisa ter o mesmo arquivo.");
         }
         else if (s.Anfitriao)
-            linha = $"Você é o anfitrião de \"{s.Nome}\" · " + (s.Amigos.Count == 0 ? "ninguém entrou ainda" : string.Join(" · ", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}: {kv.Value}")))
+            linha = $"Você é o anfitrião de \"{s.Nome}\" · " + (s.Amigos.Count == 0 ? "ninguém entrou ainda" : string.Join(" · ", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}: {s.EstadoVisto(kv.Key, kv.Value)}")))
                 + (s.Aguardando ? " · começa quando todos estiverem prontos" : "");
         else linha = $"\"{s.Nome}\" com {s.NomeAnfitriao}" + (_lig.OffsetAnfitriaoUs() == null ? " · acertando o relógio..." : "");
         Texto(_status, linha);
@@ -550,7 +571,7 @@ public sealed partial class FilmeTela : UserControl
         string eu = _conferindo != null ? "conferindo o arquivo" : s is { Tocando: true } ? "assistindo" : "pronto";
         string sala = s switch
         {
-            { Anfitriao: true } => "Na sala\n\nVocê (anfitrião): pronto\n" + string.Join("\n", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}: {kv.Value}"))
+            { Anfitriao: true } => "Na sala\n\nVocê (anfitrião): pronto\n" + string.Join("\n", s.Amigos.Select(kv => $"{s.NomeDe(kv.Key)}: {s.EstadoVisto(kv.Key, kv.Value)}"))
                 + (!AlguemEntrou(s) ? "\nNinguém entrou ainda. Os amigos veem o filme na barra lateral." : "")
                 + (s.Aguardando ? "\n\nComeça sozinho quando todos estiverem prontos." : ""),
             { } => $"Na sala\n\n{s.NomeAnfitriao} (anfitrião)\nVocê: {eu}" + (s.Tocando ? "" : $"\n\nEsperando {s.NomeAnfitriao} dar o play."),
@@ -563,7 +584,7 @@ public sealed partial class FilmeTela : UserControl
         AtualizarCard(s, anuncio);
         // com o card na tela, a linha de cima só aparece para avisos e a barra de baixo (controles do filme) some
         // com a interface do mpv, a linha de cima vai para dentro do vídeo durante o filme
-        _status.Visible = (s != null && !MpvUi.Ligada && !_catalogo) || (_cinema.Visible && _aviso != null && DateTime.Now < _avisoAte);
+        _status.Visible = (s != null && !MpvUi.Ligada && !_catalogo) || (_cinema.Visible && (_avisoFixo != null || _aviso != null && DateTime.Now < _avisoAte));
         if (_status.Visible && _cinema.Visible)
             _status.Height = Math.Max(UiScale.Dp(this, 30), TextRenderer.MeasureText(_status.Text, _status.Font,
                 new Size(Math.Max(1, ClientSize.Width - _status.Padding.Horizontal), int.MaxValue), TextFormatFlags.WordBreak).Height + UiScale.Dp(this, 12));

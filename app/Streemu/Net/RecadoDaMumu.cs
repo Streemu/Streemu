@@ -74,7 +74,7 @@ public sealed record RecadoDaMumu(string Id, string Texto, string? Titulo = null
         string? id = Valor(r["id"]), texto = Valor(r["texto"]), titulo = Valor(r["titulo"]), data = Valor(r["data"]), sprite = Valor(r["sprite"]);
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(texto)) return null;
         DateOnly? dia = DateOnly.TryParseExact(data, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d
-            // formato antigo: o id é "yyyyMMdd-HHmm" (publicar-recado.ps1); serve de data quando não vem outra
+            // formato antigo: o id é "yyyyMMdd-HHmm" (o mesmo que a aba Recados do painel gera); serve de data quando não vem outra
             : id.Length >= 8 && DateOnly.TryParseExact(id[..8], "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d2) ? d2 : null;
         return new RecadoDaMumu(id.Trim(), texto.Trim(), string.IsNullOrWhiteSpace(titulo) ? null : titulo.Trim(), dia, string.IsNullOrWhiteSpace(sprite) ? null : sprite.Trim());
     }

@@ -1,6 +1,6 @@
 {
     "versao":  "0.6.0",
-    "privado":  "3a184e61432186ef67c5a23b2cff84fffea2d193",
-    "notas":  "- Reenvia o estado do filme a cada 3 s e avisa quando o anfitrião cai",
+    "privado":  "dd5891986bf777dafc754fb33655efb729b33ad2",
+    "notas":  "- Corrige texto velho do recado depois do H6 (comentário do app e seção 7 da spec 036)",
     "obrigatoria":  false
 }

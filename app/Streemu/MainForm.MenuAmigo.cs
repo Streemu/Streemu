@@ -30,6 +30,7 @@ public sealed partial class MainForm
     {
         if (amigo.Offline) // está com o app fechado: não dá para assistir, enviar nem convidar (plano 019, etapa 7)
         {
+            foreach (var item in ItensDeAcompanhar(amigo)) yield return item;
             foreach (var item in ItensDeApelido(amigo)) yield return item;
             yield return new ToolStripSeparator();
             yield return ItemSilenciar(amigo);
@@ -38,6 +39,7 @@ public sealed partial class MainForm
         if (amigo.Live) yield return ItemAssistir(amigo);
         if (ArquivosLigado) yield return new ToolStripMenuItem("Enviar arquivo", null, (_, _) => BeginInvoke(() => MostrarArquivos(amigo.Id))); // spec 020, D9
         yield return ItemConvidar(amigo);
+        foreach (var item in ItensDeAcompanhar(amigo)) yield return item; // spec 038
         yield return new ToolStripSeparator();
         foreach (var item in ItensDeApelido(amigo)) yield return item;
         yield return ItemSilenciar(amigo);

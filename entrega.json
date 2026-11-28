@@ -1,6 +1,6 @@
 {
     "versao":  "0.6.0",
-    "privado":  "dd5891986bf777dafc754fb33655efb729b33ad2",
-    "notas":  "- Corrige texto velho do recado depois do H6 (comentário do app e seção 7 da spec 036)",
+    "privado":  "26b2defaa7339aecb156f0e11ee210fdb3066875",
+    "notas":  "- Adiciona o cenário acompanhar-volta: dois apps provam a espera e a entrada sozinha (spec 038)\n- Tira a trava de Automated do continuar assistindo e registra no plano e na spec o que falta provar (spec 038)\n- Documenta o continuar assistindo: CHANGELOG, Novidades, LEIA-ME, arquitetura e testes (T7, spec 038)\n- Faz o continuar assistindo valer para o filme transmitido (T6, spec 038)\n- Adiciona o menu e o indicador do continuar assistindo (T5, spec 038)\n- Liga o continuar assistindo à sala: espera, entrada sozinha e avisos (T4, spec 038)\n- Lembra o volume de cada amigo e abre a live dele no último volume usado (T3, spec 038)\n- [sem atualização] Adiciona a regra do continuar assistindo e o teste dela (T2, spec 038)\n- [sem atualização] Guarda no estado os amigos acompanhados, o prazo e o volume por amigo (T1, spec 038)",
     "obrigatoria":  false
 }

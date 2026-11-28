@@ -299,7 +299,7 @@ public sealed partial class MainForm : IStageHost
     {
         var friends = FiltrarPorGrupo(_room?.Friends ?? Enumerable.Empty<Member>()) // seletor de grupo da barra (MainForm.Grupos.cs)
             .OrderByDescending(f => f.Live != null).ThenBy(f => NomeNaTela(f))
-            .Select(f => new SideFriend(f.Id, NomeNaTela(f), f.Live?.Game ?? "online", f.Live != null, IsWatching(f.Id), _friendAvatars?.ImageOf(f.Id)))
+            .Select(f => new SideFriend(f.Id, NomeNaTela(f), DetalheComAcompanhar(f.Id, f.Live?.Game ?? "online"), f.Live != null, IsWatching(f.Id), _friendAvatars?.ImageOf(f.Id)))
             .ToList();
         friends.AddRange(AusentesParaBarra()); // por último, em ordem alfabética (MainForm.Apelidos.cs); a sala antiga não tem ausentes
         GuardarNomesReais();
@@ -318,7 +318,7 @@ public sealed partial class MainForm : IStageHost
     void ToggleWatchFriend(string friendId)
     {
         var existing = _links.Values.FirstOrDefault(l => !l.IAmSender && l.PeerId == friendId);
-        if (existing != null) { EndLink(existing.SessionId, tellPeer: true, why: null); return; }
+        if (existing != null) { Acompanhando.Parar(friendId); EndLink(existing.SessionId, tellPeer: true, why: null); return; } // fechei eu: não esperar de volta (spec 038)
         if (_playerStage is { Full: true }) { Notify($"Já são {PlayerStage.MaxStreams} streams na janela. Feche uma para abrir outra."); return; }
         if (_room?.Find(friendId) is { Live: not null } member) _ = WatchAsync(member, "clique no amigo ao vivo (barra ou menu)");
     }
@@ -333,6 +333,7 @@ public sealed partial class MainForm : IStageHost
         AtualizarAtividades(); // MainForm.Atividades.cs
         AtualizarConvites(); // MainForm.PrivadaConvidado.cs
         SinalSilencio(); // MainForm.Silencio.cs: o prazo pode ter acabado sozinho
+        AcompanharOlharSala(); // MainForm.Acompanhar.cs: o prazo da espera acaba sem a sala mudar
         RefreshSide();
         bool want = Visible && WindowState != FormWindowState.Minimized && _homeHost.Visible && _liveCards.Visible;
         if (want && DateTime.Now >= _nextThumbAsk) { _nextThumbAsk = DateTime.Now.AddSeconds(30); _thumbsAsked = true; AskThumbnails(true); }

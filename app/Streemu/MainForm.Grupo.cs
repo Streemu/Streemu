@@ -277,6 +277,7 @@ public sealed partial class MainForm
         EnsinarAmigosAosPseudonimos(); // MainForm.Telemetria.cs: o amigo que acabou de entrar já tem o amigo-N antes da linha de log dele subir
         AdotarNomeDaSala(); // MainForm.Nome.cs: troca de nome feita em outro aparelho
         RefreshMembers();
+        AcompanharOlharSala(); // MainForm.Acompanhar.cs: continuar assistindo (spec 038); antes do aviso, para ele saber que entrei sozinho
         AvisosDaSala(); // MainForm.Avisos.cs: "fulano começou uma live"
         OnRoomMembersForAvatars();
         ForgetEndedThumbnails();
@@ -620,9 +621,10 @@ public sealed partial class MainForm
             PrepareDirect3D = _hwDecode.Checked && !Automated ? PrepararPlayerDirect3D : null,
         };
         if (TestDir != null) v.ExtraArgs = new[] { "-volume", "0" };
-        v.Audio.Restore(_state.PlayerVolumePercent, _state.PlayerMuted);
+        // spec 038, D5: a live de cada amigo abre no último volume usado com ele; sem lembrança, vale o do app
+        v.Audio.Restore(_state.VolumePorAmigo.TryGetValue(link.PeerId, out int volumeDele) ? volumeDele : _state.PlayerVolumePercent, _state.PlayerMuted);
         if (!Automated)
-            v.Audio.Changed += () => { _state.PlayerVolumePercent = v.Audio.Percent; _state.PlayerMuted = v.Audio.Muted; _state.Save(); };
+            v.Audio.Changed += () => { _state.PlayerVolumePercent = v.Audio.Percent; _state.VolumePorAmigo[link.PeerId] = v.Audio.Percent; _state.PlayerMuted = v.Audio.Muted; _state.Save(); };
         string sid = link.SessionId;
         // Drop só existe se o mpv saiu sozinho no meio da live (LIV-178: a janela sumia sem aviso); fechar a janela, o Stop() e o fim avisado pelo transmissor seguem sem aviso
         v.Exited += () => Ui(() => EndLink(sid, tellPeer: true, why: v.Drop?.Notice()));
@@ -999,6 +1001,7 @@ public sealed partial class MainForm
         ["ausentes"] = new JsonArray((_room?.Ausentes ?? []).Select(a => (JsonNode)JsonValue.Create(a.Nick)!).ToArray()), // membros com o app fechado (só sala com conta; etapa 7)
         ["discord"] = _discord == null ? "desligado" : _discord.Connected ? "conectado" : "não encontrado",
         ["ao_vivo"] = _streamId != null,
+        ["acompanhar"] = RelatorioDoAcompanhar(), // MainForm.AcompanharTeste.cs (spec 038)
         ["avatares_recebidos"] = new JsonArray((_friendAvatars?.FriendsWithAvatar() ?? Array.Empty<string>()).Select(id => (JsonNode)JsonValue.Create(_room?.Find(id)?.Nick ?? "?")!).ToArray()),
         ["ligacoes"] = new JsonArray(_links.Values.Select(l => (JsonNode)new JsonObject
         {
@@ -1102,6 +1105,7 @@ public sealed partial class MainForm
                 }
                 await ToggleTransmitAsync();
             }
+            if (TesteAcompanharRoteiroDoAnfitriao() is { } roteiroAcompanhar) await TesteAcompanharAnfitriaoAsync(roteiroAcompanhar); // MainForm.AcompanharTeste.cs (spec 038)
             // seconds é o TETO: com STREEMU_TEST_PRONTO o cenário acaba assim que o resultado que o teste confere está pronto (MainForm.TesteAte.cs)
             if (TesteCondicaoPronta() is { } pronto) await TesteAteProntoAsync(seconds, pronto);
             else await Task.Delay(seconds * 1000);
@@ -1122,7 +1126,7 @@ public sealed partial class MainForm
             while ((live = _room?.Friends.FirstOrDefault(f => f.Live != null)) == null && DateTime.Now < until) await Task.Delay(200);
             // papel D: fica na sala SEM assistir (a faixa dos outros não pode mostrá-lo)
             if (live != null && TestWatchAll() is int all) await TestWatchEveryoneAsync(all);
-            else if (live != null && TestRole != "D") await WatchAsync(live, "teste"); else Log.Info("teste: não assisto (ninguém ao vivo, ou papel D).");
+            else if (live != null && TestRole != "D") { if (TesteAcompanharAtivo) TesteAcompanharMarcar(live); await WatchAsync(live, "teste"); } else Log.Info("teste: não assisto (ninguém ao vivo, ou papel D).");
             if (await TestWaitAsync("STREEMU_TEST_LEAVE_AFTER")) TestLeaveStream();
             // grava logo depois do relatório de A, enquanto A ainda está no ar
             until = DateTime.Now.AddSeconds(seconds + 20);

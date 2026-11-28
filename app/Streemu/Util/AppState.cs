@@ -94,6 +94,12 @@ public sealed class AppState
     public List<string> AmigosSilenciados { get; set; } = new();
     /// <summary>Apelidos que só esta pessoa vê (plano 019, etapa 7): id da conta do amigo → apelido (até 24 caracteres). Nunca sai do PC: não vai ao log nem à telemetria.</summary>
     public Dictionary<string, string> ApelidosLocais { get; set; } = new();
+    /// <summary>"Continuar assistindo" (spec 038): id do amigo → minutos de espera própria (5, 10 ou 20; 0 = até o amigo voltar; -1 = usar o prazo padrão). Amigo que não está aqui não é acompanhado. Só no PC.</summary>
+    public Dictionary<string, int> AmigosAcompanhados { get; set; } = new();
+    /// <summary>Minutos de espera de quem não escolheu outro prazo (spec 038, D2). 10 por padrão: "até voltar" só por escolha explícita.</summary>
+    public int AcompanharPrazoPadraoMinutos { get; set; } = 10;
+    /// <summary>Último volume (0 a 100) usado com cada amigo, para a live dele abrir no volume que a pessoa deixou (spec 038, D5). Sem entrada, vale <see cref="PlayerVolumePercent"/>. Só no PC.</summary>
+    public Dictionary<string, int> VolumePorAmigo { get; set; } = new();
     /// <summary>Telemetria (spec 009): ligada por padrão; a pessoa desliga em Ajustes > Diagnóstico.</summary>
     public bool TelemetriaDesligada { get; set; }
     /// <summary>

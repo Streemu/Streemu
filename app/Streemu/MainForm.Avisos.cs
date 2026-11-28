@@ -69,7 +69,7 @@ public sealed partial class MainForm
             if (AmigosMudos.Contem(m.Id)) { Log.Info($"[silêncio] aviso de live de {NomeNaTela(m)} calado (amigo silenciado)."); continue; }
             // começou faz tempo (a pessoa voltou para a sala depois de cair por mais tempo que a folga da lista): não é novidade
             if (live.SinceUnixMs > 0 && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - live.SinceUnixMs > 120_000) continue;
-            if (_links.Values.Any(l => !l.IAmSender && l.PeerId == m.Id)) continue; // já assistindo
+            if (_links.Values.Any(l => !l.IAmSender && l.PeerId == m.Id) || AcompanharEntrouAgora(m.Id)) continue; // já assistindo (ou entrando sozinho, spec 038)
             string jogo = string.IsNullOrWhiteSpace(live.Game) ? "" : live.Game.Trim();
             Enfileirar(m.Id, NomeNaTela(m), "começou uma live", jogo.Length > 0 ? $"começou uma live: {jogo}" : "começou uma live");
         }

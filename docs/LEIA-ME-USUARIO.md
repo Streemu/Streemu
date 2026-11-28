@@ -50,6 +50,13 @@ ATIVIDADE RECENTE (ícone de pulso na barra lateral)
   última vez que você abriu o painel.
 - Transmissão privada não aparece em lugar nenhum desta lista. Só para quem entrou com conta.
 
+CONTINUAR ASSISTINDO
+- Clique na foto de um amigo > "Continuar assistindo" e escolha o tempo de espera: 5, 10 ou 20 minutos, ou "Até o amigo voltar".
+  Quando ele fechar a live, o Streemu espera; se ele abrir outra (ou transmitir um filme no Cinema) dentro do prazo, você entra
+  sozinho, no último volume que você usou com ele. Se você já está assistindo outra live ou transmitindo, ele só avisa.
+- Para parar de esperar: clique na foto dele > "Parar de esperar" ou "Fechar a live". O amigo não sabe que você o acompanha.
+  A espera só vale com o Streemu aberto.
+
 PESSOAS OFFLINE E APELIDOS
 - Quem é do grupo e está com o Streemu fechado aparece na barra lateral, numa seção "OFFLINE — N" depois dos online, com a
   foto esmaecida. A barra recolhida (só os avatares) não mostra os offline. Clicar nele não faz nada além de abrir o

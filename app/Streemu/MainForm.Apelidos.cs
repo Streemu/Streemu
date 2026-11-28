@@ -62,7 +62,7 @@ public sealed partial class MainForm
         if (_room == null) return [];
         var ausentes = _room.Ausentes.Where(a => a.Id != _room.MyId);
         if (_filtroGrupo != null && _salaUnida != null) ausentes = ausentes.Where(a => _salaUnida.GruposDe(a.Id).Contains(_filtroGrupo));
-        return ausentes.Select(a => new SideFriend(a.Id, NomeNaTela(a.Id, a.Nick), "offline", false, false, _friendAvatars?.ImageOf(a.Id), Offline: true))
+        return ausentes.Select(a => new SideFriend(a.Id, NomeNaTela(a.Id, a.Nick), DetalheComAcompanhar(a.Id, "offline"), false, false, _friendAvatars?.ImageOf(a.Id), Offline: true))
             .OrderBy(f => f.Nick, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 

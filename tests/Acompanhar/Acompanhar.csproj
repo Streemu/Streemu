@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Só a regra de decisão do "continuar assistindo" (spec 038, T2). Sem janela, sem rede, sem estado salvo. -->
+    <Compile Include="../../app/Streemu/Acompanhar/AcompanharAmigos.cs" Link="AcompanharAmigos.cs" />
+  </ItemGroup>
+</Project>

@@ -9,6 +9,9 @@ Atenção: mudar o título de um item faz ele reaparecer como novo (com selo) pa
 
 ## Não lançado
 
+### Novo
+- **Continuar assistindo:** no menu da foto do amigo, escolha esperar 5, 10 ou 20 min (ou até ele voltar). Se ele fechar a live e abrir outra, você entra sozinho no último volume usado com ele.
+
 ### Melhorias
 - **Filme: o play perdido volta sozinho:** se o play ou a pausa do anfitrião não chegar até você, o filme se acerta sozinho em poucos segundos, sem sair e entrar de novo.
 - **Filme: aviso quando o anfitrião some:** se o anfitrião ficar sem sinal, aparece um aviso e o filme continua. Passando de 30 segundos, o filme pausa e avisa que ele caiu.
